@@ -1,10 +1,14 @@
 import requests
 import time
+import random
 from datetime import datetime, timezone
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session as DBSession
 from models import Coin, Kline, Meta
 from metrics import calculate_distance_pct
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,9 +16,69 @@ logger = logging.getLogger(__name__)
 BINANCE_API_URL = "https://api.binance.com/api/v3"
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
 
+proxy_list = []
+working_proxy = None
+
+def get_proxies():
+    global proxy_list
+    if not proxy_list:
+        try:
+            logger.info("Fetching free proxy list...")
+            res = requests.get("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", timeout=10)
+            if res.status_code == 200:
+                proxy_list = res.text.strip().split('\n')
+                random.shuffle(proxy_list)
+                logger.info(f"Loaded {len(proxy_list)} proxies.")
+        except Exception as e:
+            logger.error(f"Failed to fetch proxies: {e}")
+    return proxy_list
+
+import concurrent.futures
+
+def check_proxy(p, url, params):
+    try:
+        res = requests.get(url, params=params, proxies={"http": f"http://{p}", "https": f"http://{p}"}, timeout=5, verify=False)
+        if res.status_code in [200, 429, 418]:
+            return res, p
+    except:
+        pass
+    return None, None
+
+def request_with_proxy(url, params=None):
+    global working_proxy, proxy_list
+    
+    # Try working proxy first
+    if working_proxy:
+        res, _ = check_proxy(working_proxy, url, params)
+        if res:
+            return res
+        working_proxy = None # Failed, reset
+            
+    proxies = get_proxies()
+    if not proxies:
+        raise Exception("No proxies available")
+        
+    logger.info(f"Testing proxies concurrently for {url}...")
+    
+    # Test in batches of 50
+    for i in range(0, min(500, len(proxies)), 50):
+        batch = proxies[i:i+50]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            futures = [executor.submit(check_proxy, p, url, params) for p in batch]
+            for future in concurrent.futures.as_completed(futures):
+                res, p = future.result()
+                if res:
+                    working_proxy = p
+                    logger.info(f"Found working proxy: {p}")
+                    # Cancel other futures if possible (not strictly supported, but we can just return)
+                    return res
+                    
+    logger.error(f"All proxies failed for {url}")
+    raise Exception(f"Failed to fetch {url} via proxies")
+
 def fetch_binance_symbols():
     try:
-        res = requests.get(f"{BINANCE_API_URL}/exchangeInfo")
+        res = request_with_proxy(f"{BINANCE_API_URL}/exchangeInfo")
         res.raise_for_status()
         data = res.json()
         symbols = []
@@ -28,7 +92,7 @@ def fetch_binance_symbols():
 
 def fetch_first_kline(symbol: str):
     try:
-        res = requests.get(f"{BINANCE_API_URL}/klines", params={
+        res = request_with_proxy(f"{BINANCE_API_URL}/klines", params={
             "symbol": symbol,
             "interval": "1d",
             "limit": 1,
@@ -57,7 +121,7 @@ def fetch_klines(symbol: str, start_time: int = None, limit: int = 1000):
         if start_time:
             params["startTime"] = start_time
             
-        res = requests.get(f"{BINANCE_API_URL}/klines", params=params)
+        res = request_with_proxy(f"{BINANCE_API_URL}/klines", params=params)
         if res.status_code == 429 or res.status_code == 418:
             retry_after = int(res.headers.get("Retry-After", 5))
             time.sleep(retry_after)
@@ -69,7 +133,7 @@ def fetch_klines(symbol: str, start_time: int = None, limit: int = 1000):
         logger.error(f"Error fetching klines for {symbol}: {e}")
         return []
 
-def sync_coins(db: Session):
+def sync_coins(db: DBSession):
     logger.info("Starting sync_coins...")
     symbols = fetch_binance_symbols()
     cutoff_date = datetime(2021, 1, 1, tzinfo=timezone.utc)
@@ -93,7 +157,7 @@ def sync_coins(db: Session):
                     db.commit()
             time.sleep(0.1) # Rate limit protection
 
-def sync_klines(db: Session):
+def sync_klines(db: DBSession):
     logger.info("Starting sync_klines...")
     coins = db.query(Coin).filter(Coin.is_pre_2021 == True).all()
     
@@ -145,14 +209,14 @@ def sync_klines(db: Session):
 
 def fetch_coingecko_list():
     try:
-        res = requests.get(f"{COINGECKO_API_URL}/coins/list")
+        res = request_with_proxy(f"{COINGECKO_API_URL}/coins/list")
         res.raise_for_status()
         return res.json()
     except Exception as e:
         logger.error(f"Error fetching coingecko list: {e}")
         return []
 
-def sync_coingecko(db: Session):
+def sync_coingecko(db: DBSession):
     logger.info("Starting sync_coingecko...")
     cg_list = fetch_coingecko_list()
     if not cg_list:
@@ -174,7 +238,7 @@ def sync_coingecko(db: Session):
     for i in range(0, len(cg_ids), batch_size):
         batch = cg_ids[i:i+batch_size]
         try:
-            res = requests.get(f"{COINGECKO_API_URL}/coins/markets", params={
+            res = request_with_proxy(f"{COINGECKO_API_URL}/coins/markets", params={
                 "vs_currency": "usd",
                 "ids": ",".join(batch)
             })
@@ -195,7 +259,7 @@ def sync_coingecko(db: Session):
             logger.error(f"Error fetching coingecko markets: {e}")
         time.sleep(2) # Rate limit protection
 
-def run_all_syncs(db: Session):
+def run_all_syncs(db: DBSession):
     sync_coins(db)
     sync_klines(db)
     sync_coingecko(db)

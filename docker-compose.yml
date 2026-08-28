@@ -11,6 +11,12 @@ services:
       - db_data:/data
     environment:
       - DB_DIR=/data
+      - NO_PROXY=*
+      - no_proxy=*
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - http_proxy=
+      - https_proxy=
     restart: unless-stopped
 
   worker:
@@ -21,6 +27,12 @@ services:
       - db_data:/data
     environment:
       - DB_DIR=/data
+      - NO_PROXY=*
+      - no_proxy=*
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - http_proxy=
+      - https_proxy=
     restart: unless-stopped
     depends_on:
       - backend
