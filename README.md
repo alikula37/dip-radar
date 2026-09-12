@@ -4,14 +4,16 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 
 ## Features ✨
 
-- **Interactive Bubble Chart**: Visualizes coins using a D3.js force simulation. Bubble **size represents market cap** (square-root scale) and bubble **color represents the distance from the dip** (green = close, red = far).
-- **Broad Coverage**: Tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates.
-- **Dual Reference Points**: Toggle between "Since 2021" (event low) and "All Time Low" (ATL) to see how far coins are from their historical bottoms.
-- **Automated Data Sync**: A dedicated APScheduler worker runs daily to fetch the latest daily candles and metadata. A cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint.
-- **Resilient Data Fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
-- **Duplicate-free Storage**: Daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
-- **Local Caching**: SQLite caching (WAL mode) ensures fast load times and respects API rate limits.
-- **Dark Mode UI**: Includes a table view, search, sorting, a per-coin price-history chart and automatic status polling during the initial sync.
+- **Insight-first scatter chart**: X axis is market cap (log scale), Y axis is the distance from the historical dip. Position now carries meaning: the shaded "watch zone" highlights established coins (≥ $50M cap) that trade within 50% of their dip. Zoom/pan with the mouse, hover for a tooltip, click for details.
+- **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size represents 24h volume.
+- **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with quick filters for minimum market cap and volume.
+- **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
+- **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates.
+- **Dual reference points**: toggle between "Since 2021" (event low) and "All Time Low" (ATL).
+- **Automated data sync**: a dedicated APScheduler worker runs daily; a cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint. Live progress (phase + percentage) is reported to the UI.
+- **Resilient data fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
+- **Duplicate-free storage**: daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
+- **Design system**: Tailwind CSS 4 with shared tokens and UI components (buttons, badges, stat cards, segmented controls); table view, search, sorting, detail modal with a 365-day price chart.
 
 ## Architecture 🏗️
 
