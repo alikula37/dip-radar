@@ -86,7 +86,6 @@ async def security_middleware(request: Request, call_next):
 def get_coins(db: Session = Depends(get_db)):
     coins = (
         db.query(models.Coin)
-        .filter(models.Coin.is_pre_2021.is_(True))
         .order_by(func.coalesce(models.Coin.market_cap, -1).desc())
         .all()
     )
@@ -117,7 +116,7 @@ def get_coin_history(
 def get_meta(db: Session = Depends(get_db)):
     last_updated = db.query(models.Meta).filter(models.Meta.key == "last_updated").first()
     progress = db.query(models.Meta).filter(models.Meta.key == "sync_progress").first()
-    count = db.query(models.Coin).filter(models.Coin.is_pre_2021.is_(True)).count()
+    count = db.query(models.Coin).filter(models.Coin.current_price_btc.isnot(None)).count()
 
     sync_progress = None
     if progress and progress.value:
