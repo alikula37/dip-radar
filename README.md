@@ -55,7 +55,7 @@ CoinGecko metadata / market caps
 
 4. Open the dashboard: `http://localhost:3000`
 
-*Note: On the first run, the worker fetches the listing date of every BTC pair and the full daily history of all coins listed before 2021. This normally takes a few minutes; the frontend shows a status screen until the first data arrives.*
+*Note: On the first run, the worker fetches the listing date of every BTC pair and the full daily history of all coins listed before 2021. This normally takes a few minutes; the frontend shows a status screen until the first data arrives. Existing databases from older versions are migrated automatically on startup.*
 
 ## Environment Variables ⚙️
 

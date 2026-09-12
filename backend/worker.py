@@ -5,6 +5,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from database import Base, engine
 from fetcher import run_sync_with_lock
+from migrations import run_migrations
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -25,6 +26,7 @@ def job() -> None:
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
     logger.info("Starting worker...")
     # Run once on startup, then every 24 hours.
     job()

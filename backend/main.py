@@ -13,6 +13,7 @@ from database import Base, engine, get_db
 from fetcher import run_sync_with_lock
 from locks import is_locked
 from metrics import calculate_bubble_sizes
+from migrations import run_migrations
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -21,6 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 Base.metadata.create_all(bind=engine)
+run_migrations(engine)
 
 app = FastAPI(title="Dip Radar API", version="2.0.0")
 
