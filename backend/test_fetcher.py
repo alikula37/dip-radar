@@ -106,27 +106,39 @@ def test_binance_client_waits_on_rate_limit_then_uses_fallback():
     def responder(url, params):
         if "api.binance.com" in url:
             return FakeResponse(status_code=429, headers={"Retry-After": "3"})
-        return FakeResponse(payload={"symbols": [{"symbol": "ETHBTC", "quoteAsset": "BTC", "status": "TRADING"}]})
+        return FakeResponse(
+            payload={
+                "symbols": [
+                    {"symbol": "ETHBTC", "baseAsset": "ETH", "quoteAsset": "BTC", "status": "TRADING"}
+                ]
+            }
+        )
 
     session = FakeSession(responder)
     client = fetcher.BinanceClient(session=session, sleep=slept.append)
 
-    assert client.fetch_symbols() == ["ETHBTC"]
+    assert client.fetch_symbols() == [{"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"}]
     assert slept == [3.0]
 
 
-def test_binance_fetch_symbols_filters_quote_and_status():
+def test_binance_fetch_symbols_prefers_btc_and_skips_stables():
     payload = {
         "symbols": [
-            {"symbol": "ETHBTC", "quoteAsset": "BTC", "status": "TRADING"},
-            {"symbol": "BTCUSDT", "quoteAsset": "USDT", "status": "TRADING"},
-            {"symbol": "OLD BTC", "quoteAsset": "BTC", "status": "BREAK"},
+            {"symbol": "ETHBTC", "baseAsset": "ETH", "quoteAsset": "BTC", "status": "TRADING"},
+            {"symbol": "ETHUSDT", "baseAsset": "ETH", "quoteAsset": "USDT", "status": "TRADING"},
+            {"symbol": "XLMUSDT", "baseAsset": "XLM", "quoteAsset": "USDT", "status": "TRADING"},
+            {"symbol": "BTCUSDT", "baseAsset": "BTC", "quoteAsset": "USDT", "status": "TRADING"},
+            {"symbol": "USDCUSDT", "baseAsset": "USDC", "quoteAsset": "USDT", "status": "TRADING"},
+            {"symbol": "OLD BTC", "baseAsset": "OLD", "quoteAsset": "BTC", "status": "BREAK"},
         ]
     }
     session = FakeSession(lambda url, params: FakeResponse(payload=payload))
     client = fetcher.BinanceClient(session=session, sleep=lambda _: None, base_urls=["https://api.binance.com/api/v3"])
 
-    assert client.fetch_symbols() == ["ETHBTC"]
+    assert client.fetch_symbols() == [
+        {"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"},
+        {"symbol": "XLMUSDT", "base": "XLM", "quote": "USDT"},
+    ]
 
 
 def test_fetch_klines_always_sends_start_time():
@@ -161,6 +173,51 @@ def test_sync_klines_backfills_when_history_starts_after_listing(db):
 
     assert client.kline_calls[0] == ("ETHBTC", 0)
     assert db.query(Kline).count() == 2
+
+
+def test_convert_usdt_klines_to_btc():
+    rows = [make_kline_row(1000, 10, 12, 8, 11, 100)]
+    btc_rates = {1000: (50.0, 40.0, 45.0)}  # high, low, close
+
+    converted = fetcher.convert_usdt_klines_to_btc(rows, btc_rates)
+
+    assert len(converted) == 1
+    row = converted[0]
+    assert row[0] == 1000
+    assert row[1] == pytest.approx(10 / 45)
+    assert row[2] == pytest.approx(12 / 40)
+    assert row[3] == pytest.approx(8 / 50)
+    assert row[4] == pytest.approx(11 / 45)
+    assert row[5] == pytest.approx((100 * 11) / 45)
+
+
+def test_convert_usdt_klines_skips_days_without_btc_rate():
+    rows = [make_kline_row(1000, 10, 12, 8, 11)]
+
+    assert fetcher.convert_usdt_klines_to_btc(rows, {}) == []
+
+
+def test_sync_klines_converts_usdt_pairs_to_btc(db):
+    db.add(Coin(symbol="XLMUSDT", is_pre_2021=True, listed_checked=True, listing_date=datetime(2019, 1, 1)))
+    db.commit()
+
+    day = to_millis(datetime(2019, 1, 2))
+    client = FakeBinance(
+        klines={
+            "XLMUSDT": [make_kline_row(day, 0.10, 0.12, 0.08, 0.11)],
+            "BTCUSDT": [make_kline_row(day, 4000, 4100, 3900, 4000)],
+        }
+    )
+
+    fetcher.sync_klines(db, client)
+
+    stored = db.query(Kline).filter(Kline.symbol == "XLMUSDT").one()
+    assert stored.high == pytest.approx(0.12 / 3900)
+    assert stored.low == pytest.approx(0.08 / 4100)
+    assert stored.close == pytest.approx(0.11 / 4000)
+
+    coin = db.get(Coin, "XLMUSDT")
+    assert coin.current_price_btc == pytest.approx(0.11 / 4000)
 
 
 def test_upsert_klines_is_idempotent_and_updates_existing_row(db):
@@ -204,7 +261,10 @@ def test_sync_klines_resumes_from_last_candle_and_computes_metrics(db):
 
 def test_sync_coins_stores_post_2021_symbols_once(db):
     client = FakeBinance(
-        symbols=["ETHBTC", "NEWBTC"],
+        symbols=[
+            {"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"},
+            {"symbol": "NEWBTC", "base": "NEW", "quote": "BTC"},
+        ],
         first_klines={
             "ETHBTC": make_kline_row(to_millis(datetime(2017, 1, 1)), 1, 1, 1, 1),
             "NEWBTC": make_kline_row(to_millis(datetime(2023, 5, 1)), 1, 1, 1, 1),
@@ -252,6 +312,45 @@ def test_sync_coingecko_maps_ids_and_updates_metadata(db):
     assert cg.market_batches == [["ethereum"]]
 
 
+def test_sync_coingecko_disambiguates_by_market_cap(db):
+    db.add(Coin(symbol="SANDBTC", is_pre_2021=True, listed_checked=True))
+    db.commit()
+
+    cg = FakeCoinGecko(
+        coin_list=[
+            {"symbol": "sand", "id": "the-sandbox"},
+            {"symbol": "sand", "id": "sandbox-old"},
+        ],
+        markets={
+            "the-sandbox": {"id": "the-sandbox", "name": "The Sandbox", "market_cap": 100},
+            "sandbox-old": {"id": "sandbox-old", "name": "Old Sandbox", "market_cap": 5000},
+        },
+    )
+
+    fetcher.sync_coingecko(db, cg)
+
+    coin = db.get(Coin, "SANDBTC")
+    assert coin.coingecko_id == "sandbox-old"
+    assert coin.name == "Old Sandbox"
+
+
+def test_sync_coingecko_prefers_id_matching_the_symbol(db):
+    db.add(Coin(symbol="ABCBTC", is_pre_2021=True, listed_checked=True))
+    db.commit()
+
+    cg = FakeCoinGecko(
+        coin_list=[{"symbol": "abc", "id": "abc"}, {"symbol": "abc", "id": "other"}],
+        markets={
+            "abc": {"id": "abc", "name": "ABC", "market_cap": 10},
+            "other": {"id": "other", "name": "Other", "market_cap": 9999},
+        },
+    )
+
+    fetcher.sync_coingecko(db, cg)
+
+    assert db.get(Coin, "ABCBTC").coingecko_id == "abc"
+
+
 def test_coingecko_markets_requests_per_page_250():
     captured = {}
 
@@ -268,7 +367,7 @@ def test_coingecko_markets_requests_per_page_250():
 
 def test_run_all_syncs_updates_meta(db):
     client = FakeBinance(
-        symbols=["ETHBTC"],
+        symbols=[{"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"}],
         first_klines={"ETHBTC": make_kline_row(to_millis(datetime(2017, 1, 1)), 1, 1, 1, 1)},
         klines={"ETHBTC": [make_kline_row(to_millis(datetime(2020, 1, 1)), 1, 2, 1, 1.5)]},
     )

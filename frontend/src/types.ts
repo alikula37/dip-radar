@@ -1,5 +1,7 @@
 export interface Coin {
   symbol: string;
+  base_asset?: string | null;
+  quote_asset?: string | null;
   name: string | null;
   logo_url: string | null;
   current_price_btc: number | null;

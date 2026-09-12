@@ -31,6 +31,35 @@ COINGECKO_MARKETS_BATCH_SIZE = 250
 
 EVENT_CUTOFF = datetime(2021, 1, 1)
 BACKFILL_TOLERANCE = timedelta(days=2)
+TRACKED_QUOTES = ("BTC", "USDT")
+STABLE_BASES = {
+    "USDC",
+    "BUSD",
+    "TUSD",
+    "USDP",
+    "DAI",
+    "FDUSD",
+    "USDE",
+    "USD1",
+    "XUSD",
+    "USDY",
+    "BFUSD",
+    "EUR",
+    "EURI",
+    "AEUR",
+    "GBP",
+    "TRY",
+    "BRL",
+    "ARS",
+    "BIDR",
+    "IDRT",
+    "BKRW",
+    "NGN",
+    "RUB",
+    "UAH",
+    "ZAR",
+}
+EXCLUDED_BASES = {"BTC", "WBTC"}
 KLINES_LIMIT = 1000
 UPSERT_CHUNK_SIZE = 200
 REQUEST_DELAY = float(os.getenv("SYNC_REQUEST_DELAY", "0.15"))
@@ -113,12 +142,29 @@ class BinanceClient:
         raise BinanceError("; ".join(errors) or "Binance request failed")
 
     def fetch_symbols(self) -> list:
+        """Return tradeable BTC/USDT pairs, preferring the BTC pair per asset.
+
+        Coins that only trade against USDT are still tracked; their candles are
+        converted to BTC parity later using BTCUSDT daily rates.
+        """
         data = self._get("exchangeInfo").json()
-        return [
-            symbol["symbol"]
-            for symbol in data.get("symbols", [])
-            if symbol.get("quoteAsset") == "BTC" and symbol.get("status") == "TRADING"
-        ]
+        preferred = {}
+
+        for entry in data.get("symbols", []):
+            if entry.get("status") != "TRADING":
+                continue
+            base = entry.get("baseAsset")
+            quote = entry.get("quoteAsset")
+            if not base or quote not in TRACKED_QUOTES:
+                continue
+            if base in STABLE_BASES or base in EXCLUDED_BASES:
+                continue
+
+            current = preferred.get(base)
+            if current is None or (current["quote"] == "USDT" and quote == "BTC"):
+                preferred[base] = {"symbol": entry["symbol"], "base": base, "quote": quote}
+
+        return sorted(preferred.values(), key=lambda pair: pair["symbol"])
 
     def fetch_first_kline(self, symbol: str):
         rows = self._get(
@@ -261,10 +307,11 @@ def update_coin_metrics(db: DBSession, coin: Coin) -> None:
 
 def sync_coins(db: DBSession, client: BinanceClient) -> int:
     logger.info("Starting sync_coins...")
-    symbols = client.fetch_symbols()
+    pairs = client.fetch_symbols()
     created = 0
 
-    for symbol in symbols:
+    for pair in pairs:
+        symbol = pair["symbol"]
         if db.get(Coin, symbol) is not None:
             continue
 
@@ -289,15 +336,85 @@ def sync_coins(db: DBSession, client: BinanceClient) -> int:
         created += 1
         time.sleep(REQUEST_DELAY)
 
-    logger.info("sync_coins done: %s new symbols (of %s BTC pairs).", created, len(symbols))
+    logger.info("sync_coins done: %s new symbols (of %s tracked pairs).", created, len(pairs))
     return created
+
+
+def fetch_btc_daily_rates(client: BinanceClient) -> dict:
+    """Daily BTCUSDT high/low/close keyed by candle open time (ms)."""
+    rates = {}
+    start_time = 0
+
+    while True:
+        rows = client.fetch_klines("BTCUSDT", start_time=start_time)
+        if not rows:
+            break
+        for row in rows:
+            rates[row[0]] = (float(row[2]), float(row[3]), float(row[4]))
+        if len(rows) < KLINES_LIMIT:
+            break
+        next_start = rows[-1][0] + 1
+        if next_start <= start_time:
+            break
+        start_time = next_start
+        time.sleep(REQUEST_DELAY)
+
+    return rates
+
+
+def convert_usdt_klines_to_btc(rows: list, btc_rates: dict) -> list:
+    """Convert USDT-quoted candles to BTC parity using BTCUSDT daily rates.
+
+    Ratio bounds are exact for the day: low_usdt/high_btc <= ratio <= high_usdt/low_btc.
+    """
+    converted = []
+    for row in rows:
+        rate = btc_rates.get(row[0])
+        if not rate:
+            continue
+        btc_high, btc_low, btc_close = rate
+        if not btc_high or not btc_low or not btc_close:
+            continue
+
+        open_usdt, high_usdt, low_usdt, close_usdt = (
+            float(row[1]),
+            float(row[2]),
+            float(row[3]),
+            float(row[4]),
+        )
+        quote_volume = float(row[5]) * close_usdt
+
+        converted.append(
+            [
+                row[0],
+                open_usdt / btc_close,
+                high_usdt / btc_low,
+                low_usdt / btc_high,
+                close_usdt / btc_close,
+                quote_volume / btc_close,
+            ]
+        )
+    return converted
 
 
 def sync_klines(db: DBSession, client: BinanceClient) -> None:
     logger.info("Starting sync_klines...")
     coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
+    btc_rates = None
 
     for coin in coins:
+        quote = coin.quote_asset
+        if quote == "USDT":
+            if btc_rates is None:
+                logger.info("Fetching BTCUSDT daily rates for parity conversion...")
+                try:
+                    btc_rates = fetch_btc_daily_rates(client)
+                except BinanceError as exc:
+                    logger.warning("Cannot load BTC rates, skipping USDT pairs: %s", exc)
+                    btc_rates = {}
+            if not btc_rates:
+                continue
+
         first_timestamp = db.query(func.min(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
         last_timestamp = db.query(func.max(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
 
@@ -311,14 +428,16 @@ def sync_klines(db: DBSession, client: BinanceClient) -> None:
 
         try:
             while True:
-                rows = client.fetch_klines(coin.symbol, start_time=start_time)
-                if not rows:
+                raw_rows = client.fetch_klines(coin.symbol, start_time=start_time)
+                if not raw_rows:
                     break
 
-                upsert_klines(db, coin.symbol, rows)
-                next_start = rows[-1][0] + 1
+                next_start = raw_rows[-1][0] + 1
+                rows = convert_usdt_klines_to_btc(raw_rows, btc_rates) if quote == "USDT" else raw_rows
+                if rows:
+                    upsert_klines(db, coin.symbol, rows)
 
-                if len(rows) < KLINES_LIMIT:
+                if len(raw_rows) < KLINES_LIMIT:
                     break
                 if next_start <= start_time:
                     break
@@ -333,6 +452,48 @@ def sync_klines(db: DBSession, client: BinanceClient) -> None:
     logger.info("sync_klines done for %s coins.", len(coins))
 
 
+MAX_CANDIDATES_PER_SYMBOL = 10
+
+
+def _market_cap(market: dict) -> float:
+    cap = market.get("market_cap")
+    return cap if isinstance(cap, (int, float)) else -1.0
+
+
+def _resolve_ambiguous(
+    db: DBSession,
+    client: CoinGeckoClient,
+    ambiguous: list,
+) -> None:
+    """Pick the most likely id for symbols mapping to multiple CoinGecko ids.
+
+    Candidates are ranked by current market cap; when market data is
+    unavailable, the first candidate wins.
+    """
+    candidate_ids = []
+    for _, candidates in ambiguous:
+        for candidate in candidates:
+            if candidate not in candidate_ids:
+                candidate_ids.append(candidate)
+
+    caps = {}
+    for batch in chunked(candidate_ids, COINGECKO_MARKETS_BATCH_SIZE):
+        try:
+            markets = client.fetch_markets(batch)
+        except CoinGeckoError as exc:
+            logger.warning("Could not rank CoinGecko candidates: %s", exc)
+            continue
+        for market in markets:
+            caps[market.get("id")] = _market_cap(market)
+        time.sleep(COINGECKO_BATCH_DELAY)
+
+    for coin, candidates in ambiguous:
+        ranked = sorted(candidates, key=lambda candidate: caps.get(candidate, -1.0), reverse=True)
+        coin.coingecko_id = ranked[0]
+        logger.info("Resolved %s to CoinGecko id '%s' (of %s)", coin.symbol, ranked[0], ", ".join(candidates))
+    db.commit()
+
+
 def sync_coingecko(db: DBSession, client: CoinGeckoClient) -> None:
     logger.info("Starting sync_coingecko...")
     try:
@@ -343,17 +504,37 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient) -> None:
 
     symbol_map = {}
     for entry in coin_list:
-        symbol_map.setdefault(entry.get("symbol", "").lower(), entry.get("id"))
+        symbol = entry.get("symbol", "").lower()
+        coin_id = entry.get("id")
+        if not symbol or not coin_id:
+            continue
+        candidates = symbol_map.setdefault(symbol, [])
+        if coin_id not in candidates and len(candidates) < MAX_CANDIDATES_PER_SYMBOL:
+            candidates.append(coin_id)
 
     coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
+    ambiguous = []
+    for coin in coins:
+        if coin.coingecko_id:
+            continue
+        candidates = symbol_map.get(coin.base_asset.lower(), [])
+        if not candidates:
+            continue
+        if coin.base_asset.lower() in candidates:
+            coin.coingecko_id = coin.base_asset.lower()
+        elif len(candidates) == 1:
+            coin.coingecko_id = candidates[0]
+        else:
+            ambiguous.append((coin, candidates))
+    db.commit()
+
+    if ambiguous:
+        _resolve_ambiguous(db, client, ambiguous)
+
     cg_ids = []
     for coin in coins:
-        base_symbol = coin.symbol[:-3].lower() if coin.symbol.endswith("BTC") else coin.symbol.lower()
-        if not coin.coingecko_id and base_symbol in symbol_map:
-            coin.coingecko_id = symbol_map[base_symbol]
         if coin.coingecko_id and coin.coingecko_id not in cg_ids:
             cg_ids.append(coin.coingecko_id)
-    db.commit()
 
     for batch in chunked(cg_ids, COINGECKO_MARKETS_BATCH_SIZE):
         try:

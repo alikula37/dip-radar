@@ -5,6 +5,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 ## Features ✨
 
 - **Interactive Bubble Chart**: Visualizes coins using a D3.js force simulation. Bubble **size represents market cap** (square-root scale) and bubble **color represents the distance from the dip** (green = close, red = far).
+- **Broad Coverage**: Tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates.
 - **Dual Reference Points**: Toggle between "Since 2021" (event low) and "All Time Low" (ATL) to see how far coins are from their historical bottoms.
 - **Automated Data Sync**: A dedicated APScheduler worker runs daily to fetch the latest daily candles and metadata. A cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint.
 - **Resilient Data Fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
@@ -67,6 +68,8 @@ CoinGecko metadata / market caps
 | `SYNC_REQUEST_DELAY` | `0.15` | Seconds between Binance requests during a sync. |
 | `COINGECKO_BATCH_DELAY` | `2` | Seconds between CoinGecko market batches. |
 | `LOG_LEVEL` | `INFO` | Python log level for the backend and worker. |
+| `API_KEY` | unset | Optional. When set, `/api/*` requires a matching `X-API-Key` header. The frontend proxy adds it automatically. |
+| `RATE_LIMIT_PER_MINUTE` | `120` | Per-client request limit for `/api/*` (0 disables). |
 | `HTTP_PROXY` / `HTTPS_PROXY` | unset | Optional proxy for outbound data-provider requests. |
 
 ## API Endpoints 🔌
@@ -78,6 +81,8 @@ CoinGecko metadata / market caps
 | `GET` | `/api/meta` | Last sync time, tracked coin count and whether a sync is running. |
 | `POST` | `/api/refresh` | Starts a background sync. Returns `409` if one is already running. |
 | `GET` | `/health` | Liveness probe. |
+
+When `API_KEY` is configured, every `/api/*` request must include an `X-API-Key` header. The bundled frontend proxies requests server-side and adds the header for you.
 
 ## Development 🛠️
 
@@ -110,9 +115,9 @@ npm run dev
 
 ## Testing ✅
 
-- Backend: `cd backend && python -m pytest -q` (metrics, fetcher fallback/upsert logic and API tests).
-- Frontend: `cd frontend && npm run lint && npm run build`.
-- CI runs all of the above plus Docker image builds on every push and pull request.
+- Backend: `cd backend && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion logic and API tests).
+- Frontend: `cd frontend && npm run lint && npm test && npm run build`.
+- CI runs all of the above plus Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
 
 ## License 📄
 

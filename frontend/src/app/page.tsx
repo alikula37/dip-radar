@@ -457,7 +457,9 @@ export default function Home() {
                               }}
                             />
                           )}
-                          <span className="body-sm">{coin.symbol.replace(/BTC$/, '')}</span>
+                          <span className="body-sm">
+                            {coin.base_asset ?? coin.symbol.replace(/BTC$/, '')}
+                          </span>
                         </span>
                       </td>
                       <td style={{ padding: '1rem' }} className="label-mono">

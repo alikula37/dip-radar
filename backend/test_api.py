@@ -15,7 +15,9 @@ client = TestClient(main.app)
 def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    main.rate_limiter.hits.clear()
     yield
+    main.rate_limiter.hits.clear()
 
 
 def seed_coin(symbol="ETHBTC", is_pre_2021=True, market_cap=1000.0):
@@ -127,3 +129,32 @@ def test_health_endpoint():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_api_key_required_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "secret")
+
+    assert client.get("/api/coins").status_code == 401
+    assert client.get("/api/coins", headers={"x-api-key": "secret"}).status_code == 200
+
+
+def test_api_key_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    assert client.get("/api/coins").status_code == 200
+
+
+def test_rate_limit_returns_429(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "3")
+
+    statuses = [client.get("/api/meta").status_code for _ in range(4)]
+
+    assert statuses == [200, 200, 200, 429]
+
+
+def test_rate_limit_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
+
+    statuses = [client.get("/api/meta").status_code for _ in range(5)]
+
+    assert statuses == [200] * 5

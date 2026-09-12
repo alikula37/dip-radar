@@ -1,9 +1,12 @@
 import logging
 import os
+import time
+from collections import defaultdict, deque
 from typing import List, Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -34,6 +37,48 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+RATE_LIMIT_WINDOW_SECONDS = 60
+DEFAULT_RATE_LIMIT = 120
+
+
+class SlidingWindowLimiter:
+    def __init__(self, window_seconds: int = RATE_LIMIT_WINDOW_SECONDS):
+        self.window_seconds = window_seconds
+        self.hits = defaultdict(deque)
+
+    def allow(self, key: str, limit: int) -> bool:
+        now = time.monotonic()
+        window = self.hits[key]
+        while window and window[0] <= now - self.window_seconds:
+            window.popleft()
+        if len(window) >= limit:
+            return False
+        window.append(now)
+        return True
+
+
+rate_limiter = SlidingWindowLimiter()
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        api_key = os.getenv("API_KEY")
+        if api_key and request.headers.get("x-api-key") != api_key:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+
+        limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", str(DEFAULT_RATE_LIMIT)))
+        if limit > 0:
+            client = request.client.host if request.client else "unknown"
+            if not rate_limiter.allow(client, limit):
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests"},
+                    headers={"Retry-After": str(RATE_LIMIT_WINDOW_SECONDS)},
+                )
+
+    return await call_next(request)
 
 
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
