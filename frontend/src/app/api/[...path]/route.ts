@@ -7,10 +7,14 @@ const BACKEND_URL = (process.env.BACKEND_URL || "http://localhost:8000").replace
 async function proxy(request: NextRequest, context: { params: Promise<{ path?: string[] }> }) {
   const { path = [] } = await context.params;
   const target = `${BACKEND_URL}/api/${path.join("/")}${request.nextUrl.search}`;
+  const apiKey = process.env.API_KEY;
 
   const init: RequestInit = {
     method: request.method,
-    headers: { "content-type": request.headers.get("content-type") ?? "application/json" },
+    headers: {
+      "content-type": request.headers.get("content-type") ?? "application/json",
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
+    },
     cache: "no-store",
   };
   if (request.method !== "GET" && request.method !== "HEAD") {

@@ -129,7 +129,7 @@ export default function BubbleChart({ data, useAtl, onCoinClick }: BubbleChartPr
       const appendLabel = () => {
         group
           .append('text')
-          .text(node.symbol.replace(/BTC$/, ''))
+          .text(node.base_asset ?? node.symbol.replace(/BTC$/, ''))
           .attr('text-anchor', 'middle')
           .attr('dy', '0.35em')
           .style('fill', 'var(--on-surface)')
