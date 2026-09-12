@@ -1,272 +1,419 @@
-import requests
-import time
-import random
-from datetime import datetime, timezone
 import logging
+import os
+import time
+from datetime import datetime, timedelta
+
+import requests
+from requests.adapters import HTTPAdapter
+from sqlalchemy import func
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session as DBSession
-from models import Coin, Kline, Meta
+from urllib3.util.retry import Retry
+
+from database import SessionLocal
+from locks import release_lock, try_acquire_lock
 from metrics import calculate_distance_pct
-import urllib3
+from models import Coin, Kline, Meta
+from timeutils import from_millis, to_millis, utcnow, utcnow_naive
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BINANCE_API_URL = "https://api.binance.com/api/v3"
-COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
+# Binance serves the same public market data from these hosts. The second one
+# is a dedicated market-data endpoint that is reachable from networks where
+# api.binance.com is blocked. No third-party proxies are used.
+BINANCE_BASE_URLS = (
+    "https://api.binance.com/api/v3",
+    "https://data-api.binance.vision/api/v3",
+)
 
-proxy_list = []
-working_proxy = None
+COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
+COINGECKO_MARKETS_BATCH_SIZE = 250
 
-def get_proxies():
-    global proxy_list
-    if not proxy_list:
-        try:
-            logger.info("Fetching free proxy list...")
-            res = requests.get("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", timeout=10)
-            if res.status_code == 200:
-                proxy_list = res.text.strip().split('\n')
-                random.shuffle(proxy_list)
-                logger.info(f"Loaded {len(proxy_list)} proxies.")
-        except Exception as e:
-            logger.error(f"Failed to fetch proxies: {e}")
-    return proxy_list
+EVENT_CUTOFF = datetime(2021, 1, 1)
+BACKFILL_TOLERANCE = timedelta(days=2)
+KLINES_LIMIT = 1000
+UPSERT_CHUNK_SIZE = 200
+REQUEST_DELAY = float(os.getenv("SYNC_REQUEST_DELAY", "0.15"))
+COINGECKO_BATCH_DELAY = float(os.getenv("COINGECKO_BATCH_DELAY", "2"))
+MAX_RETRY_WAIT = 120.0
 
-import concurrent.futures
 
-def check_proxy(p, url, params):
+class ProviderError(RuntimeError):
+    pass
+
+
+class BinanceError(ProviderError):
+    pass
+
+
+class CoinGeckoError(ProviderError):
+    pass
+
+
+def build_http_session() -> requests.Session:
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=(500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=10, pool_maxsize=10)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+def parse_retry_after(value, default: float = 10.0) -> float:
     try:
-        res = requests.get(url, params=params, proxies={"http": f"http://{p}", "https": f"http://{p}"}, timeout=5, verify=False)
-        if res.status_code in [200, 429, 418]:
-            return res, p
-    except:
-        pass
-    return None, None
+        seconds = float(value)
+    except (TypeError, ValueError):
+        seconds = default
+    return max(0.0, min(seconds, MAX_RETRY_WAIT))
 
-def request_with_proxy(url, params=None):
-    global working_proxy, proxy_list
-    
-    # Try working proxy first
-    if working_proxy:
-        res, _ = check_proxy(working_proxy, url, params)
-        if res:
-            return res
-        working_proxy = None # Failed, reset
-            
-    proxies = get_proxies()
-    if not proxies:
-        raise Exception("No proxies available")
-        
-    logger.info(f"Testing proxies concurrently for {url}...")
-    
-    # Test in batches of 50
-    for i in range(0, min(500, len(proxies)), 50):
-        batch = proxies[i:i+50]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-            futures = [executor.submit(check_proxy, p, url, params) for p in batch]
-            for future in concurrent.futures.as_completed(futures):
-                res, p = future.result()
-                if res:
-                    working_proxy = p
-                    logger.info(f"Found working proxy: {p}")
-                    # Cancel other futures if possible (not strictly supported, but we can just return)
-                    return res
-                    
-    logger.error(f"All proxies failed for {url}")
-    raise Exception(f"Failed to fetch {url} via proxies")
 
-def fetch_binance_symbols():
-    try:
-        res = request_with_proxy(f"{BINANCE_API_URL}/exchangeInfo")
-        res.raise_for_status()
-        data = res.json()
-        symbols = []
-        for s in data.get("symbols", []):
-            if s["quoteAsset"] == "BTC" and s["status"] == "TRADING":
-                symbols.append(s["symbol"])
-        return symbols
-    except Exception as e:
-        logger.error(f"Error fetching symbols: {e}")
-        return []
+class BinanceClient:
+    """Minimal Binance REST client with automatic host fallback."""
 
-def fetch_first_kline(symbol: str):
-    try:
-        res = request_with_proxy(f"{BINANCE_API_URL}/klines", params={
-            "symbol": symbol,
-            "interval": "1d",
-            "limit": 1,
-            "startTime": 0
-        })
-        if res.status_code == 429 or res.status_code == 418:
-            retry_after = int(res.headers.get("Retry-After", 5))
-            time.sleep(retry_after)
-            return fetch_first_kline(symbol)
-        res.raise_for_status()
-        data = res.json()
-        if data:
-            return data[0]
-        return None
-    except Exception as e:
-        logger.error(f"Error fetching first kline for {symbol}: {e}")
-        return None
+    def __init__(self, session: requests.Session = None, sleep=time.sleep, base_urls=None):
+        self.session = session or build_http_session()
+        self.sleep = sleep
+        self.base_urls = tuple(base_urls or BINANCE_BASE_URLS)
 
-def fetch_klines(symbol: str, start_time: int = None, limit: int = 1000):
-    try:
-        params = {
-            "symbol": symbol,
-            "interval": "1d",
-            "limit": limit
-        }
-        if start_time:
-            params["startTime"] = start_time
-            
-        res = request_with_proxy(f"{BINANCE_API_URL}/klines", params=params)
-        if res.status_code == 429 or res.status_code == 418:
-            retry_after = int(res.headers.get("Retry-After", 5))
-            time.sleep(retry_after)
-            return fetch_klines(symbol, start_time, limit)
-            
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        logger.error(f"Error fetching klines for {symbol}: {e}")
-        return []
+    def _get(self, path: str, params: dict = None, attempts: int = 2) -> requests.Response:
+        errors = []
+        for _ in range(attempts):
+            for base_url in self.base_urls:
+                url = f"{base_url}/{path}"
+                try:
+                    response = self.session.get(url, params=params, timeout=(5, 30))
+                except requests.RequestException as exc:
+                    errors.append(f"{base_url}: {exc}")
+                    continue
 
-def sync_coins(db: DBSession):
-    logger.info("Starting sync_coins...")
-    symbols = fetch_binance_symbols()
-    cutoff_date = datetime(2021, 1, 1, tzinfo=timezone.utc)
-    
-    for symbol in symbols:
-        coin = db.query(Coin).filter(Coin.symbol == symbol).first()
-        if not coin:
-            first_kline = fetch_first_kline(symbol)
-            if first_kline:
-                listing_ts = first_kline[0]
-                listing_date = datetime.fromtimestamp(listing_ts / 1000, tz=timezone.utc)
-                is_pre_2021 = listing_date < cutoff_date
-                
-                if is_pre_2021:
-                    coin = Coin(
-                        symbol=symbol,
-                        listing_date=listing_date,
-                        is_pre_2021=True
+                if response.status_code in (418, 429):
+                    retry_after = parse_retry_after(response.headers.get("Retry-After"), default=10.0)
+                    logger.warning(
+                        "Binance rate limited (%s) on %s; waiting %.1fs",
+                        response.status_code,
+                        base_url,
+                        retry_after,
                     )
-                    db.add(coin)
-                    db.commit()
-            time.sleep(0.1) # Rate limit protection
+                    errors.append(f"{base_url}: HTTP {response.status_code}")
+                    self.sleep(retry_after)
+                    continue
 
-def sync_klines(db: DBSession):
-    logger.info("Starting sync_klines...")
-    coins = db.query(Coin).filter(Coin.is_pre_2021 == True).all()
-    
-    for coin in coins:
-        last_kline = db.query(Kline).filter(Kline.symbol == coin.symbol).order_by(Kline.timestamp.desc()).first()
-        start_time = int(last_kline.timestamp.timestamp() * 1000) + 1 if last_kline else 0
-        
-        while True:
-            klines = fetch_klines(coin.symbol, start_time=start_time)
-            if not klines:
-                break
-                
-            for k in klines:
-                ts = datetime.fromtimestamp(k[0] / 1000, tz=timezone.utc)
-                kline = Kline(
-                    symbol=coin.symbol,
-                    timestamp=ts,
-                    open=float(k[1]),
-                    high=float(k[2]),
-                    low=float(k[3]),
-                    close=float(k[4]),
-                    volume=float(k[5])
-                )
-                db.add(kline)
-            
-            db.commit()
-            start_time = klines[-1][0] + 1
-            if len(klines) < 1000:
-                break
-            time.sleep(0.1)
-            
-        # Update metrics
-        all_klines = db.query(Kline).filter(Kline.symbol == coin.symbol).order_by(Kline.timestamp.asc()).all()
-        if all_klines:
-            current_price = all_klines[-1].close
-            all_time_low = min(k.low for k in all_klines)
-            
-            # Event low (lowest since 2021-01-01)
-            event_klines = [k for k in all_klines if k.timestamp >= datetime(2021, 1, 1, tzinfo=timezone.utc)]
-            event_low = min(k.low for k in event_klines) if event_klines else all_time_low
-            
-            coin.current_price_btc = current_price
-            coin.all_time_low = all_time_low
-            coin.event_low = event_low
-            coin.distance_pct_atl = calculate_distance_pct(current_price, all_time_low)
-            coin.distance_pct_event = calculate_distance_pct(current_price, event_low)
-            coin.last_updated = datetime.utcnow()
-            db.commit()
+                if response.status_code >= 400:
+                    errors.append(f"{base_url}: HTTP {response.status_code}")
+                    continue
 
-def fetch_coingecko_list():
-    try:
-        res = request_with_proxy(f"{COINGECKO_API_URL}/coins/list")
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        logger.error(f"Error fetching coingecko list: {e}")
-        return []
+                return response
 
-def sync_coingecko(db: DBSession):
-    logger.info("Starting sync_coingecko...")
-    cg_list = fetch_coingecko_list()
-    if not cg_list:
+        raise BinanceError("; ".join(errors) or "Binance request failed")
+
+    def fetch_symbols(self) -> list:
+        data = self._get("exchangeInfo").json()
+        return [
+            symbol["symbol"]
+            for symbol in data.get("symbols", [])
+            if symbol.get("quoteAsset") == "BTC" and symbol.get("status") == "TRADING"
+        ]
+
+    def fetch_first_kline(self, symbol: str):
+        rows = self._get(
+            "klines",
+            {"symbol": symbol, "interval": "1d", "limit": 1, "startTime": 0},
+        ).json()
+        return rows[0] if rows else None
+
+    def fetch_klines(self, symbol: str, start_time: int = 0, limit: int = KLINES_LIMIT) -> list:
+        params = {"symbol": symbol, "interval": "1d", "limit": limit}
+        if start_time is not None:
+            # startTime=0 explicitly requests history from the listing date;
+            # omitting it makes Binance return the *latest* `limit` candles.
+            params["startTime"] = start_time
+        return self._get("klines", params).json()
+
+
+class CoinGeckoClient:
+    """Minimal CoinGecko client for coin metadata and market caps."""
+
+    def __init__(self, session: requests.Session = None, sleep=time.sleep, base_url: str = None):
+        self.session = session or build_http_session()
+        self.sleep = sleep
+        self.base_url = base_url or COINGECKO_BASE_URL
+
+    def _get(self, path: str, params: dict = None, attempts: int = 3) -> requests.Response:
+        last_error = None
+        for _ in range(attempts):
+            try:
+                response = self.session.get(f"{self.base_url}/{path}", params=params, timeout=(5, 30))
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            if response.status_code == 429:
+                retry_after = parse_retry_after(response.headers.get("Retry-After"), default=30.0)
+                logger.warning("CoinGecko rate limited; waiting %.1fs", retry_after)
+                last_error = CoinGeckoError("HTTP 429")
+                self.sleep(retry_after)
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                last_error = exc
+                continue
+            return response
+
+        raise CoinGeckoError(str(last_error) if last_error else "CoinGecko request failed")
+
+    def fetch_coin_list(self) -> list:
+        return self._get("coins/list").json()
+
+    def fetch_markets(self, ids: list) -> list:
+        return self._get(
+            "coins/markets",
+            {
+                "vs_currency": "usd",
+                "ids": ",".join(ids),
+                "per_page": COINGECKO_MARKETS_BATCH_SIZE,
+                "page": 1,
+            },
+        ).json()
+
+
+def chunked(items: list, size: int):
+    for index in range(0, len(items), size):
+        yield items[index : index + size]
+
+
+def upsert_klines(db: DBSession, symbol: str, rows: list) -> int:
+    """Insert daily candles, updating existing (symbol, timestamp) pairs.
+
+    Idempotent: re-fetching the current in-progress candle only updates it
+    instead of creating duplicate rows.
+    """
+    if not rows:
+        return 0
+
+    values = [
+        {
+            "symbol": symbol,
+            "timestamp": from_millis(row[0]),
+            "open": float(row[1]),
+            "high": float(row[2]),
+            "low": float(row[3]),
+            "close": float(row[4]),
+            "volume": float(row[5]),
+        }
+        for row in rows
+    ]
+
+    for chunk in chunked(values, UPSERT_CHUNK_SIZE):
+        statement = sqlite_insert(Kline).values(chunk)
+        statement = statement.on_conflict_do_update(
+            index_elements=[Kline.symbol, Kline.timestamp],
+            set_={
+                "open": statement.excluded.open,
+                "high": statement.excluded.high,
+                "low": statement.excluded.low,
+                "close": statement.excluded.close,
+                "volume": statement.excluded.volume,
+            },
+        )
+        db.execute(statement)
+
+    db.commit()
+    return len(values)
+
+
+def update_coin_metrics(db: DBSession, coin: Coin) -> None:
+    all_time_low = db.query(func.min(Kline.low)).filter(Kline.symbol == coin.symbol).scalar()
+    event_low = (
+        db.query(func.min(Kline.low))
+        .filter(Kline.symbol == coin.symbol, Kline.timestamp >= EVENT_CUTOFF)
+        .scalar()
+    )
+    current_price = (
+        db.query(Kline.close)
+        .filter(Kline.symbol == coin.symbol)
+        .order_by(Kline.timestamp.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    if current_price is None or all_time_low is None:
         return
-        
-    cg_map = {c["symbol"].lower(): c["id"] for c in cg_list}
-    
-    coins = db.query(Coin).filter(Coin.is_pre_2021 == True).all()
+
+    if event_low is None:
+        event_low = all_time_low
+
+    coin.current_price_btc = current_price
+    coin.all_time_low = all_time_low
+    coin.event_low = event_low
+    coin.distance_pct_atl = calculate_distance_pct(current_price, all_time_low)
+    coin.distance_pct_event = calculate_distance_pct(current_price, event_low)
+    coin.last_updated = utcnow_naive()
+    db.commit()
+
+
+def sync_coins(db: DBSession, client: BinanceClient) -> int:
+    logger.info("Starting sync_coins...")
+    symbols = client.fetch_symbols()
+    created = 0
+
+    for symbol in symbols:
+        if db.get(Coin, symbol) is not None:
+            continue
+
+        try:
+            first_kline = client.fetch_first_kline(symbol)
+        except BinanceError as exc:
+            logger.warning("Skipping %s: %s", symbol, exc)
+            continue
+
+        if not first_kline:
+            continue
+
+        listing_date = from_millis(first_kline[0])
+        coin = Coin(
+            symbol=symbol,
+            listing_date=listing_date,
+            is_pre_2021=listing_date < EVENT_CUTOFF,
+            listed_checked=True,
+        )
+        db.add(coin)
+        db.commit()
+        created += 1
+        time.sleep(REQUEST_DELAY)
+
+    logger.info("sync_coins done: %s new symbols (of %s BTC pairs).", created, len(symbols))
+    return created
+
+
+def sync_klines(db: DBSession, client: BinanceClient) -> None:
+    logger.info("Starting sync_klines...")
+    coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
+
+    for coin in coins:
+        first_timestamp = db.query(func.min(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
+        last_timestamp = db.query(func.max(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
+
+        # Backfill when stored history starts noticeably after the listing date
+        # (e.g. databases created by older versions that only kept the latest
+        # 1000 candles).
+        needs_backfill = first_timestamp is None or (
+            coin.listing_date is not None and first_timestamp > coin.listing_date + BACKFILL_TOLERANCE
+        )
+        start_time = 0 if needs_backfill else to_millis(last_timestamp)
+
+        try:
+            while True:
+                rows = client.fetch_klines(coin.symbol, start_time=start_time)
+                if not rows:
+                    break
+
+                upsert_klines(db, coin.symbol, rows)
+                next_start = rows[-1][0] + 1
+
+                if len(rows) < KLINES_LIMIT:
+                    break
+                if next_start <= start_time:
+                    break
+
+                start_time = next_start
+                time.sleep(REQUEST_DELAY)
+
+            update_coin_metrics(db, coin)
+        except BinanceError as exc:
+            logger.warning("Skipping klines for %s: %s", coin.symbol, exc)
+
+    logger.info("sync_klines done for %s coins.", len(coins))
+
+
+def sync_coingecko(db: DBSession, client: CoinGeckoClient) -> None:
+    logger.info("Starting sync_coingecko...")
+    try:
+        coin_list = client.fetch_coin_list()
+    except CoinGeckoError as exc:
+        logger.warning("Skipping CoinGecko metadata sync: %s", exc)
+        return
+
+    symbol_map = {}
+    for entry in coin_list:
+        symbol_map.setdefault(entry.get("symbol", "").lower(), entry.get("id"))
+
+    coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
     cg_ids = []
     for coin in coins:
-        base_symbol = coin.symbol[:-3].lower() # Remove BTC
-        if base_symbol in cg_map:
-            coin.coingecko_id = cg_map[base_symbol]
+        base_symbol = coin.symbol[:-3].lower() if coin.symbol.endswith("BTC") else coin.symbol.lower()
+        if not coin.coingecko_id and base_symbol in symbol_map:
+            coin.coingecko_id = symbol_map[base_symbol]
+        if coin.coingecko_id and coin.coingecko_id not in cg_ids:
             cg_ids.append(coin.coingecko_id)
     db.commit()
-    
-    # Fetch market data in batches
-    batch_size = 250
-    for i in range(0, len(cg_ids), batch_size):
-        batch = cg_ids[i:i+batch_size]
-        try:
-            res = request_with_proxy(f"{COINGECKO_API_URL}/coins/markets", params={
-                "vs_currency": "usd",
-                "ids": ",".join(batch)
-            })
-            if res.status_code == 429:
-                time.sleep(60)
-                continue
-            res.raise_for_status()
-            markets = res.json()
-            for m in markets:
-                coin = db.query(Coin).filter(Coin.coingecko_id == m["id"]).first()
-                if coin:
-                    coin.name = m.get("name")
-                    coin.logo_url = m.get("image")
-                    coin.market_cap = m.get("market_cap")
-                    coin.volume_24h = m.get("total_volume")
-            db.commit()
-        except Exception as e:
-            logger.error(f"Error fetching coingecko markets: {e}")
-        time.sleep(2) # Rate limit protection
 
-def run_all_syncs(db: DBSession):
-    sync_coins(db)
-    sync_klines(db)
-    sync_coingecko(db)
-    
-    meta = db.query(Meta).filter(Meta.key == "last_updated").first()
-    if not meta:
-        meta = Meta(key="last_updated")
+    for batch in chunked(cg_ids, COINGECKO_MARKETS_BATCH_SIZE):
+        try:
+            markets = client.fetch_markets(batch)
+        except CoinGeckoError as exc:
+            logger.warning("Skipping CoinGecko markets batch: %s", exc)
+            continue
+
+        by_id = {market.get("id"): market for market in markets}
+        for coin in db.query(Coin).filter(Coin.coingecko_id.in_(batch)).all():
+            market = by_id.get(coin.coingecko_id)
+            if not market:
+                continue
+            coin.name = market.get("name") or coin.name
+            coin.logo_url = market.get("image") or coin.logo_url
+            coin.market_cap = market.get("market_cap")
+            coin.volume_24h = market.get("total_volume")
+        db.commit()
+        time.sleep(COINGECKO_BATCH_DELAY)
+
+    logger.info("sync_coingecko done for %s coins.", len(cg_ids))
+
+
+def set_meta(db: DBSession, key: str, value: str) -> None:
+    meta = db.get(Meta, key)
+    if meta is None:
+        meta = Meta(key=key)
         db.add(meta)
-    meta.value = datetime.utcnow().isoformat()
+    meta.value = value
     db.commit()
+
+
+def run_all_syncs(db: DBSession, binance: BinanceClient = None, coingecko: CoinGeckoClient = None) -> None:
+    client = binance or BinanceClient()
+    cg_client = coingecko or CoinGeckoClient()
+
+    sync_coins(db, client)
+    sync_klines(db, client)
+    sync_coingecko(db, cg_client)
+    set_meta(db, "last_updated", utcnow().isoformat())
+
+
+def run_sync_with_lock() -> bool:
+    """Run a full sync guarded by a cross-process lock.
+
+    Returns False when another sync is already running.
+    """
+    db = SessionLocal()
+    try:
+        if not try_acquire_lock(db):
+            logger.info("Another sync is already running; skipping.")
+            return False
+        try:
+            run_all_syncs(db)
+            set_meta(db, "last_sync_status", "success")
+            return True
+        except Exception as exc:
+            set_meta(db, "last_sync_status", f"error: {exc}")
+            raise
+        finally:
+            release_lock(db)
+    finally:
+        db.close()
