@@ -18,6 +18,7 @@ const MIN_CAP_OPTIONS = [
   { value: 10_000_000, label: '≥ $10M market cap' },
   { value: 50_000_000, label: '≥ $50M market cap' },
   { value: 100_000_000, label: '≥ $100M market cap' },
+  { value: 500_000_000, label: '≥ $500M market cap' },
 ];
 
 const MIN_VOLUME_OPTIONS = [
