@@ -14,6 +14,10 @@ class CoinBase(BaseModel):
     listing_date: Optional[datetime] = None
     is_pre_2021: bool
     current_price_btc: Optional[float] = None
+    price_7d_ago_btc: Optional[float] = None
+    price_30d_ago_btc: Optional[float] = None
+    price_verified: Optional[bool] = None
+    price_deviation_pct: Optional[float] = None
     event_low: Optional[float] = None
     all_time_low: Optional[float] = None
     distance_pct_event: Optional[float] = None

@@ -74,6 +74,16 @@ class FakeCoinGecko:
         return [self.markets[cg_id] for cg_id in ids if cg_id in self.markets]
 
 
+class FakeCryptoCompare:
+    def __init__(self, prices=None):
+        self.prices = prices or {}
+        self.batch_calls = []
+
+    def fetch_btc_prices(self, base_assets):
+        self.batch_calls.append(list(base_assets))
+        return {asset: self.prices[asset] for asset in base_assets if asset in self.prices}
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
@@ -233,6 +243,78 @@ def test_upsert_klines_is_idempotent_and_updates_existing_row(db):
     stored = db.query(Kline).one()
     assert db.query(Kline).count() == 1
     assert stored.close == 1.9
+
+
+def test_update_coin_metrics_records_7d_and_30d_prices(db):
+    db.add(Coin(symbol="ETHBTC", is_pre_2021=True, listed_checked=True))
+    db.commit()
+
+    rows = [
+        make_kline_row(to_millis(datetime(2024, 1, 1)), 1, 1, 1, 1.0),
+        make_kline_row(to_millis(datetime(2024, 2, 15)), 2.5, 2.5, 2.5, 2.5),
+        make_kline_row(to_millis(datetime(2024, 3, 10)), 3.5, 3.5, 3.5, 3.5),
+        make_kline_row(to_millis(datetime(2024, 3, 31)), 4, 4, 4, 4.0),
+    ]
+    client = FakeBinance(klines={"ETHBTC": rows})
+
+    fetcher.sync_klines(db, client)
+
+    coin = db.get(Coin, "ETHBTC")
+    assert coin.current_price_btc == 4.0
+    # 7 days before 2024-03-31 -> last candle on/before 2024-03-24
+    assert coin.price_7d_ago_btc == 3.5
+    # 30 days before 2024-03-31 -> last candle on/before 2024-03-01
+    assert coin.price_30d_ago_btc == 2.5
+
+
+def test_verify_prices_flags_deviations(db):
+    db.add(Coin(symbol="ETHBTC", is_pre_2021=True, listed_checked=True, current_price_btc=0.03275))
+    db.add(Coin(symbol="XLMUSDT", is_pre_2021=True, listed_checked=True, current_price_btc=0.000002))
+    db.commit()
+
+    client = FakeCryptoCompare(prices={"ETH": 0.0327, "XLM": 0.000003})
+
+    verified = fetcher.verify_prices(db, client)
+
+    eth = db.get(Coin, "ETHBTC")
+    xlm = db.get(Coin, "XLMUSDT")
+    assert eth.price_verified is True
+    assert eth.price_deviation_pct < 1
+    assert xlm.price_verified is False
+    assert xlm.price_deviation_pct == pytest.approx(50.0)
+    assert verified == 1
+
+
+def test_sync_klines_parallel_uses_session_factory(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'parallel.db'}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+    factory = sessionmaker(bind=engine)
+    Base.metadata.create_all(engine)
+
+    setup = factory()
+    for symbol in ("ETHBTC", "LTCBTC", "XRPBTC"):
+        setup.add(Coin(symbol=symbol, is_pre_2021=True, listed_checked=True))
+    setup.commit()
+    setup.close()
+
+    day = to_millis(datetime(2020, 1, 1))
+    client = FakeBinance(
+        klines={
+            symbol: [make_kline_row(day, 1, 2, 0.5, 1.5)]
+            for symbol in ("ETHBTC", "LTCBTC", "XRPBTC")
+        }
+    )
+
+    db = factory()
+    fetcher.sync_klines(db, client, workers=3, session_factory=factory)
+    db.close()
+
+    check = factory()
+    assert check.query(Kline).count() == 3
+    assert check.get(Coin, "ETHBTC").current_price_btc == 1.5
+    check.close()
 
 
 def test_sync_klines_resumes_from_last_candle_and_computes_metrics(db):
@@ -419,7 +501,7 @@ def test_run_all_syncs_updates_meta(db):
     )
     cg = FakeCoinGecko(coin_list=[])
 
-    fetcher.run_all_syncs(db, binance=client, coingecko=cg)
+    fetcher.run_all_syncs(db, binance=client, coingecko=cg, cryptocompare=FakeCryptoCompare())
 
     meta = db.query(fetcher.Meta).filter(fetcher.Meta.key == "last_updated").first()
     assert meta is not None

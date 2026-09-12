@@ -37,6 +37,8 @@ def test_migrations_upgrade_legacy_database(tmp_path):
     inspector = inspect(engine)
     coin_columns = {column["name"] for column in inspector.get_columns("coins")}
     assert "listed_checked" in coin_columns
+    assert "price_7d_ago_btc" in coin_columns
+    assert "price_verified" in coin_columns
 
     with engine.connect() as connection:
         remaining = connection.execute(text("SELECT COUNT(*) FROM klines")).scalar()

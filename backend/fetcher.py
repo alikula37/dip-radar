@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 import requests
@@ -29,6 +30,14 @@ BINANCE_BASE_URLS = (
 
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 COINGECKO_MARKETS_BATCH_SIZE = 250
+CRYPTOCOMPARE_BASE_URL = "https://min-api.cryptocompare.com/data"
+CRYPTOCOMPARE_BATCH_SIZE = 100
+# Coins are synced concurrently; Binance rate limits are respected by the
+# client, which sleeps on 429/418 responses.
+SYNC_FETCH_WORKERS = int(os.getenv("SYNC_FETCH_WORKERS", "4"))
+# A Binance price is considered verified when it is within this percentage of
+# the independent CryptoCompare price.
+PRICE_VERIFY_TOLERANCE_PCT = float(os.getenv("PRICE_VERIFY_TOLERANCE_PCT", "5"))
 
 EVENT_CUTOFF = datetime(2021, 1, 1)
 BACKFILL_TOLERANCE = timedelta(days=2)
@@ -80,6 +89,10 @@ class BinanceError(ProviderError):
 
 
 class CoinGeckoError(ProviderError):
+    pass
+
+
+class CryptoCompareError(ProviderError):
     pass
 
 
@@ -234,6 +247,51 @@ class CoinGeckoClient:
         ).json()
 
 
+class CryptoCompareClient:
+    """Independent BTC price source used to verify Binance candles."""
+
+    def __init__(self, session: requests.Session = None, sleep=time.sleep, base_url: str = None):
+        self.session = session or build_http_session()
+        self.sleep = sleep
+        self.base_url = base_url or CRYPTOCOMPARE_BASE_URL
+
+    def _get(self, path: str, params: dict = None, attempts: int = 2) -> requests.Response:
+        last_error = None
+        for _ in range(attempts):
+            try:
+                response = self.session.get(f"{self.base_url}/{path}", params=params, timeout=(5, 30))
+            except requests.RequestException as exc:
+                last_error = exc
+                continue
+
+            if response.status_code == 429:
+                retry_after = parse_retry_after(response.headers.get("Retry-After"), default=20.0)
+                logger.warning("CryptoCompare rate limited; waiting %.1fs", retry_after)
+                last_error = CryptoCompareError("HTTP 429")
+                self.sleep(retry_after)
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                last_error = exc
+                continue
+            return response
+
+        raise CryptoCompareError(str(last_error) if last_error else "CryptoCompare request failed")
+
+    def fetch_btc_prices(self, base_assets: list) -> dict:
+        prices = {}
+        for batch in chunked([asset.upper() for asset in base_assets], CRYPTOCOMPARE_BATCH_SIZE):
+            data = self._get("pricemultifull", {"fsyms": ",".join(batch), "tsyms": "BTC"}).json()
+            for asset, quote in (data.get("RAW") or {}).items():
+                price = (quote.get("BTC") or {}).get("PRICE")
+                if isinstance(price, (int, float)) and price > 0:
+                    prices[asset.upper()] = float(price)
+            self.sleep(1)
+        return prices
+
+
 def chunked(items: list, size: int):
     for index in range(0, len(items), size):
         yield items[index : index + size]
@@ -279,6 +337,16 @@ def upsert_klines(db: DBSession, symbol: str, rows: list) -> int:
     return len(values)
 
 
+def _close_before(db: DBSession, symbol: str, cutoff: datetime):
+    return (
+        db.query(Kline.close)
+        .filter(Kline.symbol == symbol, Kline.timestamp <= cutoff)
+        .order_by(Kline.timestamp.desc())
+        .limit(1)
+        .scalar()
+    )
+
+
 def update_coin_metrics(db: DBSession, coin: Coin) -> None:
     all_time_low = db.query(func.min(Kline.low)).filter(Kline.symbol == coin.symbol).scalar()
     event_low = (
@@ -286,21 +354,25 @@ def update_coin_metrics(db: DBSession, coin: Coin) -> None:
         .filter(Kline.symbol == coin.symbol, Kline.timestamp >= EVENT_CUTOFF)
         .scalar()
     )
-    current_price = (
-        db.query(Kline.close)
+    latest = (
+        db.query(Kline.timestamp, Kline.close)
         .filter(Kline.symbol == coin.symbol)
         .order_by(Kline.timestamp.desc())
         .limit(1)
-        .scalar()
+        .first()
     )
 
-    if current_price is None or all_time_low is None:
+    if latest is None or all_time_low is None:
         return
 
+    current_price = latest.close
+    latest_timestamp = latest.timestamp
     if event_low is None:
         event_low = all_time_low
 
     coin.current_price_btc = current_price
+    coin.price_7d_ago_btc = _close_before(db, coin.symbol, latest_timestamp - timedelta(days=7))
+    coin.price_30d_ago_btc = _close_before(db, coin.symbol, latest_timestamp - timedelta(days=30))
     coin.all_time_low = all_time_low
     coin.event_low = event_low
     coin.distance_pct_atl = calculate_distance_pct(current_price, all_time_low)
@@ -400,7 +472,65 @@ def convert_usdt_klines_to_btc(rows: list, btc_rates: dict) -> list:
     return converted
 
 
-def sync_klines(db: DBSession, client: BinanceClient, progress=None) -> None:
+def _sync_coin_klines(db: DBSession, coin: Coin, client: BinanceClient, btc_rates) -> None:
+    quote = coin.quote_asset
+    if quote == "USDT" and not btc_rates:
+        return
+
+    first_timestamp = db.query(func.min(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
+    last_timestamp = db.query(func.max(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
+
+    # Backfill when stored history starts noticeably after the listing date
+    # (e.g. databases created by older versions that only kept the latest
+    # 1000 candles).
+    needs_backfill = first_timestamp is None or (
+        coin.listing_date is not None and first_timestamp > coin.listing_date + BACKFILL_TOLERANCE
+    )
+    start_time = 0 if needs_backfill else to_millis(last_timestamp)
+
+    while True:
+        raw_rows = client.fetch_klines(coin.symbol, start_time=start_time)
+        if not raw_rows:
+            break
+
+        next_start = raw_rows[-1][0] + 1
+        rows = convert_usdt_klines_to_btc(raw_rows, btc_rates) if quote == "USDT" else raw_rows
+        if rows:
+            upsert_klines(db, coin.symbol, rows)
+
+        if len(raw_rows) < KLINES_LIMIT:
+            break
+        if next_start <= start_time:
+            break
+
+        start_time = next_start
+        time.sleep(REQUEST_DELAY)
+
+    update_coin_metrics(db, coin)
+
+
+def _sync_coin_worker(session_factory, symbol: str, client: BinanceClient, btc_rates) -> None:
+    db = session_factory()
+    try:
+        coin = db.get(Coin, symbol)
+        if coin is None:
+            return
+        _sync_coin_klines(db, coin, client, btc_rates)
+    except BinanceError as exc:
+        logger.warning("Skipping klines for %s: %s", symbol, exc)
+    except Exception as exc:  # one bad coin must not kill the pool
+        logger.warning("Unexpected error while syncing %s: %s", symbol, exc)
+    finally:
+        db.close()
+
+
+def sync_klines(
+    db: DBSession,
+    client: BinanceClient,
+    progress=None,
+    workers: int = 1,
+    session_factory=None,
+) -> None:
     logger.info("Starting sync_klines...")
     coins = (
         db.query(Coin)
@@ -409,55 +539,36 @@ def sync_klines(db: DBSession, client: BinanceClient, progress=None) -> None:
     )
     btc_rates = None
 
-    for index, coin in enumerate(coins, start=1):
+    if any(coin.quote_asset == "USDT" for coin in coins):
+        logger.info("Fetching BTCUSDT daily rates for parity conversion...")
         try:
-            quote = coin.quote_asset
-            if quote == "USDT":
-                if btc_rates is None:
-                    logger.info("Fetching BTCUSDT daily rates for parity conversion...")
-                    try:
-                        btc_rates = fetch_btc_daily_rates(client)
-                    except BinanceError as exc:
-                        logger.warning("Cannot load BTC rates, skipping USDT pairs: %s", exc)
-                        btc_rates = {}
-                if not btc_rates:
-                    continue
-
-            first_timestamp = db.query(func.min(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
-            last_timestamp = db.query(func.max(Kline.timestamp)).filter(Kline.symbol == coin.symbol).scalar()
-
-            # Backfill when stored history starts noticeably after the listing date
-            # (e.g. databases created by older versions that only kept the latest
-            # 1000 candles).
-            needs_backfill = first_timestamp is None or (
-                coin.listing_date is not None and first_timestamp > coin.listing_date + BACKFILL_TOLERANCE
-            )
-            start_time = 0 if needs_backfill else to_millis(last_timestamp)
-
-            while True:
-                raw_rows = client.fetch_klines(coin.symbol, start_time=start_time)
-                if not raw_rows:
-                    break
-
-                next_start = raw_rows[-1][0] + 1
-                rows = convert_usdt_klines_to_btc(raw_rows, btc_rates) if quote == "USDT" else raw_rows
-                if rows:
-                    upsert_klines(db, coin.symbol, rows)
-
-                if len(raw_rows) < KLINES_LIMIT:
-                    break
-                if next_start <= start_time:
-                    break
-
-                start_time = next_start
-                time.sleep(REQUEST_DELAY)
-
-            update_coin_metrics(db, coin)
+            btc_rates = fetch_btc_daily_rates(client)
         except BinanceError as exc:
-            logger.warning("Skipping klines for %s: %s", coin.symbol, exc)
-        finally:
-            if progress:
-                progress("klines", index, len(coins))
+            logger.warning("Cannot load BTC rates, skipping USDT pairs: %s", exc)
+            btc_rates = {}
+
+    parallel = workers > 1 and session_factory is not None
+
+    if parallel:
+        logger.info("Syncing %s coins with %s workers...", len(coins), workers)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_sync_coin_worker, session_factory, coin.symbol, client, btc_rates)
+                for coin in coins
+            ]
+            for index, future in enumerate(as_completed(futures), start=1):
+                future.result()
+                if progress:
+                    progress("klines", index, len(coins))
+    else:
+        for index, coin in enumerate(coins, start=1):
+            try:
+                _sync_coin_klines(db, coin, client, btc_rates)
+            except BinanceError as exc:
+                logger.warning("Skipping klines for %s: %s", coin.symbol, exc)
+            finally:
+                if progress:
+                    progress("klines", index, len(coins))
 
     logger.info("sync_klines done for %s coins.", len(coins))
 
@@ -590,9 +701,53 @@ def write_sync_progress(db: DBSession, phase: str, processed: int, total: int) -
     set_meta(db, "sync_progress", json.dumps(payload))
 
 
-def run_all_syncs(db: DBSession, binance: BinanceClient = None, coingecko: CoinGeckoClient = None) -> None:
+def verify_prices(db: DBSession, client: CryptoCompareClient) -> int:
+    """Cross-check Binance BTC prices against an independent source."""
+    logger.info("Starting verify_prices...")
+    coins = db.query(Coin).filter(Coin.current_price_btc.isnot(None)).all()
+    if not coins:
+        return 0
+
+    base_assets = sorted({coin.base_asset.upper() for coin in coins})
+    try:
+        reference_prices = client.fetch_btc_prices(base_assets)
+    except CryptoCompareError as exc:
+        logger.warning("Price verification skipped: %s", exc)
+        return 0
+
+    verified = 0
+    for coin in coins:
+        reference = reference_prices.get(coin.base_asset.upper())
+        if not reference or not coin.current_price_btc:
+            coin.price_verified = None
+            coin.price_deviation_pct = None
+            continue
+        deviation = abs(reference - coin.current_price_btc) / coin.current_price_btc * 100
+        coin.price_deviation_pct = round(deviation, 2)
+        coin.price_verified = deviation <= PRICE_VERIFY_TOLERANCE_PCT
+        if coin.price_verified:
+            verified += 1
+
+    db.commit()
+    set_meta(db, "prices_verified_at", utcnow().isoformat())
+    logger.info(
+        "verify_prices done: %s/%s coins within %.1f%%.",
+        verified,
+        len(coins),
+        PRICE_VERIFY_TOLERANCE_PCT,
+    )
+    return verified
+
+
+def run_all_syncs(
+    db: DBSession,
+    binance: BinanceClient = None,
+    coingecko: CoinGeckoClient = None,
+    cryptocompare: CryptoCompareClient = None,
+) -> None:
     client = binance or BinanceClient()
     cg_client = coingecko or CoinGeckoClient()
+    cc_client = cryptocompare or CryptoCompareClient()
 
     state = {"last_write": 0.0}
 
@@ -608,7 +763,14 @@ def run_all_syncs(db: DBSession, binance: BinanceClient = None, coingecko: CoinG
     # Metadata (market caps) must run before klines so the market-cap
     # threshold can gate post-2021 coins on the very first sync.
     sync_coingecko(db, cg_client, progress)
-    sync_klines(db, client, progress)
+    sync_klines(
+        db,
+        client,
+        progress,
+        workers=SYNC_FETCH_WORKERS,
+        session_factory=SessionLocal if SYNC_FETCH_WORKERS > 1 else None,
+    )
+    verify_prices(db, cc_client)
     write_sync_progress(db, "done", 1, 1)
     set_meta(db, "last_updated", utcnow().isoformat())
 
