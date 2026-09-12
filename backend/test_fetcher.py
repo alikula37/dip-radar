@@ -61,10 +61,12 @@ class FakeBinance:
 
 
 class FakeCoinGecko:
-    def __init__(self, coin_list=None, markets=None):
+    def __init__(self, coin_list=None, markets=None, prices=None):
         self.coin_list = coin_list or []
         self.markets = markets or {}
+        self.prices = prices or {}
         self.market_batches = []
+        self.price_batches = []
 
     def fetch_coin_list(self):
         return self.coin_list
@@ -73,15 +75,9 @@ class FakeCoinGecko:
         self.market_batches.append(list(ids))
         return [self.markets[cg_id] for cg_id in ids if cg_id in self.markets]
 
-
-class FakeCryptoCompare:
-    def __init__(self, prices=None):
-        self.prices = prices or {}
-        self.batch_calls = []
-
-    def fetch_btc_prices(self, base_assets):
-        self.batch_calls.append(list(base_assets))
-        return {asset: self.prices[asset] for asset in base_assets if asset in self.prices}
+    def fetch_btc_prices(self, ids):
+        self.price_batches.append(list(ids))
+        return {coin_id: self.prices[coin_id] for coin_id in ids if coin_id in self.prices}
 
 
 @pytest.fixture
@@ -268,11 +264,27 @@ def test_update_coin_metrics_records_7d_and_30d_prices(db):
 
 
 def test_verify_prices_flags_deviations(db):
-    db.add(Coin(symbol="ETHBTC", is_pre_2021=True, listed_checked=True, current_price_btc=0.03275))
-    db.add(Coin(symbol="XLMUSDT", is_pre_2021=True, listed_checked=True, current_price_btc=0.000002))
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            is_pre_2021=True,
+            listed_checked=True,
+            coingecko_id="ethereum",
+            current_price_btc=0.03275,
+        )
+    )
+    db.add(
+        Coin(
+            symbol="XLMUSDT",
+            is_pre_2021=True,
+            listed_checked=True,
+            coingecko_id="stellar",
+            current_price_btc=0.000002,
+        )
+    )
     db.commit()
 
-    client = FakeCryptoCompare(prices={"ETH": 0.0327, "XLM": 0.000003})
+    client = FakeCoinGecko(prices={"ethereum": 0.0327, "stellar": 0.000003})
 
     verified = fetcher.verify_prices(db, client)
 
@@ -283,6 +295,7 @@ def test_verify_prices_flags_deviations(db):
     assert xlm.price_verified is False
     assert xlm.price_deviation_pct == pytest.approx(50.0)
     assert verified == 1
+    assert client.price_batches == [["ethereum", "stellar"]]
 
 
 def test_sync_klines_parallel_uses_session_factory(tmp_path):
@@ -501,7 +514,7 @@ def test_run_all_syncs_updates_meta(db):
     )
     cg = FakeCoinGecko(coin_list=[])
 
-    fetcher.run_all_syncs(db, binance=client, coingecko=cg, cryptocompare=FakeCryptoCompare())
+    fetcher.run_all_syncs(db, binance=client, coingecko=cg)
 
     meta = db.query(fetcher.Meta).filter(fetcher.Meta.key == "last_updated").first()
     assert meta is not None
