@@ -45,3 +45,4 @@ class MetaResponse(BaseModel):
     last_updated: Optional[str] = None
     tracked_coins: int
     sync_in_progress: bool = False
+    sync_progress: Optional[dict] = None

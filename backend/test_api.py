@@ -85,6 +85,12 @@ def test_meta_reports_tracked_coins_and_sync_state():
     seed_coin()
     db = SessionLocal()
     db.add(Meta(key="last_updated", value="2026-01-01T00:00:00+00:00"))
+    db.add(
+        Meta(
+            key="sync_progress",
+            value='{"phase": "klines", "processed": 10, "total": 100}',
+        )
+    )
     db.commit()
     db.close()
 
@@ -95,6 +101,8 @@ def test_meta_reports_tracked_coins_and_sync_state():
     assert payload["tracked_coins"] == 1
     assert payload["sync_in_progress"] is False
     assert payload["last_updated"] == "2026-01-01T00:00:00+00:00"
+    assert payload["sync_progress"]["phase"] == "klines"
+    assert payload["sync_progress"]["processed"] == 10
 
 
 def test_refresh_schedules_background_sync(monkeypatch):
