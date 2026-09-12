@@ -11,6 +11,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates. Pre-2021 listings are always included; newer coins (like ICP) are tracked once their market cap passes `MIN_TRACKED_MARKET_CAP` (default $10M).
 - **Dual reference points**: toggle between "Since 2021" (event low) and "All Time Low" (ATL).
 - **Automated data sync**: a dedicated APScheduler worker runs daily; a cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint. Live progress (phase + percentage) is reported to the UI.
+- **Parallel and verified fetching**: candles are synced with a worker pool (`SYNC_FETCH_WORKERS`, default 4) to cut first-run time, and Binance prices are cross-checked against an independent CryptoCompare quote (`PRICE_VERIFY_TOLERANCE_PCT`, default 5%).
 - **Resilient data fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
 - **Duplicate-free storage**: daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
 - **Design system**: Tailwind CSS 4 with shared tokens and UI components (buttons, badges, stat cards, segmented controls); table view, search, sorting, detail modal with a 365-day price chart.
@@ -68,6 +69,8 @@ CoinGecko metadata / market caps
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins for direct API access. |
 | `BACKEND_URL` | `http://localhost:8000` | Backend URL used by the frontend `/api` proxy. Docker Compose sets `http://backend:8000`. |
 | `SYNC_REQUEST_DELAY` | `0.15` | Seconds between Binance requests during a sync. |
+| `SYNC_FETCH_WORKERS` | `4` | Concurrent workers used while fetching candle history. |
+| `PRICE_VERIFY_TOLERANCE_PCT` | `5` | Max deviation from CryptoCompare before a price is flagged unverified. |
 | `MIN_TRACKED_MARKET_CAP` | `10000000` | Post-2021 coins below this market cap are not price-tracked (pre-2021 coins are always tracked). |
 | `COINGECKO_BATCH_DELAY` | `2` | Seconds between CoinGecko market batches. |
 | `LOG_LEVEL` | `INFO` | Python log level for the backend and worker. |

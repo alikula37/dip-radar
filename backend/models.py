@@ -35,6 +35,10 @@ class Coin(Base):
     listed_checked = Column(Boolean, default=False, nullable=False)
 
     current_price_btc = Column(Float, nullable=True)
+    price_7d_ago_btc = Column(Float, nullable=True)
+    price_30d_ago_btc = Column(Float, nullable=True)
+    price_verified = Column(Boolean, nullable=True)
+    price_deviation_pct = Column(Float, nullable=True)
     event_low = Column(Float, nullable=True)  # Lowest since 2021-01-01 or listing
     all_time_low = Column(Float, nullable=True)  # Lowest since listing
 
