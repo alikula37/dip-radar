@@ -535,7 +535,7 @@ def sync_klines(
     logger.info("sync_klines done for %s coins.", len(coins))
 
 
-MAX_CANDIDATES_PER_SYMBOL = 10
+MAX_CANDIDATES_PER_SYMBOL = 25
 
 
 def _market_cap(market: dict) -> float:
@@ -550,8 +550,9 @@ def _resolve_ambiguous(
 ) -> None:
     """Pick the most likely id for symbols mapping to multiple CoinGecko ids.
 
-    Candidates are ranked by current market cap; when market data is
-    unavailable, the first candidate wins.
+    Candles come from Binance, so the Binance BTC price is the strongest
+    signal: prefer the candidate whose CoinGecko price is closest. Market cap
+    ranking is the fallback when prices are unavailable.
     """
     candidate_ids = []
     for _, candidates in ambiguous:
@@ -570,10 +571,39 @@ def _resolve_ambiguous(
             caps[market.get("id")] = _market_cap(market)
         time.sleep(COINGECKO_BATCH_DELAY)
 
+    prices = {}
+    try:
+        prices = client.fetch_btc_prices(candidate_ids)
+    except CoinGeckoError as exc:
+        logger.warning("Could not fetch candidate prices: %s", exc)
+
     for coin, candidates in ambiguous:
+        reference = coin.current_price_btc
+        if reference:
+            priced = [candidate for candidate in candidates if prices.get(candidate)]
+            if priced:
+                best = min(
+                    priced,
+                    key=lambda candidate: abs(prices[candidate] - reference) / reference,
+                )
+                if abs(prices[best] - reference) / reference * 100 <= PRICE_VERIFY_TOLERANCE_PCT * 2:
+                    coin.coingecko_id = best
+                    logger.info(
+                        "Resolved %s to CoinGecko id '%s' by price (of %s)",
+                        coin.symbol,
+                        best,
+                        ", ".join(candidates),
+                    )
+                    continue
+
         ranked = sorted(candidates, key=lambda candidate: caps.get(candidate, -1.0), reverse=True)
         coin.coingecko_id = ranked[0]
-        logger.info("Resolved %s to CoinGecko id '%s' (of %s)", coin.symbol, ranked[0], ", ".join(candidates))
+        logger.info(
+            "Resolved %s to CoinGecko id '%s' by market cap (of %s)",
+            coin.symbol,
+            ranked[0],
+            ", ".join(candidates),
+        )
     db.commit()
 
 
@@ -598,14 +628,18 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
     coins = db.query(Coin).all()
     ambiguous = []
     for coin in coins:
-        if coin.coingecko_id:
-            continue
         candidates = symbol_map.get(coin.base_asset.lower(), [])
         if not candidates:
             continue
-        if coin.base_asset.lower() in candidates:
-            coin.coingecko_id = coin.base_asset.lower()
-        elif len(candidates) == 1:
+
+        # Re-resolve mappings that failed price verification (for example a
+        # symbol collision such as DOT -> 'dot' picked by an earlier run).
+        if coin.coingecko_id and coin.price_verified is not False:
+            continue
+        if coin.price_verified is False:
+            coin.coingecko_id = None
+
+        if len(candidates) == 1:
             coin.coingecko_id = candidates[0]
         else:
             ambiguous.append((coin, candidates))
