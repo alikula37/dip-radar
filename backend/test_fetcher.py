@@ -378,3 +378,7 @@ def test_run_all_syncs_updates_meta(db):
     meta = db.query(fetcher.Meta).filter(fetcher.Meta.key == "last_updated").first()
     assert meta is not None
     assert db.query(func.count(Coin.symbol)).scalar() == 1
+
+    progress = db.query(fetcher.Meta).filter(fetcher.Meta.key == "sync_progress").first()
+    assert progress is not None
+    assert '"phase": "done"' in progress.value

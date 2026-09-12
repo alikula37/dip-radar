@@ -73,17 +73,17 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
   }, [current]);
 
   if (current?.failed) {
-    return <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>Price history unavailable.</p>;
+    return <p className="text-xs text-content-muted">Price history unavailable.</p>;
   }
 
   if (!paths) {
-    return <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>Loading price history…</p>;
+    return <p className="text-xs text-content-muted">Loading price history…</p>;
   }
 
   return (
     <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" height={HEIGHT} role="img" aria-label={`${symbol} price history`}>
-      <path d={paths.area} fill="var(--secondary)" opacity={0.18} />
-      <path d={paths.line} fill="none" stroke="var(--secondary)" strokeWidth={2} />
+      <path d={paths.area} fill="var(--color-accent)" opacity={0.18} />
+      <path d={paths.line} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
     </svg>
   );
 }
