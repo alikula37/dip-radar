@@ -291,7 +291,7 @@ export default function Home() {
       </header>
 
       <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Tracked coins" value={stats.tracked} hint="Listed before 2021" />
+        <StatCard label="Tracked coins" value={stats.tracked} hint="Pre-2021 or ≥ $10M cap" />
         <StatCard label="≤ 25% from dip" value={stats.near25} accent="positive" hint={useAtl ? 'All-time low' : '2021 low'} />
         <StatCard label="≤ 50% from dip" value={stats.near50} hint={useAtl ? 'All-time low' : '2021 low'} />
         <StatCard label="Median distance" value={`${stats.median.toFixed(0)}%`} hint="Across tracked coins" />

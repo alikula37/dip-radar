@@ -105,6 +105,12 @@ export default function CoinModal({ coin, useAtl, colorFor, onClose }: CoinModal
             <span className="text-content-muted">24h volume</span>
             <span className="font-mono text-content-muted">{formatUsd(coin.volume_24h)}</span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-content-muted">Listed</span>
+            <span className="font-mono text-content-muted">
+              {coin.listing_date ? new Date(coin.listing_date).toLocaleDateString() : 'N/A'}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4">
