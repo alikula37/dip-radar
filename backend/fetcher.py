@@ -580,21 +580,24 @@ def _resolve_ambiguous(
     for coin, candidates in ambiguous:
         reference = coin.current_price_btc
         if reference:
-            priced = [candidate for candidate in candidates if prices.get(candidate)]
-            if priced:
-                best = min(
-                    priced,
-                    key=lambda candidate: abs(prices[candidate] - reference) / reference,
+            matching = [
+                candidate
+                for candidate in candidates
+                if prices.get(candidate)
+                and abs(prices[candidate] - reference) / reference * 100 <= PRICE_VERIFY_TOLERANCE_PCT * 2
+            ]
+            if matching:
+                # When several ids match on price (e.g. bridged/wrapped
+                # variants), prefer the largest market cap.
+                best = max(matching, key=lambda candidate: caps.get(candidate, -1.0))
+                coin.coingecko_id = best
+                logger.info(
+                    "Resolved %s to CoinGecko id '%s' by price (of %s)",
+                    coin.symbol,
+                    best,
+                    ", ".join(candidates),
                 )
-                if abs(prices[best] - reference) / reference * 100 <= PRICE_VERIFY_TOLERANCE_PCT * 2:
-                    coin.coingecko_id = best
-                    logger.info(
-                        "Resolved %s to CoinGecko id '%s' by price (of %s)",
-                        coin.symbol,
-                        best,
-                        ", ".join(candidates),
-                    )
-                    continue
+                continue
 
         ranked = sorted(candidates, key=lambda candidate: caps.get(candidate, -1.0), reverse=True)
         coin.coingecko_id = ranked[0]

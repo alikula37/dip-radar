@@ -487,18 +487,23 @@ def test_sync_coingecko_resolves_by_price_before_market_cap(db):
     db.commit()
 
     cg = FakeCoinGecko(
-        coin_list=[{"symbol": "dot", "id": "dot"}, {"symbol": "dot", "id": "polkadot"}],
+        coin_list=[
+            {"symbol": "dot", "id": "dot"},
+            {"symbol": "dot", "id": "binance-peg-polkadot"},
+            {"symbol": "dot", "id": "polkadot"},
+        ],
         markets={
             "dot": {"id": "dot", "name": "Dotcoin", "market_cap": 10_000_000_000},
+            "binance-peg-polkadot": {"id": "binance-peg-polkadot", "name": "Binance-Peg Polkadot", "market_cap": 100_000_000},
             "polkadot": {"id": "polkadot", "name": "Polkadot", "market_cap": 5_000_000_000},
         },
-        prices={"dot": 0.0001, "polkadot": 1.32e-05},
+        prices={"dot": 0.0001, "binance-peg-polkadot": 1.32e-05, "polkadot": 1.32e-05},
     )
 
     fetcher.sync_coingecko(db, cg)
 
     coin = db.get(Coin, "DOTBTC")
-    # Market cap ranking alone would have picked 'dot'.
+    # Both polkadot and the pegged variant match on price; the larger cap wins.
     assert coin.coingecko_id == "polkadot"
     assert coin.name == "Polkadot"
 
