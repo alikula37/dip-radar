@@ -1,6 +1,8 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
 
 class CoinBase(BaseModel):
     symbol: str
@@ -18,12 +20,13 @@ class CoinBase(BaseModel):
     volume_24h: Optional[float] = None
     last_updated: Optional[datetime] = None
 
+
 class CoinResponse(CoinBase):
     bubble_size_event: Optional[float] = None
     bubble_size_atl: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class KlineResponse(BaseModel):
     timestamp: datetime
@@ -33,9 +36,10 @@ class KlineResponse(BaseModel):
     close: float
     volume: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class MetaResponse(BaseModel):
     last_updated: Optional[str] = None
     tracked_coins: int
+    sync_in_progress: bool = False
