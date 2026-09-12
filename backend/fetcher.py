@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import requests
 from requests.adapters import HTTPAdapter
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session as DBSession
 from urllib3.util.retry import Retry
@@ -32,6 +32,9 @@ COINGECKO_MARKETS_BATCH_SIZE = 250
 
 EVENT_CUTOFF = datetime(2021, 1, 1)
 BACKFILL_TOLERANCE = timedelta(days=2)
+# Coins listed after 2021 are tracked when their market cap is at least this
+# value; pre-2021 coins are always tracked.
+MIN_TRACKED_MARKET_CAP = float(os.getenv("MIN_TRACKED_MARKET_CAP", "10000000"))
 TRACKED_QUOTES = ("BTC", "USDT")
 STABLE_BASES = {
     "USDC",
@@ -399,7 +402,11 @@ def convert_usdt_klines_to_btc(rows: list, btc_rates: dict) -> list:
 
 def sync_klines(db: DBSession, client: BinanceClient, progress=None) -> None:
     logger.info("Starting sync_klines...")
-    coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
+    coins = (
+        db.query(Coin)
+        .filter(or_(Coin.is_pre_2021.is_(True), Coin.market_cap >= MIN_TRACKED_MARKET_CAP))
+        .all()
+    )
     btc_rates = None
 
     for index, coin in enumerate(coins, start=1):
@@ -515,7 +522,7 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
         if coin_id not in candidates and len(candidates) < MAX_CANDIDATES_PER_SYMBOL:
             candidates.append(coin_id)
 
-    coins = db.query(Coin).filter(Coin.is_pre_2021.is_(True)).all()
+    coins = db.query(Coin).all()
     ambiguous = []
     for coin in coins:
         if coin.coingecko_id:
@@ -598,8 +605,10 @@ def run_all_syncs(db: DBSession, binance: BinanceClient = None, coingecko: CoinG
         write_sync_progress(db, phase, processed, total)
 
     sync_coins(db, client, progress)
-    sync_klines(db, client, progress)
+    # Metadata (market caps) must run before klines so the market-cap
+    # threshold can gate post-2021 coins on the very first sync.
     sync_coingecko(db, cg_client, progress)
+    sync_klines(db, client, progress)
     write_sync_progress(db, "done", 1, 1)
     set_meta(db, "last_updated", utcnow().isoformat())
 

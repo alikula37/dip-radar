@@ -24,7 +24,6 @@ interface ScatterPoint {
   coin: Coin;
   distance: number;
   marketCap: number;
-  volume: number;
 }
 
 interface LabelPlacement {
@@ -83,7 +82,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       const marketCap = coin.market_cap ?? 0;
       const distance = (useAtl ? coin.distance_pct_atl : coin.distance_pct_event) ?? null;
       if (marketCap <= 0 || distance === null || !Number.isFinite(distance)) continue;
-      result.push({ coin, marketCap, distance, volume: coin.volume_24h ?? 0 });
+      result.push({ coin, marketCap, distance });
     }
     return result;
   }, [coins, useAtl]);
@@ -108,7 +107,6 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
 
     const caps = points.map((point) => point.marketCap);
     const distances = points.map((point) => point.distance);
-    const volumes = points.map((point) => point.volume);
     const maxDistance = Math.max(d3.max(distances) ?? 1, 1);
 
     const x = d3
@@ -123,10 +121,14 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       .range([height - MARGIN.bottom, MARGIN.top])
       .clamp(true);
 
+    // Size emphasizes proximity to the dip: closer = bigger.
     const radius = d3
       .scaleSqrt()
-      .domain([0, d3.max(volumes) || 1])
-      .range([3.5, 17]);
+      .domain([0, 1])
+      .range([4, 17]);
+
+    const closeness = (distance: number) =>
+      Math.max(0, 1 - Math.min(distance, robustMax) / robustMax);
 
     const yTicks = [0, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000].filter(
       (value) => value <= maxDistance * 1.05,
@@ -177,7 +179,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       .selectAll<SVGCircleElement, ScatterPoint>('circle')
       .data(points)
       .join('circle')
-      .attr('r', (point) => radius(point.volume))
+      .attr('r', (point) => radius(closeness(point.distance)))
       .attr('fill', (point) => colorScale(point.distance))
       .attr('fill-opacity', 0.85)
       .attr('stroke', 'rgba(18,16,11,0.9)')
@@ -345,7 +347,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       svg.on('.zoom', null);
       svg.selectAll('*').remove();
     };
-  }, [points, dimensions, colorScale]);
+  }, [points, dimensions, colorScale, robustMax]);
 
   const activeHover = hover && points.some((point) => point.coin.symbol === hover.point.coin.symbol) ? hover : null;
   const tooltipLeft = activeHover ? Math.min(activeHover.left + 16, Math.max(dimensions.width - 240, 8)) : 0;
@@ -404,12 +406,12 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
           <span>Far</span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-content-muted">
-          <svg width="52" height="16" aria-hidden="true">
-            <circle cx="8" cy="8" r="3" fill="var(--color-content-muted)" opacity="0.7" />
-            <circle cx="24" cy="8" r="6" fill="var(--color-content-muted)" opacity="0.7" />
-            <circle cx="44" cy="8" r="9" fill="var(--color-content-muted)" opacity="0.7" />
+          <svg width="52" height="20" aria-hidden="true">
+            <circle cx="7" cy="10" r="3" fill="var(--color-content-muted)" opacity="0.7" />
+            <circle cx="22" cy="10" r="6" fill="var(--color-content-muted)" opacity="0.7" />
+            <circle cx="41" cy="10" r="9.5" fill="var(--color-content-muted)" opacity="0.7" />
           </svg>
-          <span>24h volume</span>
+          <span>Closer to dip = bigger</span>
         </div>
         <div className="text-[10px] text-content-muted/80">Scroll to zoom · click a bubble for details</div>
       </div>

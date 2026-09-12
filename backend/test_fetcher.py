@@ -312,6 +312,52 @@ def test_sync_coingecko_maps_ids_and_updates_metadata(db):
     assert cg.market_batches == [["ethereum"]]
 
 
+def test_sync_klines_tracks_post_2021_coins_only_above_market_cap_threshold(db, monkeypatch):
+    monkeypatch.setattr(fetcher, "MIN_TRACKED_MARKET_CAP", 10_000_000)
+    db.add(Coin(symbol="SUIBTC", is_pre_2021=False, listed_checked=True, market_cap=5_000_000_000))
+    db.add(Coin(symbol="JUNKBTC", is_pre_2021=False, listed_checked=True, market_cap=1_000_000))
+    db.commit()
+
+    day = to_millis(datetime(2023, 5, 3))
+    client = FakeBinance(
+        klines={
+            "SUIBTC": [make_kline_row(day, 1e-5, 1.1e-5, 0.9e-5, 1e-5)],
+            "JUNKBTC": [make_kline_row(day, 1, 1, 1, 1)],
+        }
+    )
+
+    fetcher.sync_klines(db, client)
+
+    assert db.query(Kline).filter(Kline.symbol == "SUIBTC").count() == 1
+    assert db.query(Kline).filter(Kline.symbol == "JUNKBTC").count() == 0
+    assert db.get(Coin, "SUIBTC").current_price_btc is not None
+    assert db.get(Coin, "JUNKBTC").current_price_btc is None
+
+
+def test_sync_coingecko_maps_post_2021_coins(db):
+    db.add(Coin(symbol="ICPUSDT", is_pre_2021=False, listed_checked=True))
+    db.commit()
+
+    cg = FakeCoinGecko(
+        coin_list=[{"symbol": "icp", "id": "internet-computer"}],
+        markets={
+            "internet-computer": {
+                "id": "internet-computer",
+                "name": "Internet Computer",
+                "image": "https://example.com/icp.png",
+                "market_cap": 4_000_000_000,
+                "total_volume": 100_000_000,
+            }
+        },
+    )
+
+    fetcher.sync_coingecko(db, cg)
+
+    coin = db.get(Coin, "ICPUSDT")
+    assert coin.coingecko_id == "internet-computer"
+    assert coin.market_cap == 4_000_000_000
+
+
 def test_sync_coingecko_disambiguates_by_market_cap(db):
     db.add(Coin(symbol="SANDBTC", is_pre_2021=True, listed_checked=True))
     db.commit()

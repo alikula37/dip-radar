@@ -43,6 +43,18 @@ describe('ScatterChart', () => {
     expect(onCoinClick).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'ETHBTC' }));
   });
 
+  it('renders coins closer to the dip with a larger radius', async () => {
+    const { container } = render(<ScatterChart coins={coins} useAtl={false} onCoinClick={vi.fn()} />);
+
+    const chart = container.querySelector('svg[aria-label="Altcoin dip scatter chart"]') as SVGSVGElement;
+    await waitFor(() => {
+      expect(chart.querySelectorAll('circle')).toHaveLength(2);
+    });
+
+    const [eth, xlm] = Array.from(chart.querySelectorAll('circle'));
+    expect(Number(xlm.getAttribute('r'))).toBeGreaterThan(Number(eth.getAttribute('r')));
+  });
+
   it('renders labeled axes and the watch zone', () => {
     render(<ScatterChart coins={coins} useAtl={false} onCoinClick={vi.fn()} />);
 

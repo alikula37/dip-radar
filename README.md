@@ -5,10 +5,10 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 ## Features ✨
 
 - **Insight-first scatter chart**: X axis is market cap (log scale), Y axis is the distance from the historical dip. Position now carries meaning: the shaded "watch zone" highlights established coins (≥ $50M cap) that trade within 50% of their dip. Zoom/pan with the mouse, hover for a tooltip, click for details.
-- **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size represents 24h volume.
+- **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size also encodes closeness — the closer a coin is to its dip, the bigger its bubble. Volume and exact values are in the tooltip.
 - **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with quick filters for minimum market cap and volume.
 - **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
-- **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates.
+- **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates. Pre-2021 listings are always included; newer coins (like ICP) are tracked once their market cap passes `MIN_TRACKED_MARKET_CAP` (default $10M).
 - **Dual reference points**: toggle between "Since 2021" (event low) and "All Time Low" (ATL).
 - **Automated data sync**: a dedicated APScheduler worker runs daily; a cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint. Live progress (phase + percentage) is reported to the UI.
 - **Resilient data fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
@@ -68,6 +68,7 @@ CoinGecko metadata / market caps
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins for direct API access. |
 | `BACKEND_URL` | `http://localhost:8000` | Backend URL used by the frontend `/api` proxy. Docker Compose sets `http://backend:8000`. |
 | `SYNC_REQUEST_DELAY` | `0.15` | Seconds between Binance requests during a sync. |
+| `MIN_TRACKED_MARKET_CAP` | `10000000` | Post-2021 coins below this market cap are not price-tracked (pre-2021 coins are always tracked). |
 | `COINGECKO_BATCH_DELAY` | `2` | Seconds between CoinGecko market batches. |
 | `LOG_LEVEL` | `INFO` | Python log level for the backend and worker. |
 | `API_KEY` | unset | Optional. When set, `/api/*` requires a matching `X-API-Key` header. The frontend proxy adds it automatically. |

@@ -4,6 +4,7 @@ export interface Coin {
   quote_asset?: string | null;
   name: string | null;
   logo_url: string | null;
+  listing_date?: string | null;
   current_price_btc: number | null;
   event_low: number | null;
   all_time_low: number | null;
