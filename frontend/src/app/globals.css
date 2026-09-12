@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
 :root {
   --background: #171309;
   --on-background: #ece1d1;
@@ -12,9 +10,8 @@
   --outline: #9b8f79;
   --surface-variant: #3a3429;
   --on-surface-variant: #d3c5ac;
-  
-  --font-inter: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --error: #ffb4ab;
+  --on-error: #690005;
 }
 
 * {
@@ -26,7 +23,7 @@
 body {
   background-color: var(--background);
   color: var(--on-background);
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -41,11 +38,32 @@ button {
   border: none;
   cursor: pointer;
   font-family: inherit;
+  color: inherit;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translate(-50%, -100%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Typography */
 .headline-md {
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 30px;
   font-weight: 600;
   line-height: 36px;
@@ -53,28 +71,28 @@ button {
 }
 
 .title-lg {
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 20px;
   font-weight: 600;
   line-height: 28px;
 }
 
 .body-lg {
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 16px;
   font-weight: 400;
   line-height: 24px;
 }
 
 .body-sm {
-  font-family: var(--font-inter);
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
 }
 
 .label-mono {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -116,4 +134,8 @@ button {
   border-radius: 12px;
   padding: 1.5rem;
   border: 1px solid var(--outline);
+}
+
+.table-row:hover {
+  background-color: rgba(255, 216, 127, 0.06);
 }

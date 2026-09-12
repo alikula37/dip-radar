@@ -1,139 +1,212 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-interface Coin {
-    symbol: string;
-    name: string;
-    logo_url: string;
-    current_price_btc: number;
-    distance_pct_event: number;
-    distance_pct_atl: number;
-    bubble_size_event: number;
-    bubble_size_atl: number;
-    market_cap: number;
-    volume_24h: number;
-}
+import { makeDistanceColorScale } from '@/lib/colors';
+import type { Coin } from '@/types';
 
 interface BubbleChartProps {
-    data: Coin[];
-    useAtl: boolean;
-    onCoinClick: (coin: Coin) => void;
+  data: Coin[];
+  useAtl: boolean;
+  onCoinClick: (coin: Coin) => void;
+}
+
+interface BubbleNode extends Coin, d3.SimulationNodeDatum {
+  radius: number;
+  distance: number;
 }
 
 export default function BubbleChart({ data, useAtl, onCoinClick }: BubbleChartProps) {
-    const svgRef = useRef<SVGSVGElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const onCoinClickRef = useRef(onCoinClick);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                setDimensions({
-                    width: entry.contentRect.width,
-                    height: entry.contentRect.height || 600,
-                });
-            }
+  // Keep the click handler fresh without restarting the simulation.
+  useEffect(() => {
+    onCoinClickRef.current = onCoinClick;
+  }, [onCoinClick]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setDimensions((current) => {
+          const width = entry.contentRect.width;
+          const height = entry.contentRect.height || 600;
+          if (current.width === width && current.height === height) return current;
+          return { width, height };
         });
-        observer.observe(containerRef.current);
-        return () => observer.disconnect();
-    }, []);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
-    useEffect(() => {
-        if (!svgRef.current || data.length === 0) return;
+  const maxDistance = useMemo(() => {
+    const distances = data
+      .map((coin) => (useAtl ? coin.distance_pct_atl : coin.distance_pct_event))
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    return distances.length ? Math.max(...distances) : 100;
+  }, [data, useAtl]);
 
-        const { width, height } = dimensions;
-        const svg = d3.select(svgRef.current);
-        svg.selectAll("*").remove();
+  const colorScale = useMemo(() => makeDistanceColorScale(maxDistance), [maxDistance]);
 
-        // Prepare nodes
-        const nodes = data.map(d => ({
-            ...d,
-            radius: useAtl ? d.bubble_size_atl : d.bubble_size_event,
-            x: Math.random() * width,
-            y: Math.random() * height,
-        }));
+  const legendGradient = useMemo(
+    () =>
+      `linear-gradient(90deg, ${colorScale(maxDistance)}, ${colorScale(maxDistance * 0.5)}, ${colorScale(0)})`,
+    [colorScale, maxDistance],
+  );
 
-        // Setup simulation
-        const simulation = d3.forceSimulation(nodes as d3.SimulationNodeDatum[])
-            .force("charge", d3.forceManyBody().strength(5))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collision", d3.forceCollide().radius((d: any) => d.radius + 2))
-            .force("x", d3.forceX(width / 2).strength(0.05))
-            .force("y", d3.forceY(height / 2).strength(0.05));
+  useEffect(() => {
+    if (!svgRef.current || data.length === 0) return;
 
-        // Create groups for bubbles
-        const nodeGroup = svg.append("g")
-            .selectAll("g")
-            .data(nodes)
-            .enter()
-            .append("g")
-            .attr("class", "bubble-node")
-            .style("cursor", "pointer")
-            .on("click", (event, d) => onCoinClick(d as Coin));
+    const { width, height } = dimensions;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
 
-        // Add circles
-        nodeGroup.append("circle")
-            .attr("r", (d: any) => d.radius)
-            .style("fill", "var(--surface-variant)")
-            .style("stroke", "var(--primary)")
-            .style("stroke-width", 2)
-            .style("transition", "all 0.2s ease");
+    const defs = svg.append('defs');
 
-        // Add logos or text
-        nodeGroup.each(function (d: any) {
-            const g = d3.select(this);
-            if (d.logo_url && d.radius > 15) {
-                const size = d.radius * 1.2;
-                g.append("image")
-                    .attr("href", d.logo_url)
-                    .attr("x", -size / 2)
-                    .attr("y", -size / 2)
-                    .attr("width", size)
-                    .attr("height", size)
-                    .attr("clip-path", "circle()");
-            } else {
-                g.append("text")
-                    .text(d.symbol.replace('BTC', ''))
-                    .attr("text-anchor", "middle")
-                    .attr("dy", ".3em")
-                    .style("fill", "var(--on-surface)")
-                    .style("font-size", d.radius > 20 ? "12px" : "8px")
-                    .style("font-family", "var(--font-mono)");
-            }
+    const nodes: BubbleNode[] = data.map((coin) => {
+      const distance = (useAtl ? coin.distance_pct_atl : coin.distance_pct_event) ?? 0;
+      const size = useAtl ? coin.bubble_size_atl : coin.bubble_size_event;
+      return {
+        ...coin,
+        distance,
+        radius: Math.max(6, size ?? 10),
+        x: width / 2 + (Math.random() - 0.5) * width * 0.6,
+        y: height / 2 + (Math.random() - 0.5) * height * 0.6,
+      };
+    });
+
+    const simulation = d3
+      .forceSimulation<BubbleNode>(nodes)
+      .force('charge', d3.forceManyBody<BubbleNode>().strength(-30))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide<BubbleNode>().radius((node) => node.radius + 2))
+      .force('x', d3.forceX<BubbleNode>(width / 2).strength(0.05))
+      .force('y', d3.forceY<BubbleNode>(height / 2).strength(0.05));
+
+    const nodeGroups = svg
+      .append('g')
+      .selectAll<SVGGElement, BubbleNode>('g')
+      .data(nodes)
+      .enter()
+      .append('g')
+      .attr('class', 'bubble-node')
+      .style('cursor', 'pointer')
+      .on('click', (event, node) => {
+        event.stopPropagation();
+        onCoinClickRef.current(node);
+      })
+      .on('mouseover', function () {
+        d3.select(this).select('circle').attr('stroke-width', 3);
+      })
+      .on('mouseout', function () {
+        d3.select(this).select('circle').attr('stroke-width', 2);
+      });
+
+    nodeGroups
+      .append('title')
+      .text(
+        (node) =>
+          `${node.name ?? node.symbol} (${node.symbol})\nDistance to dip: ${node.distance.toFixed(2)}%\nMarket cap: ${
+            node.market_cap ? `$${node.market_cap.toLocaleString('en-US')}` : 'N/A'
+          }`,
+      );
+
+    nodeGroups
+      .append('circle')
+      .attr('r', (node) => node.radius)
+      .style('fill', (node) => colorScale(node.distance))
+      .style('stroke', 'var(--primary)')
+      .style('stroke-width', 2)
+      .style('transition', 'stroke-width 0.15s ease');
+
+    nodeGroups.each(function (node) {
+      const group = d3.select(this);
+      const appendLabel = () => {
+        group
+          .append('text')
+          .text(node.symbol.replace(/BTC$/, ''))
+          .attr('text-anchor', 'middle')
+          .attr('dy', '0.35em')
+          .style('fill', 'var(--on-surface)')
+          .style('font-size', node.radius > 20 ? '12px' : '9px')
+          .style('font-family', 'var(--font-mono)')
+          .style('pointer-events', 'none');
+      };
+
+      if (!node.logo_url || node.radius <= 15) {
+        appendLabel();
+        return;
+      }
+
+      const clipId = `bubble-clip-${node.symbol}`;
+      defs.append('clipPath').attr('id', clipId).append('circle').attr('r', node.radius * 0.65);
+
+      const size = node.radius * 1.3;
+      group
+        .append('image')
+        .attr('href', node.logo_url)
+        .attr('x', -size / 2)
+        .attr('y', -size / 2)
+        .attr('width', size)
+        .attr('height', size)
+        .attr('preserveAspectRatio', 'xMidYMid slice')
+        .attr('clip-path', `url(#${clipId})`)
+        .style('pointer-events', 'none')
+        .on('error', function () {
+          d3.select(this).remove();
+          appendLabel();
         });
+    });
 
-        // Add hover effects
-        nodeGroup.on("mouseover", function () {
-            d3.select(this).select("circle")
-                .style("stroke", "var(--secondary)")
-                .style("stroke-width", 3);
-        }).on("mouseout", function () {
-            d3.select(this).select("circle")
-                .style("stroke", "var(--primary)")
-                .style("stroke-width", 2);
-        });
+    simulation.on('tick', () => {
+      nodeGroups.attr('transform', (node) => {
+        node.x = Math.max(node.radius, Math.min(width - node.radius, node.x ?? width / 2));
+        node.y = Math.max(node.radius, Math.min(height - node.radius, node.y ?? height / 2));
+        return `translate(${node.x},${node.y})`;
+      });
+    });
 
-        // Tick function
-        simulation.on("tick", () => {
-            nodeGroup.attr("transform", (d: any) => {
-                // Boundary constraints
-                d.x = Math.max(d.radius, Math.min(width - d.radius, d.x));
-                d.y = Math.max(d.radius, Math.min(height - d.radius, d.y));
-                return `translate(${d.x},${d.y})`;
-            });
-        });
+    return () => {
+      simulation.stop();
+    };
+  }, [data, dimensions, useAtl, colorScale]);
 
-        return () => {
-            simulation.stop();
-        };
-    }, [data, dimensions, useAtl, onCoinClick]);
-
-    return (
-        <div ref={containerRef} style={{ width: '100%', height: '600px', position: 'relative' }}>
-            <svg ref={svgRef} width="100%" height="100%" />
-        </div>
-    );
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: '100%', height: '600px', position: 'relative' }}
+      aria-label="Altcoin dip bubble chart"
+    >
+      <svg ref={svgRef} width="100%" height="100%" role="img" />
+      <div
+        className="flex-center"
+        style={{
+          position: 'absolute',
+          bottom: '0.75rem',
+          right: '0.75rem',
+          gap: '0.5rem',
+          background: 'rgba(23, 19, 9, 0.85)',
+          border: '1px solid var(--outline)',
+          borderRadius: '8px',
+          padding: '0.35rem 0.6rem',
+        }}
+      >
+        <span className="label-mono">Close to dip</span>
+        <div
+          style={{
+            width: '90px',
+            height: '10px',
+            borderRadius: '999px',
+            background: legendGradient,
+          }}
+        />
+        <span className="label-mono">Far</span>
+      </div>
+    </div>
+  );
 }
