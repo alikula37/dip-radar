@@ -11,6 +11,16 @@ from sqlalchemy import (
 from database import Base
 from timeutils import utcnow_naive
 
+QUOTE_ASSETS = ("USDT", "BTC")
+
+
+def split_symbol(symbol: str):
+    """Split an exchange symbol into (base_asset, quote_asset)."""
+    for quote in QUOTE_ASSETS:
+        if symbol.endswith(quote):
+            return symbol[: -len(quote)], quote
+    return symbol, None
+
 
 class Coin(Base):
     __tablename__ = "coins"
@@ -35,6 +45,14 @@ class Coin(Base):
     volume_24h = Column(Float, nullable=True)
 
     last_updated = Column(DateTime, default=utcnow_naive)
+
+    @property
+    def quote_asset(self):
+        return split_symbol(self.symbol)[1]
+
+    @property
+    def base_asset(self):
+        return split_symbol(self.symbol)[0]
 
 
 class Kline(Base):

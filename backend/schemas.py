@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 class CoinBase(BaseModel):
     symbol: str
+    base_asset: Optional[str] = None
+    quote_asset: Optional[str] = None
     name: Optional[str] = None
     coingecko_id: Optional[str] = None
     logo_url: Optional[str] = None
