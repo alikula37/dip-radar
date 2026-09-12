@@ -24,8 +24,17 @@ export interface Kline {
   volume: number;
 }
 
+export interface SyncProgress {
+  phase: "coins" | "klines" | "metadata" | "done" | "error" | string;
+  processed: number;
+  total: number;
+  message?: string;
+  updated_at?: string;
+}
+
 export interface Meta {
   last_updated: string | null;
   tracked_coins: number;
   sync_in_progress: boolean;
+  sync_progress: SyncProgress | null;
 }

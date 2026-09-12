@@ -1,17 +1,40 @@
 'use client';
 
-import { Activity, List, RefreshCw, Search, X } from 'lucide-react';
+import { Activity, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import BubbleChart from '@/components/BubbleChart';
-import HistoryChart from '@/components/HistoryChart';
-import { formatBtc, formatPct, formatUsd, makeDistanceColorScale } from '@/lib/colors';
+import CoinModal from '@/components/CoinModal';
+import CoinTable, { SortDirection, SortKey } from '@/components/CoinTable';
+import RankedList from '@/components/RankedList';
+import ScatterChart from '@/components/ScatterChart';
+import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
+import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import type { Coin, Meta } from '@/types';
 
-type Toast = { message: string; type: 'info' | 'error' };
-type SortKey = 'market_cap' | 'distance' | 'symbol';
+const POLL_INTERVAL_MS = 5000;
 
-const POLL_INTERVAL_MS = 10000;
+const MIN_CAP_OPTIONS = [
+  { value: 0, label: 'Any market cap' },
+  { value: 10_000_000, label: '≥ $10M market cap' },
+  { value: 50_000_000, label: '≥ $50M market cap' },
+  { value: 100_000_000, label: '≥ $100M market cap' },
+];
+
+const MIN_VOLUME_OPTIONS = [
+  { value: 0, label: 'Any volume' },
+  { value: 1_000_000, label: '≥ $1M volume' },
+  { value: 5_000_000, label: '≥ $5M volume' },
+];
+
+const PHASE_LABELS: Record<string, string> = {
+  coins: 'Discovering listed coins',
+  klines: 'Fetching price history',
+  metadata: 'Fetching market data',
+  done: 'Finishing up',
+  error: 'Sync failed',
+};
+
+type Toast = { message: string; type: 'info' | 'error' };
 
 export default function Home() {
   const [coins, setCoins] = useState<Coin[]>([]);
@@ -21,24 +44,29 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [useAtl, setUseAtl] = useState(false);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'bubble' | 'table'>('bubble');
+  const [viewMode, setViewMode] = useState<'scatter' | 'table'>('scatter');
+  const [minCap, setMinCap] = useState(0);
+  const [minVolume, setMinVolume] = useState(0);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [sort, setSort] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
-    key: 'market_cap',
-    direction: 'desc',
+  const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
+    key: 'distance',
+    direction: 'asc',
   });
 
   const toastTimer = useRef<number | null>(null);
   const sawSyncRunning = useRef(false);
+  const refreshingRef = useRef(false);
+  const lastUpdatedBefore = useRef<string | null>(null);
+  const refreshStartedAt = useRef<string | null>(null);
 
   const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
     setToast({ message, type });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 4000);
+    toastTimer.current = window.setTimeout(() => setToast(null), 4500);
   }, []);
 
-  const fetchCoins = useCallback(async (initial = false) => {
+  const fetchCoins = useCallback(async () => {
     try {
       const response = await fetch('/api/coins', { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -46,18 +74,19 @@ export default function Home() {
       setCoins(data);
       setError(null);
     } catch {
-      if (initial) setError('Could not reach the backend API. Is it running?');
-    } finally {
-      if (initial) setLoading(false);
+      setError('Could not reach the backend API. Is it running?');
     }
   }, []);
 
-  const fetchMeta = useCallback(async () => {
+  const fetchMeta = useCallback(async (): Promise<Meta | null> => {
     try {
       const response = await fetch('/api/meta', { cache: 'no-store' });
-      if (response.ok) setMeta(await response.json());
+      if (!response.ok) return null;
+      const data: Meta = await response.json();
+      setMeta(data);
+      return data;
     } catch {
-      // Status polling is best-effort.
+      return null;
     }
   }, []);
 
@@ -66,13 +95,16 @@ export default function Home() {
 
     const load = async () => {
       try {
-        const response = await fetch('/api/coins', { cache: 'no-store' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data: Coin[] = await response.json();
-        if (!cancelled) {
-          setCoins(data);
-          setError(null);
-        }
+        const [coinsResponse, metaResponse] = await Promise.all([
+          fetch('/api/coins', { cache: 'no-store' }),
+          fetch('/api/meta', { cache: 'no-store' }),
+        ]);
+        if (!coinsResponse.ok) throw new Error(`HTTP ${coinsResponse.status}`);
+        const coinsData: Coin[] = await coinsResponse.json();
+        if (cancelled) return;
+        setCoins(coinsData);
+        if (metaResponse.ok) setMeta(await metaResponse.json());
+        setError(null);
       } catch {
         if (!cancelled) setError('Could not reach the backend API. Is it running?');
       } finally {
@@ -80,17 +112,7 @@ export default function Home() {
       }
     };
 
-    const loadMeta = async () => {
-      try {
-        const response = await fetch('/api/meta', { cache: 'no-store' });
-        if (response.ok && !cancelled) setMeta(await response.json());
-      } catch {
-        // Status polling is best-effort.
-      }
-    };
-
     load();
-    loadMeta();
 
     return () => {
       cancelled = true;
@@ -98,50 +120,69 @@ export default function Home() {
   }, []);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
-  const needsPolling = syncInProgress || coins.length === 0;
+  const needsPolling = syncInProgress || (coins.length === 0 && !error);
 
   useEffect(() => {
     if (!needsPolling) return;
     const interval = window.setInterval(() => {
-      fetchMeta();
-      fetchCoins();
+      void (async () => {
+        const latestMeta = await fetchMeta();
+        await fetchCoins();
+
+        if (!refreshingRef.current) return;
+
+        const progress = latestMeta?.sync_progress;
+        const progressAt = progress?.updated_at ?? '';
+        if (progress?.phase === 'error' && progressAt >= (refreshStartedAt.current ?? '')) {
+          refreshingRef.current = false;
+          setRefreshing(false);
+          sawSyncRunning.current = false;
+          showToast(progress.message ?? 'Sync failed.', 'error');
+          return;
+        }
+
+        if (latestMeta?.last_updated && latestMeta.last_updated !== lastUpdatedBefore.current) {
+          refreshingRef.current = false;
+          setRefreshing(false);
+          sawSyncRunning.current = false;
+          showToast('Data refreshed.');
+          return;
+        }
+
+        if (latestMeta?.sync_in_progress) {
+          sawSyncRunning.current = true;
+          return;
+        }
+
+        if (sawSyncRunning.current) {
+          sawSyncRunning.current = false;
+          refreshingRef.current = false;
+          setRefreshing(false);
+          showToast('Data refreshed.');
+        }
+      })();
     }, POLL_INTERVAL_MS);
+
     return () => window.clearInterval(interval);
-  }, [needsPolling, fetchCoins, fetchMeta]);
-
-  // Detect the end of a user-triggered refresh (observe running, then done).
-  useEffect(() => {
-    if (!refreshing) {
-      sawSyncRunning.current = false;
-      return;
-    }
-    if (meta?.sync_in_progress) {
-      sawSyncRunning.current = true;
-    } else if (sawSyncRunning.current) {
-      sawSyncRunning.current = false;
-      setRefreshing(false);
-      showToast('Data refreshed.');
-    }
-  }, [refreshing, meta, showToast]);
-
-  useEffect(() => {
-    if (!selectedCoin) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedCoin(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedCoin]);
+  }, [needsPolling, fetchCoins, fetchMeta, showToast]);
 
   const handleRefresh = async () => {
     try {
       const response = await fetch('/api/refresh', { method: 'POST' });
       if (response.status === 409) {
         showToast('A sync is already running.');
+        lastUpdatedBefore.current = meta?.last_updated ?? null;
+        refreshStartedAt.current = new Date().toISOString();
+        refreshingRef.current = true;
+        sawSyncRunning.current = false;
         setRefreshing(true);
         return;
       }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      lastUpdatedBefore.current = meta?.last_updated ?? null;
+      refreshStartedAt.current = new Date().toISOString();
+      refreshingRef.current = true;
+      sawSyncRunning.current = false;
       setRefreshing(true);
       showToast('Refresh started. Data updates when the sync finishes.');
     } catch {
@@ -149,43 +190,55 @@ export default function Home() {
     }
   };
 
-  const distanceOf = useCallback(
+  const activeDistance = useCallback(
     (coin: Coin) => (useAtl ? coin.distance_pct_atl : coin.distance_pct_event),
     [useAtl],
   );
 
-  const maxDistance = useMemo(() => {
+  const stats = useMemo(() => {
     const distances = coins
-      .map(distanceOf)
+      .map(activeDistance)
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-    return distances.length ? Math.max(...distances) : 100;
-  }, [coins, distanceOf]);
-
-  const distanceColor = useMemo(() => makeDistanceColorScale(maxDistance), [maxDistance]);
+    return {
+      tracked: coins.length,
+      near25: distances.filter((value) => value <= 25).length,
+      near50: distances.filter((value) => value <= 50).length,
+      median: percentile(distances, 50),
+    };
+  }, [coins, activeDistance]);
 
   const filteredCoins = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const list = query
-      ? coins.filter(
-          (coin) =>
-            coin.symbol.toLowerCase().includes(query) || (coin.name ?? '').toLowerCase().includes(query),
-        )
-      : coins;
 
-    const sorted = [...list].sort((a, b) => {
+    const list = coins
+      .filter(
+        (coin) =>
+          !query ||
+          coin.symbol.toLowerCase().includes(query) ||
+          (coin.name ?? '').toLowerCase().includes(query) ||
+          (coin.base_asset ?? '').toLowerCase().includes(query),
+      )
+      .filter((coin) => (coin.market_cap ?? 0) >= minCap)
+      .filter((coin) => (coin.volume_24h ?? 0) >= minVolume);
+
+    return [...list].sort((a, b) => {
       let result = 0;
-      if (sort.key === 'market_cap') {
-        result = (a.market_cap ?? -1) - (b.market_cap ?? -1);
-      } else if (sort.key === 'distance') {
-        result = (distanceOf(a) ?? Number.MAX_VALUE) - (distanceOf(b) ?? Number.MAX_VALUE);
-      } else {
-        result = a.symbol.localeCompare(b.symbol);
-      }
+      if (sort.key === 'market_cap') result = (a.market_cap ?? -1) - (b.market_cap ?? -1);
+      else if (sort.key === 'volume_24h') result = (a.volume_24h ?? -1) - (b.volume_24h ?? -1);
+      else if (sort.key === 'distance')
+        result = (activeDistance(a) ?? Number.MAX_VALUE) - (activeDistance(b) ?? Number.MAX_VALUE);
+      else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
+  }, [coins, search, minCap, minVolume, sort, activeDistance]);
 
-    return sorted;
-  }, [coins, search, sort, distanceOf]);
+  const colorFor = useMemo(() => {
+    const distances = filteredCoins
+      .map(activeDistance)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const robustMax = Math.max(percentile(distances, 90), 25);
+    return makeDistanceColorScale(robustMax);
+  }, [filteredCoins, activeDistance]);
 
   const toggleSort = (key: SortKey) => {
     setSort((current) =>
@@ -195,421 +248,217 @@ export default function Home() {
     );
   };
 
-  const sortIndicator = (key: SortKey) => (sort.key === key ? (sort.direction === 'asc' ? ' ↑' : ' ↓') : '');
+  const progress = meta?.sync_progress ?? null;
+  const progressPct =
+    progress && progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : null;
+  const phaseLabel = progress ? (PHASE_LABELS[progress.phase] ?? progress.phase) : 'Syncing';
 
   return (
-    <div className="container stack-default" style={{ minHeight: '100vh', position: 'relative' }}>
+    <div className="mx-auto min-h-screen w-full max-w-[1440px] px-4 pb-12 pt-5 sm:px-6">
       {toast && (
         <div
           role="status"
-          style={{
-            position: 'fixed',
-            top: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: toast.type === 'error' ? 'var(--error)' : 'var(--primary)',
-            color: toast.type === 'error' ? 'var(--on-error)' : 'var(--on-primary)',
-            padding: '12px 24px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontWeight: 500,
-            animation: 'slideDown 0.3s ease-out',
-          }}
+          style={{ animation: 'slide-down 0.3s ease-out' }}
+          className={`fixed left-1/2 top-5 z-[60] -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm font-medium shadow-xl ${
+            toast.type === 'error' ? 'bg-red-400 text-[#3b0808]' : 'bg-primary text-on-primary'
+          }`}
         >
-          <Activity size={18} />
           {toast.message}
         </div>
       )}
 
-      <header className="flex-between" style={{ padding: '1rem 0', borderBottom: '1px solid var(--outline)' }}>
-        <div className="flex-center" style={{ gap: '0.5rem' }}>
-          <Activity color="var(--primary)" size={32} />
-          <h1 className="headline-md" style={{ color: 'var(--primary)' }}>
-            Dip Radar
-          </h1>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-outline pb-4">
+        <div className="flex items-center gap-3">
+          <Activity size={28} className="text-primary" />
+          <div>
+            <h1 className="text-xl font-semibold text-primary">Dip Radar</h1>
+            <p className="text-xs text-content-muted">
+              BTC-parity altcoins and how far they trade from their historical dips
+            </p>
+          </div>
         </div>
-        <div className="flex-center" style={{ gap: '1rem' }}>
+        <div className="flex items-center gap-3">
           {meta?.last_updated && (
-            <span className="label-mono" style={{ color: 'var(--on-surface-variant)' }}>
-              Updated: {new Date(meta.last_updated).toLocaleString()}
+            <span className="hidden text-[11px] text-content-muted sm:inline">
+              Updated {formatDate(meta.last_updated)}
             </span>
           )}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex-center"
-            style={{
-              gap: '0.5rem',
-              color: 'var(--on-surface)',
-              padding: '8px 16px',
-              background: 'var(--surface-variant)',
-              borderRadius: '8px',
-              border: '1px solid var(--outline)',
-              opacity: refreshing ? 0.6 : 1,
-            }}
-          >
-            <RefreshCw size={18} style={refreshing ? { animation: 'spin 2s linear infinite' } : undefined} />
-            <span className="body-sm">{refreshing ? 'Syncing…' : 'Refresh Data'}</span>
-          </button>
+          <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : undefined} />
+            {refreshing ? 'Syncing…' : 'Refresh data'}
+          </Button>
         </div>
       </header>
 
-      <div className="flex-between" style={{ marginTop: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
-        <div className="flex-center" style={{ gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative' }}>
-            <Search
-              size={18}
-              style={{
-                position: 'absolute',
-                left: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--on-surface-variant)',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Search coins..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              style={{
-                background: 'var(--surface-variant)',
-                border: '1px solid var(--outline)',
-                color: 'var(--on-surface)',
-                padding: '0.5rem 1rem 0.5rem 2.5rem',
-                borderRadius: '8px',
-                fontFamily: 'var(--font-inter)',
-              }}
-            />
+      <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Tracked coins" value={stats.tracked} hint="Listed before 2021" />
+        <StatCard label="≤ 25% from dip" value={stats.near25} accent="positive" hint={useAtl ? 'All-time low' : '2021 low'} />
+        <StatCard label="≤ 50% from dip" value={stats.near50} hint={useAtl ? 'All-time low' : '2021 low'} />
+        <StatCard label="Median distance" value={`${stats.median.toFixed(0)}%`} hint="Across tracked coins" />
+      </section>
+
+      {syncInProgress && coins.length > 0 && (
+        <div className="mt-4 rounded-xl border border-outline bg-surface px-4 py-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="flex items-center gap-2 text-content">
+              <Spinner size={14} className="text-primary" />
+              {phaseLabel}
+            </span>
+            <span className="font-mono text-content-muted">
+              {progressPct !== null ? `${progressPct}%` : '…'}
+            </span>
           </div>
-          <div
-            className="flex-center"
-            style={{ background: 'var(--surface-variant)', borderRadius: '8px', padding: '0.25rem' }}
-          >
-            <button
-              onClick={() => setUseAtl(false)}
-              style={{
-                padding: '0.25rem 1rem',
-                borderRadius: '6px',
-                background: !useAtl ? 'var(--primary)' : 'transparent',
-                color: !useAtl ? 'var(--on-primary)' : 'var(--on-surface)',
-                fontWeight: !useAtl ? 600 : 400,
-                transition: 'all 0.2s',
-              }}
-            >
-              Since 2021
-            </button>
-            <button
-              onClick={() => setUseAtl(true)}
-              style={{
-                padding: '0.25rem 1rem',
-                borderRadius: '6px',
-                background: useAtl ? 'var(--primary)' : 'transparent',
-                color: useAtl ? 'var(--on-primary)' : 'var(--on-surface)',
-                fontWeight: useAtl ? 600 : 400,
-                transition: 'all 0.2s',
-              }}
-            >
-              All Time Low
-            </button>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500"
+              style={{ width: `${progressPct ?? 5}%` }}
+            />
           </div>
         </div>
+      )}
 
-        <div className="flex-center" style={{ gap: '0.5rem' }}>
+      <section className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+          <input
+            type="text"
+            placeholder="Search coins…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="w-full rounded-lg border border-outline bg-surface-2 py-2 pl-9 pr-3 text-sm text-content outline-none placeholder:text-content-muted focus:border-primary"
+          />
+        </div>
+
+        <Segmented
+          ariaLabel="Reference low"
+          value={useAtl ? 'atl' : 'event'}
+          onChange={(value) => setUseAtl(value === 'atl')}
+          options={[
+            { value: 'event', label: 'Since 2021' },
+            { value: 'atl', label: 'All-time low' },
+          ]}
+        />
+
+        <select
+          value={minCap}
+          onChange={(event) => setMinCap(Number(event.target.value))}
+          className="rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+        >
+          {MIN_CAP_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={minVolume}
+          onChange={(event) => setMinVolume(Number(event.target.value))}
+          className="rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+        >
+          {MIN_VOLUME_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <div className="ml-auto flex items-center gap-1 rounded-lg border border-outline bg-surface-2 p-0.5">
           <button
-            onClick={() => setViewMode('bubble')}
-            aria-label="Bubble view"
-            style={{
-              color: viewMode === 'bubble' ? 'var(--primary)' : 'var(--on-surface-variant)',
-              padding: '8px',
-              background: 'var(--surface-variant)',
-              borderRadius: '8px',
-            }}
+            type="button"
+            aria-label="Scatter view"
+            aria-pressed={viewMode === 'scatter'}
+            onClick={() => setViewMode('scatter')}
+            className={`rounded-md p-2 transition-colors ${
+              viewMode === 'scatter' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+            }`}
           >
-            <Activity size={20} />
+            <LayoutGrid size={16} />
           </button>
           <button
-            onClick={() => setViewMode('table')}
+            type="button"
             aria-label="Table view"
-            style={{
-              color: viewMode === 'table' ? 'var(--primary)' : 'var(--on-surface-variant)',
-              padding: '8px',
-              background: 'var(--surface-variant)',
-              borderRadius: '8px',
-            }}
+            aria-pressed={viewMode === 'table'}
+            onClick={() => setViewMode('table')}
+            className={`rounded-md p-2 transition-colors ${
+              viewMode === 'table' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+            }`}
           >
-            <List size={20} />
+            <List size={16} />
           </button>
         </div>
-      </div>
+      </section>
 
-      <main className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {loading ? (
-          <div className="flex-center stack-default" style={{ flex: 1, padding: '3rem 1rem' }}>
-            <RefreshCw size={32} color="var(--primary)" style={{ animation: 'spin 2s linear infinite' }} />
-            <p className="body-lg" style={{ color: 'var(--on-surface-variant)' }}>
-              Loading radar data...
+      {loading ? (
+        <section className="mt-6 space-y-3">
+          <div className="h-[420px] animate-pulse rounded-2xl border border-outline bg-surface" />
+          <div className="flex items-center justify-center gap-2 text-sm text-content-muted">
+            <Spinner size={16} /> Loading radar data…
+          </div>
+        </section>
+      ) : error && coins.length === 0 ? (
+        <section className="mt-6 flex flex-col items-center gap-3 rounded-2xl border border-outline bg-surface px-6 py-16 text-center">
+          <p className="text-sm text-content">{error}</p>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              fetchCoins().finally(() => setLoading(false));
+              fetchMeta();
+            }}
+          >
+            Retry
+          </Button>
+        </section>
+      ) : coins.length === 0 ? (
+        <section className="mt-6 flex flex-col items-center gap-4 rounded-2xl border border-outline bg-surface px-6 py-16 text-center">
+          <Spinner size={28} className="text-primary" />
+          <div>
+            <p className="text-sm font-medium text-content">{phaseLabel}…</p>
+            <p className="mx-auto mt-1 max-w-md text-xs text-content-muted">
+              Historical data is fetched from Binance and CoinGecko. The first sync usually takes a few minutes.
             </p>
           </div>
-        ) : error ? (
-          <div className="flex-center stack-default" style={{ flex: 1, padding: '3rem 1rem' }}>
-            <p className="body-lg" style={{ color: 'var(--on-surface)' }}>
-              {error}
-            </p>
-            <button
-              onClick={() => {
-                setLoading(true);
-                setError(null);
-                fetchCoins(true);
-                fetchMeta();
-              }}
-              style={{
-                padding: '8px 16px',
-                background: 'var(--primary)',
-                color: 'var(--on-primary)',
-                borderRadius: '8px',
-                fontWeight: 600,
-              }}
-            >
-              Retry
-            </button>
+          <div className="h-1.5 w-64 overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500"
+              style={{ width: `${progressPct ?? 5}%` }}
+            />
           </div>
-        ) : coins.length === 0 ? (
-          <div className="flex-center stack-default" style={{ flex: 1, padding: '3rem 1rem' }}>
-            <RefreshCw size={32} color="var(--secondary)" style={{ animation: 'spin 2s linear infinite' }} />
-            <p className="body-lg" style={{ color: 'var(--on-surface)' }}>
-              {syncInProgress ? 'Initial data sync in progress...' : 'No data yet.'}
-            </p>
-            <p
-              className="body-sm"
-              style={{ color: 'var(--on-surface-variant)', textAlign: 'center', maxWidth: '440px' }}
-            >
-              Historical data is fetched from Binance and CoinGecko. The first sync can take a few minutes; this page
-              updates automatically when it is ready.
-            </p>
+        </section>
+      ) : (
+        <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 rounded-2xl border border-outline bg-surface p-2 sm:p-3">
+            {filteredCoins.length === 0 ? (
+              <p className="py-20 text-center text-sm text-content-muted">No coins match the current filters.</p>
+            ) : viewMode === 'scatter' ? (
+              <ScatterChart coins={filteredCoins} useAtl={useAtl} onCoinClick={setSelectedCoin} />
+            ) : (
+              <CoinTable
+                coins={filteredCoins}
+                useAtl={useAtl}
+                colorFor={colorFor}
+                sort={sort}
+                onToggleSort={toggleSort}
+                onSelect={setSelectedCoin}
+              />
+            )}
           </div>
-        ) : filteredCoins.length === 0 ? (
-          <div className="flex-center stack-default" style={{ flex: 1, padding: '3rem 1rem' }}>
-            <p className="body-lg">No coins match your search.</p>
-          </div>
-        ) : viewMode === 'bubble' ? (
-          <BubbleChart data={filteredCoins} useAtl={useAtl} onCoinClick={setSelectedCoin} />
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--outline)', textAlign: 'left' }}>
-                  <th style={{ padding: '1rem' }}>
-                    <button className="label-mono" onClick={() => toggleSort('symbol')}>
-                      Coin{sortIndicator('symbol')}
-                    </button>
-                  </th>
-                  <th style={{ padding: '1rem' }} className="label-mono">
-                    Price (BTC)
-                  </th>
-                  <th style={{ padding: '1rem' }}>
-                    <button className="label-mono" onClick={() => toggleSort('distance')}>
-                      Distance to Dip{sortIndicator('distance')}
-                    </button>
-                  </th>
-                  <th style={{ padding: '1rem' }}>
-                    <button className="label-mono" onClick={() => toggleSort('market_cap')}>
-                      Market Cap{sortIndicator('market_cap')}
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCoins.map((coin) => {
-                  const distance = distanceOf(coin);
-                  return (
-                    <tr
-                      key={coin.symbol}
-                      className="table-row"
-                      style={{ borderBottom: '1px solid var(--surface-variant)', cursor: 'pointer' }}
-                      onClick={() => setSelectedCoin(coin)}
-                    >
-                      <td style={{ padding: '1rem' }}>
-                        <span className="flex-center" style={{ justifyContent: 'flex-start' }}>
-                          {coin.logo_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={coin.logo_url}
-                              alt={`${coin.symbol} logo`}
-                              width={24}
-                              height={24}
-                              loading="lazy"
-                              style={{ borderRadius: '50%', marginRight: '0.5rem' }}
-                            />
-                          ) : (
-                            <span
-                              style={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: '50%',
-                                background: 'var(--outline)',
-                                marginRight: '0.5rem',
-                                display: 'inline-block',
-                              }}
-                            />
-                          )}
-                          <span className="body-sm">
-                            {coin.base_asset ?? coin.symbol.replace(/BTC$/, '')}
-                          </span>
-                        </span>
-                      </td>
-                      <td style={{ padding: '1rem' }} className="label-mono">
-                        {formatBtc(coin.current_price_btc)}
-                      </td>
-                      <td style={{ padding: '1rem' }}>
-                        <span
-                          className="label-mono"
-                          style={{
-                            background: distanceColor(distance ?? maxDistance),
-                            color: '#101010',
-                            padding: '2px 8px',
-                            borderRadius: '999px',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {formatPct(distance)}
-                        </span>
-                      </td>
-                      <td style={{ padding: '1rem' }} className="label-mono">
-                        {formatUsd(coin.market_cap)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
+
+          <aside className="min-w-0">
+            <RankedList coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onSelect={setSelectedCoin} />
+          </aside>
+        </section>
+      )}
 
       {selectedCoin && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${selectedCoin.name ?? selectedCoin.symbol} details`}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            backdropFilter: 'blur(4px)',
-            padding: '1rem',
-          }}
-          onClick={() => setSelectedCoin(null)}
-        >
-          <div
-            className="card stack-default"
-            style={{ width: '420px', maxWidth: '100%', background: 'var(--surface)', border: '1px solid var(--outline)' }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex-between">
-              <div className="flex-center" style={{ gap: '1rem' }}>
-                {selectedCoin.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedCoin.logo_url}
-                    alt={`${selectedCoin.symbol} logo`}
-                    width={48}
-                    height={48}
-                    style={{ borderRadius: '50%' }}
-                  />
-                ) : (
-                  <span
-                    style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--outline)', display: 'inline-block' }}
-                  />
-                )}
-                <div>
-                  <h2 className="title-lg">{selectedCoin.name || selectedCoin.symbol}</h2>
-                  <p className="label-mono" style={{ color: 'var(--on-surface-variant)' }}>
-                    {selectedCoin.symbol}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedCoin(null)}
-                aria-label="Close"
-                style={{
-                  color: 'var(--on-surface)',
-                  padding: '8px',
-                  background: 'var(--surface-variant)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div
-              style={{
-                background: 'var(--surface-variant)',
-                padding: '1.5rem',
-                borderRadius: '8px',
-                border: '1px solid var(--outline)',
-              }}
-            >
-              <p className="body-sm" style={{ color: 'var(--on-surface-variant)', marginBottom: '4px' }}>
-                Current Price
-              </p>
-              <p className="headline-md" style={{ color: 'var(--primary)' }}>
-                {formatBtc(selectedCoin.current_price_btc)} BTC
-              </p>
-            </div>
-
-            <div className="flex-between" style={{ padding: '0.5rem 0', gap: '1rem' }}>
-              <div className="stack-compact">
-                <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>
-                  Distance to Dip
-                </p>
-                <p className="title-lg" style={{ color: 'var(--secondary)' }}>
-                  {formatPct(distanceOf(selectedCoin))}
-                </p>
-              </div>
-              <div className="stack-compact" style={{ textAlign: 'right' }}>
-                <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>
-                  Market Cap
-                </p>
-                <p className="label-mono" style={{ fontSize: '16px' }}>
-                  {formatUsd(selectedCoin.market_cap)}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex-between" style={{ padding: '0.5rem 0', gap: '1rem' }}>
-              <div className="stack-compact">
-                <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>
-                  Event Low
-                </p>
-                <p className="label-mono">{selectedCoin.event_low?.toFixed(8) ?? 'N/A'}</p>
-              </div>
-              <div className="stack-compact" style={{ textAlign: 'right' }}>
-                <p className="body-sm" style={{ color: 'var(--on-surface-variant)' }}>
-                  All-Time Low
-                </p>
-                <p className="label-mono">{selectedCoin.all_time_low?.toFixed(8) ?? 'N/A'}</p>
-              </div>
-            </div>
-
-            <div>
-              <p className="body-sm" style={{ color: 'var(--on-surface-variant)', marginBottom: '0.25rem' }}>
-                Last 365 days
-              </p>
-              <HistoryChart symbol={selectedCoin.symbol} />
-            </div>
-          </div>
-        </div>
+        <CoinModal
+          coin={selectedCoin}
+          useAtl={useAtl}
+          colorFor={colorFor}
+          onClose={() => setSelectedCoin(null)}
+        />
       )}
     </div>
   );
