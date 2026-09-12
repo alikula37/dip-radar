@@ -86,6 +86,7 @@ async def security_middleware(request: Request, call_next):
 def get_coins(db: Session = Depends(get_db)):
     coins = (
         db.query(models.Coin)
+        .filter(models.Coin.current_price_btc.isnot(None))
         .order_by(func.coalesce(models.Coin.market_cap, -1).desc())
         .all()
     )

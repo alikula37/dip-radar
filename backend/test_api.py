@@ -37,9 +37,14 @@ def seed_coin(symbol="ETHBTC", is_pre_2021=True, market_cap=1000.0):
     db.close()
 
 
-def test_get_coins_returns_all_tracked_coins_with_market_cap_sizes():
+def test_get_coins_returns_only_coins_with_price_history():
     seed_coin("ETHBTC", is_pre_2021=True, market_cap=1000.0)
     seed_coin("ICPUSDT", is_pre_2021=False, market_cap=500.0)
+
+    db = SessionLocal()
+    db.add(Coin(symbol="JUNKUSDT", is_pre_2021=False, listed_checked=True, market_cap=1.0))
+    db.commit()
+    db.close()
 
     response = client.get("/api/coins")
 
