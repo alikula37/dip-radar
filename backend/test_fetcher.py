@@ -475,21 +475,59 @@ def test_sync_coingecko_disambiguates_by_market_cap(db):
     assert coin.name == "Old Sandbox"
 
 
-def test_sync_coingecko_prefers_id_matching_the_symbol(db):
-    db.add(Coin(symbol="ABCBTC", is_pre_2021=True, listed_checked=True))
+def test_sync_coingecko_resolves_by_price_before_market_cap(db):
+    db.add(
+        Coin(
+            symbol="DOTBTC",
+            is_pre_2021=True,
+            listed_checked=True,
+            current_price_btc=1.32e-05,
+        )
+    )
     db.commit()
 
     cg = FakeCoinGecko(
-        coin_list=[{"symbol": "abc", "id": "abc"}, {"symbol": "abc", "id": "other"}],
+        coin_list=[{"symbol": "dot", "id": "dot"}, {"symbol": "dot", "id": "polkadot"}],
         markets={
-            "abc": {"id": "abc", "name": "ABC", "market_cap": 10},
-            "other": {"id": "other", "name": "Other", "market_cap": 9999},
+            "dot": {"id": "dot", "name": "Dotcoin", "market_cap": 10_000_000_000},
+            "polkadot": {"id": "polkadot", "name": "Polkadot", "market_cap": 5_000_000_000},
         },
+        prices={"dot": 0.0001, "polkadot": 1.32e-05},
     )
 
     fetcher.sync_coingecko(db, cg)
 
-    assert db.get(Coin, "ABCBTC").coingecko_id == "abc"
+    coin = db.get(Coin, "DOTBTC")
+    # Market cap ranking alone would have picked 'dot'.
+    assert coin.coingecko_id == "polkadot"
+    assert coin.name == "Polkadot"
+
+
+def test_sync_coingecko_reresolves_unverified_mappings(db):
+    db.add(
+        Coin(
+            symbol="DOTBTC",
+            is_pre_2021=True,
+            listed_checked=True,
+            current_price_btc=1.32e-05,
+            coingecko_id="dot",
+            price_verified=False,
+        )
+    )
+    db.commit()
+
+    cg = FakeCoinGecko(
+        coin_list=[{"symbol": "dot", "id": "dot"}, {"symbol": "dot", "id": "polkadot"}],
+        markets={
+            "dot": {"id": "dot", "name": "Dotcoin", "market_cap": 10_000_000_000},
+            "polkadot": {"id": "polkadot", "name": "Polkadot", "market_cap": 5_000_000_000},
+        },
+        prices={"dot": 0.0001, "polkadot": 1.32e-05},
+    )
+
+    fetcher.sync_coingecko(db, cg)
+
+    assert db.get(Coin, "DOTBTC").coingecko_id == "polkadot"
 
 
 def test_coingecko_markets_requests_per_page_250():
