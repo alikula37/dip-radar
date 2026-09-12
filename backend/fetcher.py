@@ -30,13 +30,12 @@ BINANCE_BASE_URLS = (
 
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 COINGECKO_MARKETS_BATCH_SIZE = 250
-CRYPTOCOMPARE_BASE_URL = "https://min-api.cryptocompare.com/data"
-CRYPTOCOMPARE_BATCH_SIZE = 100
+COINGECKO_PRICE_BATCH_SIZE = 100
 # Coins are synced concurrently; Binance rate limits are respected by the
 # client, which sleeps on 429/418 responses.
 SYNC_FETCH_WORKERS = int(os.getenv("SYNC_FETCH_WORKERS", "4"))
 # A Binance price is considered verified when it is within this percentage of
-# the independent CryptoCompare price.
+# the independent CoinGecko price.
 PRICE_VERIFY_TOLERANCE_PCT = float(os.getenv("PRICE_VERIFY_TOLERANCE_PCT", "5"))
 
 EVENT_CUTOFF = datetime(2021, 1, 1)
@@ -89,10 +88,6 @@ class BinanceError(ProviderError):
 
 
 class CoinGeckoError(ProviderError):
-    pass
-
-
-class CryptoCompareError(ProviderError):
     pass
 
 
@@ -246,49 +241,16 @@ class CoinGeckoClient:
             },
         ).json()
 
-
-class CryptoCompareClient:
-    """Independent BTC price source used to verify Binance candles."""
-
-    def __init__(self, session: requests.Session = None, sleep=time.sleep, base_url: str = None):
-        self.session = session or build_http_session()
-        self.sleep = sleep
-        self.base_url = base_url or CRYPTOCOMPARE_BASE_URL
-
-    def _get(self, path: str, params: dict = None, attempts: int = 2) -> requests.Response:
-        last_error = None
-        for _ in range(attempts):
-            try:
-                response = self.session.get(f"{self.base_url}/{path}", params=params, timeout=(5, 30))
-            except requests.RequestException as exc:
-                last_error = exc
-                continue
-
-            if response.status_code == 429:
-                retry_after = parse_retry_after(response.headers.get("Retry-After"), default=20.0)
-                logger.warning("CryptoCompare rate limited; waiting %.1fs", retry_after)
-                last_error = CryptoCompareError("HTTP 429")
-                self.sleep(retry_after)
-                continue
-
-            try:
-                response.raise_for_status()
-            except requests.HTTPError as exc:
-                last_error = exc
-                continue
-            return response
-
-        raise CryptoCompareError(str(last_error) if last_error else "CryptoCompare request failed")
-
-    def fetch_btc_prices(self, base_assets: list) -> dict:
+    def fetch_btc_prices(self, ids: list) -> dict:
+        """BTC-denominated prices keyed by CoinGecko id (keyless endpoint)."""
         prices = {}
-        for batch in chunked([asset.upper() for asset in base_assets], CRYPTOCOMPARE_BATCH_SIZE):
-            data = self._get("pricemultifull", {"fsyms": ",".join(batch), "tsyms": "BTC"}).json()
-            for asset, quote in (data.get("RAW") or {}).items():
-                price = (quote.get("BTC") or {}).get("PRICE")
+        for batch in chunked(ids, COINGECKO_PRICE_BATCH_SIZE):
+            data = self._get("simple/price", {"ids": ",".join(batch), "vs_currencies": "btc"}).json()
+            for coin_id, values in data.items():
+                price = (values or {}).get("btc")
                 if isinstance(price, (int, float)) and price > 0:
-                    prices[asset.upper()] = float(price)
-            self.sleep(1)
+                    prices[coin_id] = float(price)
+            self.sleep(COINGECKO_BATCH_DELAY)
         return prices
 
 
@@ -701,23 +663,23 @@ def write_sync_progress(db: DBSession, phase: str, processed: int, total: int) -
     set_meta(db, "sync_progress", json.dumps(payload))
 
 
-def verify_prices(db: DBSession, client: CryptoCompareClient) -> int:
-    """Cross-check Binance BTC prices against an independent source."""
+def verify_prices(db: DBSession, client: CoinGeckoClient) -> int:
+    """Cross-check Binance BTC prices against CoinGecko (keyless endpoint)."""
     logger.info("Starting verify_prices...")
-    coins = db.query(Coin).filter(Coin.current_price_btc.isnot(None)).all()
+    coins = db.query(Coin).filter(Coin.current_price_btc.isnot(None), Coin.coingecko_id.isnot(None)).all()
     if not coins:
         return 0
 
-    base_assets = sorted({coin.base_asset.upper() for coin in coins})
+    coin_ids = sorted({coin.coingecko_id for coin in coins})
     try:
-        reference_prices = client.fetch_btc_prices(base_assets)
-    except CryptoCompareError as exc:
+        reference_prices = client.fetch_btc_prices(coin_ids)
+    except CoinGeckoError as exc:
         logger.warning("Price verification skipped: %s", exc)
         return 0
 
     verified = 0
     for coin in coins:
-        reference = reference_prices.get(coin.base_asset.upper())
+        reference = reference_prices.get(coin.coingecko_id)
         if not reference or not coin.current_price_btc:
             coin.price_verified = None
             coin.price_deviation_pct = None
@@ -743,11 +705,9 @@ def run_all_syncs(
     db: DBSession,
     binance: BinanceClient = None,
     coingecko: CoinGeckoClient = None,
-    cryptocompare: CryptoCompareClient = None,
 ) -> None:
     client = binance or BinanceClient()
     cg_client = coingecko or CoinGeckoClient()
-    cc_client = cryptocompare or CryptoCompareClient()
 
     state = {"last_write": 0.0}
 
@@ -770,7 +730,7 @@ def run_all_syncs(
         workers=SYNC_FETCH_WORKERS,
         session_factory=SessionLocal if SYNC_FETCH_WORKERS > 1 else None,
     )
-    verify_prices(db, cc_client)
+    verify_prices(db, cg_client)
     write_sync_progress(db, "done", 1, 1)
     set_meta(db, "last_updated", utcnow().isoformat())
 
