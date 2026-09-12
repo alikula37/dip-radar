@@ -635,17 +635,15 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
         if not candidates:
             continue
 
-        # Re-resolve mappings that failed price verification (for example a
-        # symbol collision such as DOT -> 'dot' picked by an earlier run).
-        if coin.coingecko_id and coin.price_verified is not False:
-            continue
-        if coin.price_verified is False:
-            coin.coingecko_id = None
-
         if len(candidates) == 1:
-            coin.coingecko_id = candidates[0]
-        else:
-            ambiguous.append((coin, candidates))
+            if not coin.coingecko_id or coin.price_verified is False:
+                coin.coingecko_id = candidates[0]
+            continue
+
+        # Multiple symbols collide: re-resolve deterministically every sync
+        # (price match first, then market cap) so bridged/wrapped variants
+        # never win over the canonical token.
+        ambiguous.append((coin, candidates))
     db.commit()
 
     if ambiguous:
