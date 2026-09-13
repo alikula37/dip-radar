@@ -19,7 +19,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Parallel and verified fetching**: candles are synced with a worker pool (`SYNC_FETCH_WORKERS`, default 4) to cut first-run time, and Binance prices are cross-checked against an independent CoinGecko quote (`PRICE_VERIFY_TOLERANCE_PCT`, default 5%).
 - **Resilient data fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
 - **Duplicate-free storage**: daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
-- **Design system**: Tailwind CSS 4 with shared tokens and UI components (buttons, badges, stat cards, segmented controls); table view, search, sorting, detail modal with a 365-day price chart.
+- **Design system**: Tailwind CSS 4 with shared tokens and UI components (buttons, badges, stat cards, segmented controls); self-hosted Inter/JetBrains Mono via Fontsource (no build-time font downloads); table view, search, sorting, detail modal with price history and range pickers.
 
 ## Architecture 🏗️
 

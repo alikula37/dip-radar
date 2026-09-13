@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ComparePanel from './ComparePanel';
@@ -65,5 +65,17 @@ describe('ComparePanel', () => {
     const tooltip = await screen.findByTestId('compare-tooltip');
     expect(tooltip.textContent).toContain('2.00x');
     expect(tooltip.textContent).toContain('0.50x');
+  });
+
+  it('refetches when the range changes', async () => {
+    const fetchMock = mockFetch();
+    render(<ComparePanel symbols={['JUPUSDT']} onRemove={vi.fn()} onClear={vi.fn()} />);
+
+    await screen.findByRole('img', { name: /Coin comparison chart/i });
+    fireEvent.click(screen.getByRole('button', { name: '90d' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('limit=90'), expect.anything());
+    });
   });
 });

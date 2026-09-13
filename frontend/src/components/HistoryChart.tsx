@@ -16,7 +16,15 @@ interface ChartState {
   failed: boolean;
 }
 
-export default function HistoryChart({ symbol, limit = 365 }: { symbol: string; limit?: number }) {
+export default function HistoryChart({
+  symbol,
+  limit = 365,
+  marker = null,
+}: {
+  symbol: string;
+  limit?: number;
+  marker?: string | null;
+}) {
   const [state, setState] = useState<ChartState | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
@@ -75,6 +83,15 @@ export default function HistoryChart({ symbol, limit = 365 }: { symbol: string; 
     return { klines, times, x, y, area: area(klines) ?? '', line: line(klines) ?? '' };
   }, [current]);
 
+  const markerX = useMemo(() => {
+    if (!chart || !marker) return null;
+    const markerTime = +new Date(`${marker}T00:00:00`);
+    if (!Number.isFinite(markerTime)) return null;
+    const [start, end] = chart.x.domain();
+    if (markerTime < +start || markerTime > +end) return null;
+    return chart.x(markerTime);
+  }, [chart, marker]);
+
   const updateHoverFromClientX = (element: SVGSVGElement, clientX: number) => {
     if (!chart) return;
     const rect = element.getBoundingClientRect();
@@ -130,6 +147,23 @@ export default function HistoryChart({ symbol, limit = 365 }: { symbol: string; 
       <rect width={WIDTH} height={HEIGHT} fill="transparent" />
       <path d={chart.area} fill="var(--color-accent)" opacity={0.18} />
       <path d={chart.line} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
+
+      {markerX !== null && (
+        <g pointerEvents="none" data-testid="history-marker">
+          <line
+            x1={markerX}
+            x2={markerX}
+            y1={MARGIN.top}
+            y2={HEIGHT - MARGIN.bottom}
+            stroke="#ffd87f"
+            strokeWidth={1.5}
+            strokeDasharray="4 3"
+          />
+          <text x={markerX + 3} y={MARGIN.top + 9} fontSize={8} fill="#ffd87f">
+            {marker}
+          </text>
+        </g>
+      )}
 
       {hovered && (
         <g pointerEvents="none">
