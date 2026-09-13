@@ -65,6 +65,15 @@ export function formatBtc(value: number | null | undefined): string {
   return value.toFixed(8);
 }
 
+/** Compact BTC price that stays readable across many orders of magnitude. */
+export function formatBtcValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "N/A";
+  if (value === 0) return "0";
+  if (value < 0.001) return value.toExponential(3);
+  if (value < 1) return value.toFixed(6);
+  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "N/A";
   return new Date(value).toLocaleString();
