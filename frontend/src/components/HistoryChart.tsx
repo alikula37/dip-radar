@@ -3,11 +3,12 @@
 import * as d3 from 'd3';
 import React, { useEffect, useMemo, useState } from 'react';
 
+import { formatBtcValue } from '@/lib/colors';
 import type { Kline } from '@/types';
 
 const WIDTH = 360;
-const HEIGHT = 140;
-const MARGIN = { top: 10, right: 8, bottom: 18, left: 8 };
+const HEIGHT = 150;
+const MARGIN = { top: 10, right: 10, bottom: 20, left: 10 };
 
 interface ChartState {
   symbol: string;
@@ -17,6 +18,7 @@ interface ChartState {
 
 export default function HistoryChart({ symbol }: { symbol: string }) {
   const [state, setState] = useState<ChartState | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,16 +42,17 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
 
   const current = state?.symbol === symbol ? state : null;
 
-  const paths = useMemo(() => {
+  const chart = useMemo(() => {
     if (!current?.klines || current.klines.length === 0) return null;
 
-    const times = current.klines.map((kline) => new Date(kline.timestamp));
+    const klines = current.klines;
+    const times = klines.map((kline) => new Date(kline.timestamp).getTime());
     const x = d3
       .scaleTime()
-      .domain(d3.extent(times) as [Date, Date])
+      .domain([times[0], times[times.length - 1]])
       .range([MARGIN.left, WIDTH - MARGIN.right]);
 
-    const [minClose, maxClose] = d3.extent(current.klines, (kline) => kline.close) as [number, number];
+    const [minClose, maxClose] = d3.extent(klines, (kline) => kline.close) as [number, number];
     const padding = (maxClose - minClose) * 0.1 || maxClose * 0.05 || 1;
     const y = d3
       .scaleLinear()
@@ -69,21 +72,74 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
       .y((kline) => y(kline.close))
       .curve(d3.curveMonotoneX);
 
-    return { area: area(current.klines) ?? '', line: line(current.klines) ?? '' };
+    return { klines, times, x, y, area: area(klines) ?? '', line: line(klines) ?? '' };
   }, [current]);
+
+  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!chart) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const scale = rect.width > 0 ? WIDTH / rect.width : 1;
+    const svgX = (event.clientX - rect.left) * scale;
+    const target = chart.x.invert(svgX).getTime();
+    setHoverIndex(d3.bisectCenter(chart.times, target));
+  };
 
   if (current?.failed) {
     return <p className="text-xs text-content-muted">Price history unavailable.</p>;
   }
 
-  if (!paths) {
+  if (!chart) {
     return <p className="text-xs text-content-muted">Loading price history…</p>;
   }
 
+  const hovered =
+    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < chart.klines.length
+      ? {
+          kline: chart.klines[hoverIndex],
+          x: chart.x(chart.times[hoverIndex]),
+          y: chart.y(chart.klines[hoverIndex].close),
+        }
+      : null;
+
+  const tooltipX = hovered && hovered.x > WIDTH * 0.6 ? hovered.x - 124 : (hovered?.x ?? 0) + 8;
+  const hoveredDate = hovered ? hovered.kline.timestamp.slice(0, 10) : '';
+
   return (
-    <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" height={HEIGHT} role="img" aria-label={`${symbol} price history`}>
-      <path d={paths.area} fill="var(--color-accent)" opacity={0.18} />
-      <path d={paths.line} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
+    <svg
+      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      width="100%"
+      height={HEIGHT}
+      role="img"
+      aria-label={`${symbol} price history`}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setHoverIndex(null)}
+    >
+      <rect width={WIDTH} height={HEIGHT} fill="transparent" />
+      <path d={chart.area} fill="var(--color-accent)" opacity={0.18} />
+      <path d={chart.line} fill="none" stroke="var(--color-accent)" strokeWidth={2} />
+
+      {hovered && (
+        <g pointerEvents="none">
+          <line
+            x1={hovered.x}
+            x2={hovered.x}
+            y1={MARGIN.top}
+            y2={HEIGHT - MARGIN.bottom}
+            stroke="#6e6248"
+            strokeDasharray="3 3"
+          />
+          <circle cx={hovered.x} cy={hovered.y} r={3} fill="var(--color-accent)" stroke="#12100b" strokeWidth={1} />
+          <g transform={`translate(${tooltipX},${MARGIN.top})`}>
+            <rect width={116} height={36} rx={6} fill="#1a170f" stroke="#4d4533" />
+            <text x={8} y={14} fontSize={9} fill="#b3a68c">
+              {hoveredDate}
+            </text>
+            <text x={8} y={27} fontSize={10} fill="#f1e8d7" fontWeight={600}>
+              {formatBtcValue(hovered.kline.close)} BTC
+            </text>
+          </g>
+        </g>
+      )}
     </svg>
   );
 }
