@@ -8,9 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-# next/font downloads Google Fonts at build time; retry once on a transient
-# network failure so image builds stay reliable.
-RUN npm run build || (echo "retrying build after transient failure..." && sleep 5 && npm run build)
+RUN npm run build
 
 FROM node:26-alpine AS runner
 
