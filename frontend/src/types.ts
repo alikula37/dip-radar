@@ -43,3 +43,18 @@ export interface Meta {
   sync_in_progress: boolean;
   sync_progress: SyncProgress | null;
 }
+
+export interface Watch {
+  symbol: string;
+  base_asset?: string | null;
+  name?: string | null;
+  logo_url?: string | null;
+  current_price_btc?: number | null;
+  distance_pct_event?: number | null;
+  distance_pct_atl?: number | null;
+  market_cap?: number | null;
+  threshold_pct?: number | null;
+  last_distance?: number | null;
+  last_alerted_at?: string | null;
+  created_at?: string | null;
+}

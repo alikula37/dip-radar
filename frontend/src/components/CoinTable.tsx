@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Star } from 'lucide-react';
 import React from 'react';
 
 import { DistanceBadge, TrendBadge } from '@/components/ui';
@@ -18,6 +18,8 @@ interface CoinTableProps {
   sort: { key: SortKey; direction: SortDirection };
   onToggleSort: (key: SortKey) => void;
   onSelect: (coin: Coin) => void;
+  watchedSymbols: Set<string>;
+  onToggleWatch: (coin: Coin) => void;
 }
 
 const COLUMNS: { key: SortKey | null; label: string; align?: 'right' }[] = [
@@ -29,7 +31,16 @@ const COLUMNS: { key: SortKey | null; label: string; align?: 'right' }[] = [
   { key: 'volume_24h', label: '24h volume', align: 'right' },
 ];
 
-export default function CoinTable({ coins, useAtl, colorFor, sort, onToggleSort, onSelect }: CoinTableProps) {
+export default function CoinTable({
+  coins,
+  useAtl,
+  colorFor,
+  sort,
+  onToggleSort,
+  onSelect,
+  watchedSymbols,
+  onToggleWatch,
+}: CoinTableProps) {
   const distanceOf = (coin: Coin) => (useAtl ? coin.distance_pct_atl : coin.distance_pct_event);
 
   return (
@@ -37,6 +48,7 @@ export default function CoinTable({ coins, useAtl, colorFor, sort, onToggleSort,
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-outline text-left">
+            <th className="w-8 px-2 py-2" aria-label="Watchlist" />
             {COLUMNS.map((column) => (
               <th
                 key={column.label}
@@ -69,6 +81,27 @@ export default function CoinTable({ coins, useAtl, colorFor, sort, onToggleSort,
                 onClick={() => onSelect(coin)}
                 className="cursor-pointer border-b border-surface-3/60 transition-colors hover:bg-surface-2"
               >
+                <td className="px-2 py-2">
+                  <button
+                    type="button"
+                    aria-label={
+                      watchedSymbols.has(coin.symbol)
+                        ? `Remove ${coin.symbol} from watchlist`
+                        : `Add ${coin.symbol} to watchlist`
+                    }
+                    aria-pressed={watchedSymbols.has(coin.symbol)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleWatch(coin);
+                    }}
+                    className="rounded-full p-1 transition-colors hover:bg-surface-3"
+                  >
+                    <Star
+                      size={14}
+                      className={watchedSymbols.has(coin.symbol) ? 'fill-primary text-primary' : 'text-content-muted'}
+                    />
+                  </button>
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
                     {coin.logo_url ? (

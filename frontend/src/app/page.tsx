@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Camera, Download, LayoutDashboard, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
+import { Activity, Camera, Download, LayoutDashboard, LayoutGrid, List, RefreshCw, Search, Star } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import CoinModal from '@/components/CoinModal';
@@ -9,11 +9,12 @@ import ComparePanel from '@/components/ComparePanel';
 import RankedList from '@/components/RankedList';
 import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
+import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
 import { downloadCsv, trendDelta } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import { exportSvgToPng } from '@/lib/exportImage';
-import type { Coin, Meta } from '@/types';
+import type { Coin, Meta, Watch } from '@/types';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -54,6 +55,8 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'scatter' | 'table' | 'treemap'>('scatter');
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
+  const [watches, setWatches] = useState<Watch[]>([]);
+  const [watchOnly, setWatchOnly] = useState(false);
   const [minCap, setMinCap] = useState(0);
   const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
@@ -109,6 +112,8 @@ export default function Home() {
           fetch('/api/coins', { cache: 'no-store' }),
           fetch('/api/meta', { cache: 'no-store' }),
         ]);
+        const watchlistResponse = await fetch('/api/watchlist', { cache: 'no-store' });
+        if (watchlistResponse.ok) setWatches(await watchlistResponse.json());
         if (!coinsResponse.ok) throw new Error(`HTTP ${coinsResponse.status}`);
         const coinsData: Coin[] = await coinsResponse.json();
         if (cancelled) return;
@@ -131,6 +136,7 @@ export default function Home() {
         if (compare) {
           setCompareSymbols(compare.split(',').filter(Boolean).slice(0, 3));
         }
+        if (params.get('watch') === '1') setWatchOnly(true);
         const coinSymbol = params.get('coin');
         if (coinSymbol) {
           const found = coinsData.find((coin) => coin.symbol === coinSymbol);
@@ -161,13 +167,14 @@ export default function Home() {
     if (viewMode !== 'scatter') params.set('view', viewMode);
     if (selectedCoin) params.set('coin', selectedCoin.symbol);
     if (compareSymbols.length > 0) params.set('compare', compareSymbols.join(','));
+    if (watchOnly) params.set('watch', '1');
     const queryString = params.toString();
     window.history.replaceState(
       null,
       '',
       queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
     );
-  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols]);
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -245,6 +252,8 @@ export default function Home() {
     [useAtl],
   );
 
+  const watchedSymbols = useMemo(() => new Set(watches.map((watch) => watch.symbol)), [watches]);
+
   const stats = useMemo(() => {
     const distances = coins
       .map(activeDistance)
@@ -268,6 +277,7 @@ export default function Home() {
           (coin.name ?? '').toLowerCase().includes(query) ||
           (coin.base_asset ?? '').toLowerCase().includes(query),
       )
+      .filter((coin) => !watchOnly || watchedSymbols.has(coin.symbol))
       .filter((coin) => (coin.market_cap ?? 0) >= minCap)
       .filter((coin) => (coin.volume_24h ?? 0) >= minVolume);
 
@@ -282,7 +292,7 @@ export default function Home() {
       else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
-  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl]);
+  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols]);
 
   const colorFor = useMemo(() => {
     const distances = filteredCoins
@@ -307,6 +317,62 @@ export default function Home() {
       return [...current, coin.symbol];
     });
   }, []);
+
+  const refreshWatchlist = useCallback(async () => {
+    try {
+      const response = await fetch('/api/watchlist', { cache: 'no-store' });
+      if (response.ok) setWatches(await response.json());
+    } catch {
+      // Keep the previous list on transient failures.
+    }
+  }, []);
+
+  const toggleWatch = useCallback(
+    async (coin: Coin) => {
+      const watched = watches.some((watch) => watch.symbol === coin.symbol);
+      try {
+        const response = watched
+          ? await fetch(`/api/watchlist/${encodeURIComponent(coin.symbol)}`, { method: 'DELETE' })
+          : await fetch(`/api/watchlist/${encodeURIComponent(coin.symbol)}`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ threshold_pct: null }),
+            });
+        if (!response.ok && response.status !== 204) throw new Error(`HTTP ${response.status}`);
+        await refreshWatchlist();
+        const label = coin.base_asset ?? coin.symbol;
+        showToast(watched ? `${label} removed from watchlist.` : `${label} added to watchlist.`);
+      } catch {
+        showToast('Could not update the watchlist.', 'error');
+      }
+    },
+    [watches, refreshWatchlist, showToast],
+  );
+
+  const updateWatchThreshold = useCallback(
+    async (symbol: string, threshold: number | null) => {
+      try {
+        const response = await fetch(`/api/watchlist/${encodeURIComponent(symbol)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ threshold_pct: threshold }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        await refreshWatchlist();
+      } catch {
+        showToast('Could not update the alert threshold.', 'error');
+      }
+    },
+    [refreshWatchlist, showToast],
+  );
+
+  const selectBySymbol = useCallback(
+    (symbol: string) => {
+      const coin = coins.find((entry) => entry.symbol === symbol);
+      if (coin) setSelectedCoin(coin);
+    },
+    [coins],
+  );
 
   const handleExportPng = async () => {
     const svg = document.querySelector<SVGSVGElement>('svg[data-exportable="true"]');
@@ -436,6 +502,20 @@ export default function Home() {
           ))}
         </select>
 
+        <button
+          type="button"
+          aria-pressed={watchOnly}
+          onClick={() => setWatchOnly((current) => !current)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors ${
+            watchOnly
+              ? 'border-primary bg-primary text-on-primary'
+              : 'border-outline bg-surface-2 text-content-muted hover:text-content'
+          }`}
+        >
+          <Star size={13} className={watchOnly ? 'fill-current' : undefined} />
+          Watchlist
+        </button>
+
         <div className="ml-auto flex items-center gap-2">
           <Button
             variant="outline"
@@ -559,11 +639,30 @@ export default function Home() {
                   sort={sort}
                   onToggleSort={toggleSort}
                   onSelect={setSelectedCoin}
+                  watchedSymbols={watchedSymbols}
+                  onToggleWatch={toggleWatch}
                 />
               )}
             </div>
 
-            <aside className="min-w-0">
+            <aside className="min-w-0 space-y-4">
+              <WatchlistPanel
+                watches={watches}
+                useAtl={useAtl}
+                colorFor={colorFor}
+                onSelect={selectBySymbol}
+                onRemove={(symbol) => {
+                  const coin = coins.find((entry) => entry.symbol === symbol);
+                  if (coin) {
+                    void toggleWatch(coin);
+                  } else {
+                    void fetch(`/api/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }).then(
+                      refreshWatchlist,
+                    );
+                  }
+                }}
+                onThresholdChange={updateWatchThreshold}
+              />
               <RankedList coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onSelect={setSelectedCoin} />
             </aside>
           </section>
@@ -578,6 +677,8 @@ export default function Home() {
           onClose={() => setSelectedCoin(null)}
           onCompareToggle={toggleCompare}
           isCompared={compareSymbols.includes(selectedCoin.symbol)}
+          onWatchToggle={toggleWatch}
+          isWatched={watchedSymbols.has(selectedCoin.symbol)}
         />
       )}
     </div>
