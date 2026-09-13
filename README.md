@@ -92,6 +92,16 @@ CoinGecko metadata / market caps
 
 When `API_KEY` is configured, every `/api/*` request must include an `X-API-Key` header. The bundled frontend proxies requests server-side and adds the header for you.
 
+### HTTPS with Caddy (optional) 🔒
+
+The compose file ships an optional [Caddy](https://caddyserver.com/) reverse proxy that terminates TLS automatically:
+
+```bash
+DOMAIN=radar.example.com docker compose --profile proxy up -d --build
+```
+
+Point `DOMAIN` at a hostname that resolves to your server and Caddy will obtain a Let's Encrypt certificate on first start; keep the default (`localhost`) for local testing with Caddy's internal CA. Ports 80/443 are exposed by the proxy while the frontend keeps its 3000 mapping for direct access.
+
 ## Development 🛠️
 
 Backend (Python 3.11+):
@@ -100,9 +110,12 @@ Backend (Python 3.11+):
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q
+ruff check .          # lint
+python -m pytest -q   # tests
 uvicorn main:app --reload
 ```
+
+The repo also ships a `.pre-commit-config.yaml` (ruff + basic hygiene hooks); install it with `pip install pre-commit && pre-commit install`.
 
 Frontend (Node.js 20.9+):
 
@@ -123,9 +136,10 @@ npm run dev
 
 ## Testing ✅
 
-- Backend: `cd backend && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion logic and API tests).
+- Backend: `cd backend && ruff check . && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion/verification logic and API tests).
 - Frontend: `cd frontend && npm run lint && npm test && npm run build`.
-- CI runs all of the above plus Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
+- End-to-end (Playwright, requires a running dashboard): `cd frontend && E2E_BASE_URL=http://localhost:3000 npm run test:e2e`.
+- CI runs backend lint + tests, frontend lint + tests + build, and Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
 
 ## License 📄
 

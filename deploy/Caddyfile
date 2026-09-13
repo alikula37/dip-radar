@@ -1,0 +1,6 @@
+# Automatic HTTPS via Let's Encrypt when DOMAIN resolves to this host.
+# For local testing keep the default (Caddy issues a local CA certificate).
+{$DOMAIN:localhost} {
+	encode gzip
+	reverse_proxy frontend:3000
+}

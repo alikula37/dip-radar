@@ -57,5 +57,24 @@ services:
       - backend
     restart: unless-stopped
 
+  # Optional HTTPS reverse proxy: `docker compose --profile proxy up -d`
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:
