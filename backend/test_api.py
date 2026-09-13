@@ -37,18 +37,24 @@ def seed_coin(symbol="ETHBTC", is_pre_2021=True, market_cap=1000.0):
     db.close()
 
 
-def test_get_coins_returns_only_pre_2021_with_market_cap_sizes():
+def test_get_coins_returns_only_coins_with_price_history():
     seed_coin("ETHBTC", is_pre_2021=True, market_cap=1000.0)
-    seed_coin("NEWBTC", is_pre_2021=False, market_cap=999999.0)
+    seed_coin("ICPUSDT", is_pre_2021=False, market_cap=500.0)
+
+    db = SessionLocal()
+    db.add(Coin(symbol="JUNKUSDT", is_pre_2021=False, listed_checked=True, market_cap=1.0))
+    db.commit()
+    db.close()
 
     response = client.get("/api/coins")
 
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) == 1
-    assert payload[0]["symbol"] == "ETHBTC"
+    assert [coin["symbol"] for coin in payload] == ["ETHBTC", "ICPUSDT"]
+    # sqrt scaling across the whole dataset: the largest cap gets 100%.
     assert payload[0]["bubble_size_event"] == 100.0
     assert payload[0]["bubble_size_atl"] == 100.0
+    assert payload[1]["bubble_size_event"] < 100.0
 
 
 def test_history_returns_latest_klines_in_ascending_order():
@@ -85,6 +91,12 @@ def test_meta_reports_tracked_coins_and_sync_state():
     seed_coin()
     db = SessionLocal()
     db.add(Meta(key="last_updated", value="2026-01-01T00:00:00+00:00"))
+    db.add(
+        Meta(
+            key="sync_progress",
+            value='{"phase": "klines", "processed": 10, "total": 100}',
+        )
+    )
     db.commit()
     db.close()
 
@@ -95,6 +107,8 @@ def test_meta_reports_tracked_coins_and_sync_state():
     assert payload["tracked_coins"] == 1
     assert payload["sync_in_progress"] is False
     assert payload["last_updated"] == "2026-01-01T00:00:00+00:00"
+    assert payload["sync_progress"]["phase"] == "klines"
+    assert payload["sync_progress"]["processed"] == 10
 
 
 def test_refresh_schedules_background_sync(monkeypatch):

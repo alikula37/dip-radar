@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -85,7 +86,7 @@ async def security_middleware(request: Request, call_next):
 def get_coins(db: Session = Depends(get_db)):
     coins = (
         db.query(models.Coin)
-        .filter(models.Coin.is_pre_2021.is_(True))
+        .filter(models.Coin.current_price_btc.isnot(None))
         .order_by(func.coalesce(models.Coin.market_cap, -1).desc())
         .all()
     )
@@ -115,11 +116,21 @@ def get_coin_history(
 @app.get("/api/meta", response_model=schemas.MetaResponse)
 def get_meta(db: Session = Depends(get_db)):
     last_updated = db.query(models.Meta).filter(models.Meta.key == "last_updated").first()
-    count = db.query(models.Coin).filter(models.Coin.is_pre_2021.is_(True)).count()
+    progress = db.query(models.Meta).filter(models.Meta.key == "sync_progress").first()
+    count = db.query(models.Coin).filter(models.Coin.current_price_btc.isnot(None)).count()
+
+    sync_progress = None
+    if progress and progress.value:
+        try:
+            sync_progress = json.loads(progress.value)
+        except ValueError:
+            sync_progress = None
+
     return schemas.MetaResponse(
         last_updated=last_updated.value if last_updated else None,
         tracked_coins=count,
         sync_in_progress=is_locked(db),
+        sync_progress=sync_progress,
     )
 
 

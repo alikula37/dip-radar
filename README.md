@@ -4,14 +4,19 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 
 ## Features ✨
 
-- **Interactive Bubble Chart**: Visualizes coins using a D3.js force simulation. Bubble **size represents market cap** (square-root scale) and bubble **color represents the distance from the dip** (green = close, red = far).
-- **Broad Coverage**: Tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates.
-- **Dual Reference Points**: Toggle between "Since 2021" (event low) and "All Time Low" (ATL) to see how far coins are from their historical bottoms.
-- **Automated Data Sync**: A dedicated APScheduler worker runs daily to fetch the latest daily candles and metadata. A cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint.
-- **Resilient Data Fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
-- **Duplicate-free Storage**: Daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
-- **Local Caching**: SQLite caching (WAL mode) ensures fast load times and respects API rate limits.
-- **Dark Mode UI**: Includes a table view, search, sorting, a per-coin price-history chart and automatic status polling during the initial sync.
+- **Insight-first scatter chart**: X axis is market cap (log scale), Y axis is the distance from the historical dip. Position now carries meaning: the shaded "watch zone" highlights established coins (≥ $50M cap) that trade within 50% of their dip. Zoom/pan with the mouse, hover for a tooltip, click for details.
+- **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size also encodes closeness — the closer a coin is to its dip, the bigger its bubble. Volume and exact values are in the tooltip.
+- **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with a "falling toward dip" mode based on 7-day price movement and quick filters for minimum market cap and volume.
+- **Trend, sharing and export**: 7d/30d trend badges in the chart tooltip and table, shareable URL state for filters/views and CSV export of the filtered list. A default ≥ $1M volume filter keeps dead coins out of the way.
+- **Three views and comparison**: scatter, treemap (area = market cap, color = distance) and a sortable table. Up to three coins can be compared on a log-scaled relative-performance chart (start = 1x) with hover readouts of exact multiples and percentage changes; the current chart can be exported as PNG. The modal's 365-day price chart also shows date and price on hover.
+- **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
+- **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates. Pre-2021 listings are always included; newer coins (like ICP) are tracked once their market cap passes `MIN_TRACKED_MARKET_CAP` (default $10M).
+- **Dual reference points**: toggle between "Since 2021" (event low) and "All Time Low" (ATL).
+- **Automated data sync**: a dedicated APScheduler worker runs daily; a cross-process lock prevents concurrent syncs from the worker and the manual refresh endpoint. Live progress (phase + percentage) is reported to the UI.
+- **Parallel and verified fetching**: candles are synced with a worker pool (`SYNC_FETCH_WORKERS`, default 4) to cut first-run time, and Binance prices are cross-checked against an independent CoinGecko quote (`PRICE_VERIFY_TOLERANCE_PCT`, default 5%).
+- **Resilient data fetching**: Binance requests automatically fall back to the public market-data mirror (`data-api.binance.vision`) when `api.binance.com` is unreachable. No third-party proxies are used; you can still point the app at your own proxy via `HTTP_PROXY`/`HTTPS_PROXY`.
+- **Duplicate-free storage**: daily candles are upserted on `(symbol, timestamp)`, so re-syncing never duplicates rows and the in-progress candle is updated in place.
+- **Design system**: Tailwind CSS 4 with shared tokens and UI components (buttons, badges, stat cards, segmented controls); table view, search, sorting, detail modal with a 365-day price chart.
 
 ## Architecture 🏗️
 
@@ -66,6 +71,9 @@ CoinGecko metadata / market caps
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins for direct API access. |
 | `BACKEND_URL` | `http://localhost:8000` | Backend URL used by the frontend `/api` proxy. Docker Compose sets `http://backend:8000`. |
 | `SYNC_REQUEST_DELAY` | `0.15` | Seconds between Binance requests during a sync. |
+| `SYNC_FETCH_WORKERS` | `4` | Concurrent workers used while fetching candle history. |
+| `PRICE_VERIFY_TOLERANCE_PCT` | `5` | Max deviation from CoinGecko before a price is flagged unverified. |
+| `MIN_TRACKED_MARKET_CAP` | `10000000` | Post-2021 coins below this market cap are not price-tracked (pre-2021 coins are always tracked). |
 | `COINGECKO_BATCH_DELAY` | `2` | Seconds between CoinGecko market batches. |
 | `LOG_LEVEL` | `INFO` | Python log level for the backend and worker. |
 | `API_KEY` | unset | Optional. When set, `/api/*` requires a matching `X-API-Key` header. The frontend proxy adds it automatically. |
@@ -84,6 +92,16 @@ CoinGecko metadata / market caps
 
 When `API_KEY` is configured, every `/api/*` request must include an `X-API-Key` header. The bundled frontend proxies requests server-side and adds the header for you.
 
+### HTTPS with Caddy (optional) 🔒
+
+The compose file ships an optional [Caddy](https://caddyserver.com/) reverse proxy that terminates TLS automatically:
+
+```bash
+DOMAIN=radar.example.com docker compose --profile proxy up -d --build
+```
+
+Point `DOMAIN` at a hostname that resolves to your server and Caddy will obtain a Let's Encrypt certificate on first start; keep the default (`localhost`) for local testing with Caddy's internal CA. Ports 80/443 are exposed by the proxy while the frontend keeps its 3000 mapping for direct access.
+
 ## Development 🛠️
 
 Backend (Python 3.11+):
@@ -92,9 +110,12 @@ Backend (Python 3.11+):
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q
+ruff check .          # lint
+python -m pytest -q   # tests
 uvicorn main:app --reload
 ```
+
+The repo also ships a `.pre-commit-config.yaml` (ruff + basic hygiene hooks); install it with `pip install pre-commit && pre-commit install`.
 
 Frontend (Node.js 20.9+):
 
@@ -115,9 +136,10 @@ npm run dev
 
 ## Testing ✅
 
-- Backend: `cd backend && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion logic and API tests).
+- Backend: `cd backend && ruff check . && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion/verification logic and API tests).
 - Frontend: `cd frontend && npm run lint && npm test && npm run build`.
-- CI runs all of the above plus Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
+- End-to-end (Playwright, requires a running dashboard): `cd frontend && E2E_BASE_URL=http://localhost:3000 npm run test:e2e`.
+- CI runs backend lint + tests, frontend lint + tests + build, and Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
 
 ## License 📄
 
