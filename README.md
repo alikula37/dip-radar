@@ -8,6 +8,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size also encodes closeness — the closer a coin is to its dip, the bigger its bubble. Volume and exact values are in the tooltip.
 - **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with a "falling toward dip" mode based on 7-day price movement and quick filters for minimum market cap and volume.
 - **Trend, sharing and export**: 7d/30d trend badges in the chart tooltip and table, shareable URL state for filters/views and CSV export of the filtered list. A default ≥ $1M volume filter keeps dead coins out of the way.
+- **Three views and comparison**: scatter, treemap (area = market cap, color = distance) and a sortable table. Up to three coins can be compared on a normalized 365-day chart, and the current chart can be exported as PNG.
 - **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
 - **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates. Pre-2021 listings are always included; newer coins (like ICP) are tracked once their market cap passes `MIN_TRACKED_MARKET_CAP` (default $10M).
 - **Dual reference points**: toggle between "Since 2021" (event low) and "All Time Low" (ATL).

@@ -357,7 +357,13 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
 
   return (
     <div ref={containerRef} className="relative h-[560px] w-full">
-      <svg ref={svgRef} className="h-full w-full" role="img" aria-label="Altcoin dip scatter chart" />
+      <svg
+        ref={svgRef}
+        className="h-full w-full"
+        role="img"
+        aria-label="Altcoin dip scatter chart"
+        data-exportable="true"
+      />
 
       {activeHover && (
         <div
