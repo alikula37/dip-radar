@@ -12,12 +12,20 @@ type Mode = 'closest' | 'approaching';
 interface RankedListProps {
   coins: Coin[];
   useAtl: boolean;
+  referenceLabel: string;
   colorFor: (distance: number) => string;
   onSelect: (coin: Coin) => void;
   limit?: number;
 }
 
-export default function RankedList({ coins, useAtl, colorFor, onSelect, limit = 8 }: RankedListProps) {
+export default function RankedList({
+  coins,
+  useAtl,
+  referenceLabel,
+  colorFor,
+  onSelect,
+  limit = 8,
+}: RankedListProps) {
   const [mode, setMode] = useState<Mode>('closest');
 
   const distanceOf = useCallback(
@@ -52,7 +60,7 @@ export default function RankedList({ coins, useAtl, colorFor, onSelect, limit = 
         <h2 className="text-sm font-semibold text-content">
           {mode === 'closest' ? 'Closest to dip' : 'Falling toward dip'}
         </h2>
-        <span className="text-[11px] text-content-muted">{useAtl ? 'All-time low' : 'Since 2021'}</span>
+        <span className="text-[11px] text-content-muted">{referenceLabel}</span>
       </div>
 
       <div className="mt-2">

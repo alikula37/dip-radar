@@ -138,6 +138,43 @@ def test_refresh_returns_409_when_sync_is_running():
     assert response.status_code == 409
 
 
+def test_get_coins_with_custom_low_window():
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            name="Ethereum",
+            is_pre_2021=True,
+            listed_checked=True,
+            market_cap=1000.0,
+            current_price_btc=1.0,
+            event_low=0.2,
+            all_time_low=0.2,
+            distance_pct_event=400.0,
+            distance_pct_atl=400.0,
+        )
+    )
+    db.add_all(
+        [
+            Kline(symbol="ETHBTC", timestamp=datetime(2020, 1, 1), open=1, high=1, low=0.5, close=1, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2021, 6, 1), open=1, high=1, low=0.2, close=1, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2022, 6, 1), open=1, high=1, low=0.4, close=1, volume=1),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    default_payload = client.get("/api/coins").json()[0]
+    assert default_payload["event_low"] == 0.2
+    assert default_payload["distance_pct_event"] == pytest.approx(400.0)
+
+    custom_payload = client.get("/api/coins", params={"low_from": "2022-01-01"}).json()[0]
+    assert custom_payload["event_low"] == 0.4
+    assert custom_payload["distance_pct_event"] == pytest.approx(150.0)
+
+    assert client.get("/api/coins", params={"low_from": "not-a-date"}).status_code == 422
+
+
 def test_watchlist_crud():
     seed_coin("ETHBTC")
 

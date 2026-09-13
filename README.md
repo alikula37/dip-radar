@@ -8,6 +8,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size also encodes closeness — the closer a coin is to its dip, the bigger its bubble. Volume and exact values are in the tooltip.
 - **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with a "falling toward dip" mode based on 7-day price movement and quick filters for minimum market cap and volume.
 - **Trend, sharing and export**: 7d/30d trend badges in the chart tooltip and table, shareable URL state for filters/views and CSV export of the filtered list. A default ≥ $1M volume filter keeps dead coins out of the way.
+- **Custom reference windows and listing filters**: compute distances against "Since 2021", the all-time low, or any custom start date (`Custom` picker); filter the universe by listing era (before 2021 / 2021+); the detail chart switches between 90d, 1y and all history.
 - **Watchlist and alerts**: star coins from the table or the detail modal and set per-coin dip thresholds. After each sync the worker checks the watchlist and notifies you through a webhook and/or Telegram when a coin crosses below its threshold (no repeat spam while it stays below).
 - **Three views and comparison**: scatter, treemap (area = market cap, color = distance) and a sortable table. Up to three coins can be compared on a log-scaled relative-performance chart (start = 1x) with hover/tap readouts of exact multiples and percentage changes; the current chart can be exported as PNG. The modal's 365-day price chart also shows date and price on hover or tap.
 - **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
@@ -88,8 +89,8 @@ CoinGecko metadata / market caps
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/coins` | All tracked pre-2021 coins with distances and bubble sizes. |
-| `GET` | `/api/coins/{symbol}/history?limit=365` | Most recent daily candles for a coin (ascending). |
+| `GET` | `/api/coins` | All tracked pre-2021 coins with distances and bubble sizes. Optional `?low_from=YYYY-MM-DD` recomputes the event low from a custom start date. |
+| `GET` | `/api/coins/{symbol}/history?limit=365` | Most recent daily candles for a coin (ascending, max 5000). |
 | `GET` | `/api/meta` | Last sync time, tracked coin count and whether a sync is running. |
 | `POST` | `/api/refresh` | Starts a background sync. Returns `409` if one is already running. |
 | `GET` | `/api/watchlist` | Watched coins with distances, thresholds and last alert time. |

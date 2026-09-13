@@ -1,10 +1,10 @@
 'use client';
 
 import { Star, X } from 'lucide-react';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import HistoryChart from '@/components/HistoryChart';
-import { DistanceBadge } from '@/components/ui';
+import { DistanceBadge, Segmented } from '@/components/ui';
 import { formatBtc, formatUsd } from '@/lib/colors';
 import type { Coin } from '@/types';
 
@@ -17,6 +17,7 @@ interface CoinModalProps {
   isCompared?: boolean;
   onWatchToggle?: (coin: Coin) => void;
   isWatched?: boolean;
+  referenceLabel?: string;
 }
 
 export default function CoinModal({
@@ -28,7 +29,9 @@ export default function CoinModal({
   isCompared = false,
   onWatchToggle,
   isWatched = false,
+  referenceLabel = 'Since 2021',
 }: CoinModalProps) {
+  const [rangeDays, setRangeDays] = useState<'90' | '365' | '5000'>('365');
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -114,9 +117,7 @@ export default function CoinModal({
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-outline bg-surface-2 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-content-muted">
-              {useAtl ? 'From all-time low' : 'From 2021 low'}
-            </p>
+            <p className="text-[11px] uppercase tracking-wide text-content-muted">From {referenceLabel}</p>
             <div className="mt-1">
               <DistanceBadge value={activeDistance} color={colorFor(activeDistance)} />
             </div>
@@ -129,7 +130,7 @@ export default function CoinModal({
 
         <div className="mt-3 space-y-1.5 rounded-xl border border-outline bg-surface-2 p-3 text-xs">
           <div className="flex justify-between">
-            <span className="text-content-muted">Since 2021</span>
+            <span className="text-content-muted">{referenceLabel}</span>
             <span className="font-mono text-content">{useAtl ? '' : '• '}{formatPercentValue(coin.distance_pct_event)}</span>
           </div>
           <div className="flex justify-between">
@@ -175,8 +176,20 @@ export default function CoinModal({
         </div>
 
         <div className="mt-4">
-          <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">Last 365 days</p>
-          <HistoryChart symbol={coin.symbol} />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-[11px] uppercase tracking-wide text-content-muted">Price history</p>
+            <Segmented
+              ariaLabel="History range"
+              value={rangeDays}
+              onChange={setRangeDays}
+              options={[
+                { value: '90', label: '90d' },
+                { value: '365', label: '1y' },
+                { value: '5000', label: 'All' },
+              ]}
+            />
+          </div>
+          <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} />
         </div>
       </div>
     </div>

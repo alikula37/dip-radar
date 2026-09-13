@@ -11,7 +11,8 @@ import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
-import { downloadCsv, trendDelta } from '@/lib/coins';
+import { downloadCsv, matchesListingFilter, trendDelta } from '@/lib/coins';
+import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import { exportSvgToPng } from '@/lib/exportImage';
 import type { Coin, Meta, Watch } from '@/types';
@@ -57,6 +58,8 @@ export default function Home() {
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
   const [watches, setWatches] = useState<Watch[]>([]);
   const [watchOnly, setWatchOnly] = useState(false);
+  const [lowFrom, setLowFrom] = useState<string | null>(null);
+  const [listingFilter, setListingFilter] = useState<ListingFilter>('any');
   const [minCap, setMinCap] = useState(0);
   const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
@@ -79,9 +82,10 @@ export default function Home() {
     toastTimer.current = window.setTimeout(() => setToast(null), 4500);
   }, []);
 
-  const fetchCoins = useCallback(async () => {
+  const fetchCoinsFor = useCallback(async (referenceLowFrom: string | null) => {
     try {
-      const response = await fetch('/api/coins', { cache: 'no-store' });
+      const url = referenceLowFrom ? `/api/coins?low_from=${encodeURIComponent(referenceLowFrom)}` : '/api/coins';
+      const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: Coin[] = await response.json();
       setCoins(data);
@@ -90,6 +94,16 @@ export default function Home() {
       setError('Could not reach the backend API. Is it running?');
     }
   }, []);
+
+  const fetchCoins = useCallback(() => fetchCoinsFor(lowFrom), [fetchCoinsFor, lowFrom]);
+
+  const changeLowFrom = useCallback(
+    (value: string | null) => {
+      setLowFrom(value);
+      void fetchCoinsFor(value);
+    },
+    [fetchCoinsFor],
+  );
 
   const fetchMeta = useCallback(async (): Promise<Meta | null> => {
     try {
@@ -108,8 +122,15 @@ export default function Home() {
 
     const load = async () => {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const initialLowFrom = params.get('low');
+        if (initialLowFrom) setLowFrom(initialLowFrom);
+
+        const coinsUrl = initialLowFrom
+          ? `/api/coins?low_from=${encodeURIComponent(initialLowFrom)}`
+          : '/api/coins';
         const [coinsResponse, metaResponse] = await Promise.all([
-          fetch('/api/coins', { cache: 'no-store' }),
+          fetch(coinsUrl, { cache: 'no-store' }),
           fetch('/api/meta', { cache: 'no-store' }),
         ]);
         const watchlistResponse = await fetch('/api/watchlist', { cache: 'no-store' });
@@ -122,7 +143,6 @@ export default function Home() {
         setError(null);
 
         // Restore the view state encoded in the URL.
-        const params = new URLSearchParams(window.location.search);
         if (params.get('ref') === 'atl') setUseAtl(true);
         const query = params.get('q');
         if (query) setSearch(query);
@@ -132,6 +152,8 @@ export default function Home() {
         if (Number.isFinite(volume) && volume > 0) setMinVolume(volume);
         const view = params.get('view');
         if (view === 'table' || view === 'scatter' || view === 'treemap') setViewMode(view);
+        const listed = params.get('listed');
+        if (listed === 'old' || listed === 'new') setListingFilter(listed);
         const compare = params.get('compare');
         if (compare) {
           setCompareSymbols(compare.split(',').filter(Boolean).slice(0, 3));
@@ -168,13 +190,15 @@ export default function Home() {
     if (selectedCoin) params.set('coin', selectedCoin.symbol);
     if (compareSymbols.length > 0) params.set('compare', compareSymbols.join(','));
     if (watchOnly) params.set('watch', '1');
+    if (lowFrom) params.set('low', lowFrom);
+    if (listingFilter !== 'any') params.set('listed', listingFilter);
     const queryString = params.toString();
     window.history.replaceState(
       null,
       '',
       queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
     );
-  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly]);
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, listingFilter]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -278,6 +302,7 @@ export default function Home() {
           (coin.base_asset ?? '').toLowerCase().includes(query),
       )
       .filter((coin) => !watchOnly || watchedSymbols.has(coin.symbol))
+      .filter((coin) => matchesListingFilter(coin, listingFilter))
       .filter((coin) => (coin.market_cap ?? 0) >= minCap)
       .filter((coin) => (coin.volume_24h ?? 0) >= minVolume);
 
@@ -292,7 +317,7 @@ export default function Home() {
       else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
-  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols]);
+  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols, listingFilter]);
 
   const colorFor = useMemo(() => {
     const distances = filteredCoins
@@ -391,6 +416,7 @@ export default function Home() {
   const progressPct =
     progress && progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : null;
   const phaseLabel = progress ? (PHASE_LABELS[progress.phase] ?? progress.phase) : 'Syncing';
+  const referenceLabel = useAtl ? 'All-time low' : lowFrom ? `Since ${lowFrom}` : 'Since 2021';
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-[1440px] px-4 pb-12 pt-5 sm:px-6">
@@ -431,8 +457,8 @@ export default function Home() {
 
       <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Tracked coins" value={stats.tracked} hint="Pre-2021 or ≥ $10M cap" />
-        <StatCard label="≤ 25% from dip" value={stats.near25} accent="positive" hint={useAtl ? 'All-time low' : '2021 low'} />
-        <StatCard label="≤ 50% from dip" value={stats.near50} hint={useAtl ? 'All-time low' : '2021 low'} />
+        <StatCard label="≤ 25% from dip" value={stats.near25} accent="positive" hint={referenceLabel} />
+        <StatCard label="≤ 50% from dip" value={stats.near50} hint={referenceLabel} />
         <StatCard label="Median distance" value={`${stats.median.toFixed(0)}%`} hint="Across tracked coins" />
       </section>
 
@@ -470,13 +496,52 @@ export default function Home() {
 
         <Segmented
           ariaLabel="Reference low"
-          value={useAtl ? 'atl' : 'event'}
-          onChange={(value) => setUseAtl(value === 'atl')}
+          value={useAtl ? 'atl' : lowFrom ? 'custom' : 'event'}
+          onChange={(value) => {
+            if (value === 'atl') {
+              setUseAtl(true);
+              return;
+            }
+            setUseAtl(false);
+            if (value === 'event') {
+              if (lowFrom) changeLowFrom(null);
+              return;
+            }
+            const next = lowFrom ?? '2021-01-01';
+            if (!lowFrom) setLowFrom(next);
+            void fetchCoinsFor(next);
+          }}
           options={[
             { value: 'event', label: 'Since 2021' },
             { value: 'atl', label: 'All-time low' },
+            { value: 'custom', label: 'Custom' },
           ]}
         />
+
+        {!useAtl && lowFrom && (
+          <input
+            type="date"
+            value={lowFrom}
+            max={new Date().toISOString().slice(0, 10)}
+            aria-label="Reference window start date"
+            onChange={(event) => {
+              const value = event.target.value || null;
+              changeLowFrom(value);
+            }}
+            className="rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+          />
+        )}
+
+        <select
+          value={listingFilter}
+          onChange={(event) => setListingFilter(event.target.value as ListingFilter)}
+          aria-label="Listing date filter"
+          className="rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+        >
+          <option value="any">Any listing date</option>
+          <option value="old">Listed before 2021</option>
+          <option value="new">Listed in 2021+</option>
+        </select>
 
         <select
           value={minCap}
@@ -663,7 +728,13 @@ export default function Home() {
                 }}
                 onThresholdChange={updateWatchThreshold}
               />
-              <RankedList coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onSelect={setSelectedCoin} />
+              <RankedList
+                coins={filteredCoins}
+                useAtl={useAtl}
+                referenceLabel={referenceLabel}
+                colorFor={colorFor}
+                onSelect={setSelectedCoin}
+              />
             </aside>
           </section>
         </>
@@ -679,6 +750,7 @@ export default function Home() {
           isCompared={compareSymbols.includes(selectedCoin.symbol)}
           onWatchToggle={toggleWatch}
           isWatched={watchedSymbols.has(selectedCoin.symbol)}
+          referenceLabel={referenceLabel}
         />
       )}
     </div>
