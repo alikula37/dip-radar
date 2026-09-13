@@ -75,6 +75,39 @@ describe("HistoryChart", () => {
     expect(screen.getByText(/2\.5 BTC/)).toBeTruthy();
   });
 
+  it("draws a marker for the as-of date when it is inside the range", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          { timestamp: "2025-01-01T00:00:00", open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 },
+          { timestamp: "2025-01-02T00:00:00", open: 1.5, high: 3, low: 1, close: 2.5, volume: 12 },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    render(<HistoryChart symbol="ETHBTC" marker="2025-01-02" />);
+
+    expect(await screen.findByTestId("history-marker")).toBeTruthy();
+  });
+
+  it("hides the marker when the as-of date is outside the range", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          { timestamp: "2025-01-01T00:00:00", open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 },
+          { timestamp: "2025-01-02T00:00:00", open: 1.5, high: 3, low: 1, close: 2.5, volume: 12 },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    render(<HistoryChart symbol="ETHBTC" marker="2020-01-01" />);
+
+    await screen.findByRole("img", { name: /ETHBTC price history/i });
+    expect(screen.queryByTestId("history-marker")).toBeNull();
+  });
+
   it("shows an error message when the request fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("missing", { status: 404 }));
 

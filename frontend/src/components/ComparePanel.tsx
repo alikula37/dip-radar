@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { X } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import { Segmented } from '@/components/ui';
 import type { Kline } from '@/types';
 
 const WIDTH = 900;
@@ -39,7 +40,8 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
   const containerRef = useRef<HTMLDivElement>(null);
   const [series, setSeries] = useState<Record<string, SeriesValue>>({});
   const [hover, setHover] = useState<HoverState | null>(null);
-  const key = symbols.join(',');
+  const [range, setRange] = useState<'90' | '365' | '5000'>('365');
+  const key = `${symbols.join(',')}|${range}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +49,7 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
     Promise.all(
       symbols.map(async (symbol) => {
         try {
-          const response = await fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=365`, {
+          const response = await fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=${range}`, {
             cache: 'no-store',
           });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -163,6 +165,16 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
             Each line starts at 1.0x; hover or tap the chart to read exact multiples and percentage changes.
           </p>
         </div>
+        <Segmented
+          ariaLabel="Comparison range"
+          value={range}
+          onChange={setRange}
+          options={[
+            { value: '90', label: '90d' },
+            { value: '365', label: '1y' },
+            { value: '5000', label: 'All' },
+          ]}
+        />
         <div className="flex items-center gap-2">
           {symbols.map((symbol, index) => (
             <span

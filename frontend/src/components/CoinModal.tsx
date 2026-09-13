@@ -18,6 +18,7 @@ interface CoinModalProps {
   onWatchToggle?: (coin: Coin) => void;
   isWatched?: boolean;
   referenceLabel?: string;
+  asOf?: string | null;
 }
 
 export default function CoinModal({
@@ -30,6 +31,7 @@ export default function CoinModal({
   onWatchToggle,
   isWatched = false,
   referenceLabel = 'Since 2021',
+  asOf = null,
 }: CoinModalProps) {
   const [rangeDays, setRangeDays] = useState<'90' | '365' | '5000'>('365');
   useEffect(() => {
@@ -189,7 +191,7 @@ export default function CoinModal({
               ]}
             />
           </div>
-          <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} />
+          <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} />
         </div>
       </div>
     </div>

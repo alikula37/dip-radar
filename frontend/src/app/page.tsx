@@ -824,6 +824,7 @@ export default function Home() {
           onWatchToggle={toggleWatch}
           isWatched={watchedSymbols.has(selectedCoin.symbol)}
           referenceLabel={referenceLabel}
+          asOf={asOf}
         />
       )}
     </div>
