@@ -3,6 +3,8 @@
 import * as d3 from 'd3';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import { TrendBadge } from '@/components/ui';
+import { trendDelta } from '@/lib/coins';
 import {
   distanceLegendGradient,
   formatBtc,
@@ -375,6 +377,18 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
               <dt className="text-content-muted">Distance to dip</dt>
               <dd className="font-mono font-semibold" style={{ color: colorScale(activeHover.point.distance) }}>
                 {formatPct(activeHover.point.distance)}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-content-muted">7d trend</dt>
+              <dd>
+                <TrendBadge value={trendDelta(activeHover.point.coin, useAtl, 7)} />
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-content-muted">30d trend</dt>
+              <dd>
+                <TrendBadge value={trendDelta(activeHover.point.coin, useAtl, 30)} />
               </dd>
             </div>
             <div className="flex justify-between">

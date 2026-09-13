@@ -1,12 +1,14 @@
 'use client';
 
+import { AlertTriangle } from 'lucide-react';
 import React from 'react';
 
-import { DistanceBadge } from '@/components/ui';
+import { DistanceBadge, TrendBadge } from '@/components/ui';
+import { trendDelta } from '@/lib/coins';
 import { formatBtc, formatUsd, formatUsdCompact } from '@/lib/colors';
 import type { Coin } from '@/types';
 
-export type SortKey = 'symbol' | 'distance' | 'market_cap' | 'volume_24h';
+export type SortKey = 'symbol' | 'distance' | 'trend_7d' | 'market_cap' | 'volume_24h';
 export type SortDirection = 'asc' | 'desc';
 
 interface CoinTableProps {
@@ -22,6 +24,7 @@ const COLUMNS: { key: SortKey | null; label: string; align?: 'right' }[] = [
   { key: 'symbol', label: 'Coin' },
   { key: null, label: 'Price (BTC)', align: 'right' },
   { key: 'distance', label: 'Distance to dip' },
+  { key: 'trend_7d', label: '7d trend' },
   { key: 'market_cap', label: 'Market cap', align: 'right' },
   { key: 'volume_24h', label: '24h volume', align: 'right' },
 ];
@@ -82,8 +85,15 @@ export default function CoinTable({ coins, useAtl, colorFor, sort, onToggleSort,
                       <span className="h-[22px] w-[22px] rounded-full bg-surface-3" />
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-content">
+                      <p className="flex items-center gap-1 truncate text-sm text-content">
                         {coin.base_asset ?? coin.symbol.replace(/BTC$/, '')}
+                        {coin.price_verified === false && (
+                          <AlertTriangle
+                            size={13}
+                            className="shrink-0 text-[#f87171]"
+                            aria-label={`Price differs from CoinGecko by ${coin.price_deviation_pct ?? '?'}%`}
+                          />
+                        )}
                       </p>
                       <p className="truncate text-[11px] text-content-muted">{coin.name ?? coin.symbol}</p>
                     </div>
@@ -94,6 +104,9 @@ export default function CoinTable({ coins, useAtl, colorFor, sort, onToggleSort,
                 </td>
                 <td className="px-3 py-2">
                   <DistanceBadge value={distance} color={colorFor(distance ?? 0)} />
+                </td>
+                <td className="px-3 py-2">
+                  <TrendBadge value={trendDelta(coin, useAtl, 7)} />
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs text-content">
                   {formatUsd(coin.market_cap)}
