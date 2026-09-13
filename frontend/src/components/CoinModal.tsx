@@ -1,6 +1,6 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import React, { useEffect } from 'react';
 
 import HistoryChart from '@/components/HistoryChart';
@@ -15,6 +15,8 @@ interface CoinModalProps {
   onClose: () => void;
   onCompareToggle?: (coin: Coin) => void;
   isCompared?: boolean;
+  onWatchToggle?: (coin: Coin) => void;
+  isWatched?: boolean;
 }
 
 export default function CoinModal({
@@ -24,6 +26,8 @@ export default function CoinModal({
   onClose,
   onCompareToggle,
   isCompared = false,
+  onWatchToggle,
+  isWatched = false,
 }: CoinModalProps) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -62,6 +66,21 @@ export default function CoinModal({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onWatchToggle && (
+              <button
+                type="button"
+                onClick={() => onWatchToggle(coin)}
+                aria-pressed={isWatched}
+                className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  isWatched
+                    ? 'border-primary bg-primary text-on-primary'
+                    : 'border-outline text-content-muted hover:border-outline-strong hover:text-content'
+                }`}
+              >
+                <Star size={12} className={isWatched ? 'fill-current' : undefined} />
+                {isWatched ? 'Watching' : 'Watch'}
+              </button>
+            )}
             {onCompareToggle && (
               <button
                 type="button"
