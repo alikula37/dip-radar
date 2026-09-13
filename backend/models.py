@@ -88,3 +88,13 @@ class SyncLock(Base):
     name = Column(String, primary_key=True)
     acquired_at = Column(DateTime)
     expires_at = Column(DateTime)
+
+
+class Watch(Base):
+    __tablename__ = "watchlist"
+
+    symbol = Column(String, primary_key=True)
+    threshold_pct = Column(Float, nullable=True)  # None -> ALERT_THRESHOLD_PCT
+    created_at = Column(DateTime, default=utcnow_naive)
+    last_distance = Column(Float, nullable=True)
+    last_alerted_at = Column(DateTime, nullable=True)

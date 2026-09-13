@@ -8,6 +8,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Color and size encoding**: color runs from green (close to the dip) to red (far) using a robust p90 domain so outliers do not wash out the palette; bubble size also encodes closeness — the closer a coin is to its dip, the bigger its bubble. Volume and exact values are in the tooltip.
 - **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with a "falling toward dip" mode based on 7-day price movement and quick filters for minimum market cap and volume.
 - **Trend, sharing and export**: 7d/30d trend badges in the chart tooltip and table, shareable URL state for filters/views and CSV export of the filtered list. A default ≥ $1M volume filter keeps dead coins out of the way.
+- **Watchlist and alerts**: star coins from the table or the detail modal and set per-coin dip thresholds. After each sync the worker checks the watchlist and notifies you through a webhook and/or Telegram when a coin crosses below its threshold (no repeat spam while it stays below).
 - **Three views and comparison**: scatter, treemap (area = market cap, color = distance) and a sortable table. Up to three coins can be compared on a log-scaled relative-performance chart (start = 1x) with hover/tap readouts of exact multiples and percentage changes; the current chart can be exported as PNG. The modal's 365-day price chart also shows date and price on hover or tap.
 - **Summary strip**: tracked coin count, how many are within 25%/50% of the dip, and the median distance at a glance.
 - **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to BTC parity using daily BTCUSDT rates. Pre-2021 listings are always included; newer coins (like ICP) are tracked once their market cap passes `MIN_TRACKED_MARKET_CAP` (default $10M).
@@ -78,6 +79,9 @@ CoinGecko metadata / market caps
 | `LOG_LEVEL` | `INFO` | Python log level for the backend and worker. |
 | `API_KEY` | unset | Optional. When set, `/api/*` requires a matching `X-API-Key` header. The frontend proxy adds it automatically. |
 | `RATE_LIMIT_PER_MINUTE` | `120` | Per-client request limit for `/api/*` (0 disables). |
+| `ALERT_THRESHOLD_PCT` | `20` | Default dip-distance threshold for watched coins without their own value. |
+| `ALERT_WEBHOOK_URL` | unset | Optional webhook that receives alert JSON payloads. |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | unset | Optional Telegram bot used to deliver alerts. |
 | `HTTP_PROXY` / `HTTPS_PROXY` | unset | Optional proxy for outbound data-provider requests. |
 
 ## API Endpoints 🔌
@@ -88,6 +92,9 @@ CoinGecko metadata / market caps
 | `GET` | `/api/coins/{symbol}/history?limit=365` | Most recent daily candles for a coin (ascending). |
 | `GET` | `/api/meta` | Last sync time, tracked coin count and whether a sync is running. |
 | `POST` | `/api/refresh` | Starts a background sync. Returns `409` if one is already running. |
+| `GET` | `/api/watchlist` | Watched coins with distances, thresholds and last alert time. |
+| `POST` | `/api/watchlist/{symbol}` | Adds or updates a watched coin (`{"threshold_pct": 20}`). |
+| `DELETE` | `/api/watchlist/{symbol}` | Removes a coin from the watchlist. |
 | `GET` | `/health` | Liveness probe. |
 
 When `API_KEY` is configured, every `/api/*` request must include an `X-API-Key` header. The bundled frontend proxies requests server-side and adds the header for you.

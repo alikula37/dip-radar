@@ -12,6 +12,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session as DBSession
 from urllib3.util.retry import Retry
 
+from alerts import check_alerts
 from database import SessionLocal
 from locks import release_lock, try_acquire_lock
 from metrics import calculate_distance_pct
@@ -782,6 +783,10 @@ def run_sync_with_lock() -> bool:
             return False
         try:
             run_all_syncs(db)
+            try:
+                check_alerts(db)
+            except Exception:
+                logger.exception("Alert evaluation failed; continuing.")
             set_meta(db, "last_sync_status", "success")
             return True
         except Exception as exc:

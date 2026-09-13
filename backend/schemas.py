@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CoinBase(BaseModel):
@@ -50,3 +50,22 @@ class MetaResponse(BaseModel):
     tracked_coins: int
     sync_in_progress: bool = False
     sync_progress: Optional[dict] = None
+
+
+class WatchCreate(BaseModel):
+    threshold_pct: Optional[float] = Field(default=None, ge=0, le=1000)
+
+
+class WatchResponse(BaseModel):
+    symbol: str
+    base_asset: Optional[str] = None
+    name: Optional[str] = None
+    logo_url: Optional[str] = None
+    current_price_btc: Optional[float] = None
+    distance_pct_event: Optional[float] = None
+    distance_pct_atl: Optional[float] = None
+    market_cap: Optional[float] = None
+    threshold_pct: Optional[float] = None
+    last_distance: Optional[float] = None
+    last_alerted_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
