@@ -1,5 +1,10 @@
 FROM python:3.14-slim
 
+# Pull security fixes for base-image packages (e.g. perl-base CVEs).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade perl-base \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

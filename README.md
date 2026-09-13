@@ -132,6 +132,8 @@ npm ci
 npm run dev
 ```
 
+Need data without hitting the providers? `cd backend && python demo_seed.py` inserts five deterministic demo coins with 180 days of candles (the E2E job in CI uses the same script).
+
 ## Troubleshooting 🔧
 
 - **No data appearing?** Check the worker logs:
@@ -143,10 +145,10 @@ npm run dev
 
 ## Testing ✅
 
-- Backend: `cd backend && ruff check . && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion/verification logic and API tests).
+- Backend: `cd backend && ruff check . && python -m pytest -q` (metrics, migrations, fetcher fallback/upsert/conversion/verification logic, alerts and API tests).
 - Frontend: `cd frontend && npm run lint && npm test && npm run build`.
-- End-to-end (Playwright, requires a running dashboard): `cd frontend && E2E_BASE_URL=http://localhost:3000 npm run test:e2e`.
-- CI runs backend lint + tests, frontend lint + tests + build, and Docker image builds on every push and pull request. Dependabot keeps dependencies fresh and Trivy scans the images (advisory).
+- End-to-end (Playwright, requires a running dashboard): `cd frontend && E2E_BASE_URL=http://localhost:3000 npm run test:e2e`. CI starts the stack, seeds demo data and runs this suite automatically.
+- CI runs backend lint + tests, frontend lint + tests + build, the Playwright suite against a seeded stack, and Docker image builds with a blocking Trivy scan for critical CVEs. Dependabot keeps dependencies fresh.
 
 ## License 📄
 
