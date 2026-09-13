@@ -225,6 +225,38 @@ def test_get_coins_with_custom_low_window():
     assert client.get("/api/coins", params={"low_from": "not-a-date"}).status_code == 422
 
 
+def test_dip_history_series_runs_lows_as_we_go():
+    db = SessionLocal()
+    db.add(Coin(symbol="ETHBTC", name="Ethereum", is_pre_2021=True, listed_checked=True, market_cap=1000.0))
+    db.add_all(
+        [
+            Kline(symbol="ETHBTC", timestamp=datetime(2020, 1, 1), open=0.8, high=0.8, low=0.5, close=0.8, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2021, 6, 1), open=0.3, high=0.3, low=0.2, close=0.3, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2022, 6, 1), open=0.5, high=0.5, low=0.4, close=0.5, volume=1),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    response = client.get("/api/coins/ETHBTC/dip-history")
+    assert response.status_code == 200
+    points = response.json()
+    assert len(points) == 3
+
+    # 2020: no 2021+ candles yet, so the event low falls back to the ATL (0.5).
+    assert points[0]["event_low"] == 0.5
+    assert points[0]["distance_pct_event"] == pytest.approx(60.0)
+    # 2021: the event low becomes 0.2.
+    assert points[1]["event_low"] == 0.2
+    assert points[1]["distance_pct_event"] == pytest.approx(50.0)
+    # 2022: the low stays at 0.2, price recovers to 0.5.
+    assert points[2]["event_low"] == 0.2
+    assert points[2]["distance_pct_event"] == pytest.approx(150.0)
+
+    assert client.get("/api/coins/ETHBTC/dip-history", params={"limit": 1}).json()[0]["close"] == 0.5
+    assert client.get("/api/coins/NOPE/dip-history").status_code == 404
+
+
 def test_watchlist_crud():
     seed_coin("ETHBTC")
 

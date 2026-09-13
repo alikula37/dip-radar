@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from database import Base, engine, get_db
-from fetcher import run_sync_with_lock
+from fetcher import EVENT_CUTOFF, run_sync_with_lock
 from locks import is_locked
 from metrics import calculate_bubble_sizes, calculate_distance_pct
 from migrations import run_migrations
@@ -216,6 +216,46 @@ def get_coin_history(
     if not klines:
         raise HTTPException(status_code=404, detail="History not found")
     return list(reversed(klines))
+
+
+@app.get("/api/coins/{symbol}/dip-history", response_model=List[schemas.DipHistoryPoint])
+def get_dip_history(
+    symbol: str,
+    limit: int = Query(default=365, ge=1, le=5000),
+    db: Session = Depends(get_db),
+):
+    """Distance-from-dip series computed on a running basis for one coin."""
+    klines = (
+        db.query(models.Kline)
+        .filter(models.Kline.symbol == symbol)
+        .order_by(models.Kline.timestamp.asc())
+        .all()
+    )
+    if not klines:
+        raise HTTPException(status_code=404, detail="History not found")
+
+    points = []
+    all_time_low = None
+    event_low = None
+
+    for kline in klines:
+        all_time_low = kline.low if all_time_low is None else min(all_time_low, kline.low)
+        if kline.timestamp >= EVENT_CUTOFF:
+            event_low = kline.low if event_low is None else min(event_low, kline.low)
+        effective_event_low = event_low if event_low is not None else all_time_low
+
+        points.append(
+            schemas.DipHistoryPoint(
+                timestamp=kline.timestamp,
+                close=kline.close,
+                all_time_low=all_time_low,
+                event_low=effective_event_low,
+                distance_pct_event=calculate_distance_pct(kline.close, effective_event_low),
+                distance_pct_atl=calculate_distance_pct(kline.close, all_time_low),
+            )
+        )
+
+    return points[-limit:]
 
 
 @app.get("/api/meta", response_model=schemas.MetaResponse)
