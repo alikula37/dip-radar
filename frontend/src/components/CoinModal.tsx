@@ -4,6 +4,7 @@ import { Star, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import HistoryChart from '@/components/HistoryChart';
+import DipHistoryChart from '@/components/DipHistoryChart';
 import { DistanceBadge, Segmented } from '@/components/ui';
 import { formatBtc, formatUsd } from '@/lib/colors';
 import type { Coin } from '@/types';
@@ -192,6 +193,11 @@ export default function CoinModal({
             />
           </div>
           <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} />
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">Distance from dip</p>
+          <DipHistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} />
         </div>
       </div>
     </div>

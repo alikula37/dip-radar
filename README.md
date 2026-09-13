@@ -9,6 +9,7 @@ Dip Radar is a fully dockerized, self-hosted web service that visualizes the per
 - **Ranked "closest to dip" list**: a sidebar leaderboard surfaces the most interesting coins immediately, with a "falling toward dip" mode based on 7-day price movement and quick filters for minimum market cap and volume.
 - **Trend, sharing and export**: 7d/30d trend badges in the chart tooltip and table, shareable URL state for filters/views and CSV export of the filtered list. A default ≥ $1M volume filter keeps dead coins out of the way.
 - **Historical "as of" view**: pick any date and the dashboard recomputes prices, lows, distances and 7d/30d trends as of that day (daily candles, UTC). Market caps intentionally stay current, and the watchlist/alerts always reflect live values.
+- **Dip-distance history**: the detail modal charts how a coin's distance from its dip evolved over time (running lows), sharing the 90d/1y/All range picker and the as-of marker with the price chart.
 - **Custom reference windows and listing filters**: compute distances against "Since 2021", the all-time low, or any custom start date (`Custom` picker); filter the universe by listing era (before 2021 / 2021+); the detail chart switches between 90d, 1y and all history.
 - **Watchlist and alerts**: star coins from the table or the detail modal and set per-coin dip thresholds. After each sync the worker checks the watchlist and notifies you through a webhook and/or Telegram when a coin crosses below its threshold (no repeat spam while it stays below).
 - **Three views and comparison**: scatter, treemap (area = market cap, color = distance) and a sortable table. Up to three coins can be compared on a log-scaled relative-performance chart (start = 1x) with hover/tap readouts of exact multiples and percentage changes; the current chart can be exported as PNG. The modal's 365-day price chart also shows date and price on hover or tap.
@@ -92,6 +93,7 @@ CoinGecko metadata / market caps
 | --- | --- | --- |
 | `GET` | `/api/coins` | Tracked coins with distances and bubble sizes. Optional `?low_from=YYYY-MM-DD` recomputes the event low from a custom start date; `?as_of=YYYY-MM-DD` returns a historical snapshot (price, lows, distances and trends up to that day). |
 | `GET` | `/api/coins/{symbol}/history?limit=365` | Most recent daily candles for a coin (ascending, max 5000). |
+| `GET` | `/api/coins/{symbol}/dip-history?limit=365` | Running distance-from-dip series for a coin (lows computed as of each day). |
 | `GET` | `/api/meta` | Last sync time, tracked coin count and whether a sync is running. |
 | `POST` | `/api/refresh` | Starts a background sync. Returns `409` if one is already running. |
 | `GET` | `/api/watchlist` | Watched coins with distances, thresholds and last alert time. |

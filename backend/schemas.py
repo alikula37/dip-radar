@@ -45,6 +45,15 @@ class KlineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DipHistoryPoint(BaseModel):
+    timestamp: datetime
+    close: float
+    all_time_low: float
+    event_low: float
+    distance_pct_event: float
+    distance_pct_atl: float
+
+
 class MetaResponse(BaseModel):
     last_updated: Optional[str] = None
     tracked_coins: int

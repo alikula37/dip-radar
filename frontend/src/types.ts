@@ -29,6 +29,15 @@ export interface Kline {
   volume: number;
 }
 
+export interface DipHistoryPoint {
+  timestamp: string;
+  close: number;
+  all_time_low: number;
+  event_low: number;
+  distance_pct_event: number;
+  distance_pct_atl: number;
+}
+
 export interface SyncProgress {
   phase: "coins" | "klines" | "metadata" | "done" | "error" | string;
   processed: number;
