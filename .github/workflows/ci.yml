@@ -46,6 +46,43 @@ jobs:
       - name: Build
         run: npm run build
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start backend and frontend
+        run: docker compose up -d --build backend frontend
+      - name: Seed deterministic demo data
+        run: docker compose exec -T backend python demo_seed.py
+      - name: Wait for the dashboard
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000 >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "Dashboard did not become ready" >&2
+          docker compose logs frontend backend >&2
+          exit 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -56,19 +93,17 @@ jobs:
         run: docker build -t dip-radar-worker -f backend/Dockerfile.worker backend
       - name: Build frontend image
         run: docker build -t dip-radar-frontend frontend
-      - name: Scan backend image (advisory)
+      - name: Scan backend image for critical CVEs
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true
         with:
           image-ref: dip-radar-backend
-          severity: CRITICAL,HIGH
-          exit-code: "0"
+          severity: CRITICAL
+          exit-code: "1"
           ignore-unfixed: "true"
-      - name: Scan frontend image (advisory)
+      - name: Scan frontend image for critical CVEs
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true
         with:
           image-ref: dip-radar-frontend
-          severity: CRITICAL,HIGH
-          exit-code: "0"
+          severity: CRITICAL
+          exit-code: "1"
           ignore-unfixed: "true"
