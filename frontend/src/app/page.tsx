@@ -1,6 +1,18 @@
 'use client';
 
-import { Activity, Camera, Download, LayoutDashboard, LayoutGrid, List, RefreshCw, Search, Star } from 'lucide-react';
+import {
+  Activity,
+  Camera,
+  Download,
+  History,
+  LayoutDashboard,
+  LayoutGrid,
+  List,
+  RefreshCw,
+  Search,
+  Star,
+  X,
+} from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import CoinModal from '@/components/CoinModal';
@@ -59,6 +71,7 @@ export default function Home() {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [watchOnly, setWatchOnly] = useState(false);
   const [lowFrom, setLowFrom] = useState<string | null>(null);
+  const [asOf, setAsOf] = useState<string | null>(null);
   const [listingFilter, setListingFilter] = useState<ListingFilter>('any');
   const [minCap, setMinCap] = useState(0);
   const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
@@ -82,10 +95,13 @@ export default function Home() {
     toastTimer.current = window.setTimeout(() => setToast(null), 4500);
   }, []);
 
-  const fetchCoinsFor = useCallback(async (referenceLowFrom: string | null) => {
+  const fetchCoinsWith = useCallback(async (referenceLowFrom: string | null, asOfValue: string | null) => {
     try {
-      const url = referenceLowFrom ? `/api/coins?low_from=${encodeURIComponent(referenceLowFrom)}` : '/api/coins';
-      const response = await fetch(url, { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (asOfValue) params.set('as_of', asOfValue);
+      if (referenceLowFrom) params.set('low_from', referenceLowFrom);
+      const query = params.toString();
+      const response = await fetch(query ? `/api/coins?${query}` : '/api/coins', { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: Coin[] = await response.json();
       setCoins(data);
@@ -95,14 +111,22 @@ export default function Home() {
     }
   }, []);
 
-  const fetchCoins = useCallback(() => fetchCoinsFor(lowFrom), [fetchCoinsFor, lowFrom]);
+  const fetchCoins = useCallback(() => fetchCoinsWith(lowFrom, asOf), [fetchCoinsWith, lowFrom, asOf]);
 
   const changeLowFrom = useCallback(
     (value: string | null) => {
       setLowFrom(value);
-      void fetchCoinsFor(value);
+      void fetchCoinsWith(value, asOf);
     },
-    [fetchCoinsFor],
+    [fetchCoinsWith, asOf],
+  );
+
+  const changeAsOf = useCallback(
+    (value: string | null) => {
+      setAsOf(value);
+      void fetchCoinsWith(lowFrom, value);
+    },
+    [fetchCoinsWith, lowFrom],
   );
 
   const fetchMeta = useCallback(async (): Promise<Meta | null> => {
@@ -123,12 +147,20 @@ export default function Home() {
     const load = async () => {
       try {
         const params = new URLSearchParams(window.location.search);
+        const initialReference = new URLSearchParams();
+        const initialAsOf = params.get('asof');
+        if (initialAsOf) {
+          setAsOf(initialAsOf);
+          initialReference.set('as_of', initialAsOf);
+        }
         const initialLowFrom = params.get('low');
-        if (initialLowFrom) setLowFrom(initialLowFrom);
+        if (initialLowFrom) {
+          setLowFrom(initialLowFrom);
+          initialReference.set('low_from', initialLowFrom);
+        }
+        const initialQuery = initialReference.toString();
 
-        const coinsUrl = initialLowFrom
-          ? `/api/coins?low_from=${encodeURIComponent(initialLowFrom)}`
-          : '/api/coins';
+        const coinsUrl = initialQuery ? `/api/coins?${initialQuery}` : '/api/coins';
         const [coinsResponse, metaResponse] = await Promise.all([
           fetch(coinsUrl, { cache: 'no-store' }),
           fetch('/api/meta', { cache: 'no-store' }),
@@ -191,6 +223,7 @@ export default function Home() {
     if (compareSymbols.length > 0) params.set('compare', compareSymbols.join(','));
     if (watchOnly) params.set('watch', '1');
     if (lowFrom) params.set('low', lowFrom);
+    if (asOf) params.set('asof', asOf);
     if (listingFilter !== 'any') params.set('listed', listingFilter);
     const queryString = params.toString();
     window.history.replaceState(
@@ -198,7 +231,7 @@ export default function Home() {
       '',
       queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
     );
-  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, listingFilter]);
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, asOf, listingFilter]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -509,7 +542,7 @@ export default function Home() {
             }
             const next = lowFrom ?? '2021-01-01';
             if (!lowFrom) setLowFrom(next);
-            void fetchCoinsFor(next);
+            void fetchCoinsWith(next, asOf);
           }}
           options={[
             { value: 'event', label: 'Since 2021' },
@@ -542,6 +575,34 @@ export default function Home() {
           <option value="old">Listed before 2021</option>
           <option value="new">Listed in 2021+</option>
         </select>
+
+        <div className="flex items-center gap-1.5 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs">
+          <History size={13} className="text-content-muted" />
+          <label htmlFor="as-of-date" className="text-content-muted">
+            As of
+          </label>
+          <input
+            id="as-of-date"
+            type="date"
+            value={asOf ?? ''}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(event) => {
+              const value = event.target.value || null;
+              changeAsOf(value);
+            }}
+            className="bg-transparent text-content outline-none"
+          />
+          {asOf && (
+            <button
+              type="button"
+              aria-label="Back to live view"
+              onClick={() => changeAsOf(null)}
+              className="rounded-full p-0.5 text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
 
         <select
           value={minCap}
@@ -637,6 +698,18 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {asOf && !loading && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-xs">
+          <span className="text-content">
+            <strong className="text-primary">Historical view:</strong> prices, lows, distances and trends are
+            computed as of {asOf}. Market caps stay current.
+          </span>
+          <Button variant="outline" onClick={() => changeAsOf(null)}>
+            Back to live
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <section className="mt-6 space-y-3">

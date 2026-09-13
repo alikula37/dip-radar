@@ -24,3 +24,10 @@ test('table view is available through the URL', async ({ page }) => {
   await expect(page.getByRole('table')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('img', { name: 'Altcoin dip scatter chart' })).toHaveCount(0);
 });
+
+test('historical as-of view is available through the URL', async ({ page }) => {
+  await page.goto('/?asof=2024-03-01');
+
+  await expect(page.getByText(/Historical view:/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Back to live', exact: true })).toBeVisible();
+});

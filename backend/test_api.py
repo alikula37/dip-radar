@@ -138,6 +138,56 @@ def test_refresh_returns_409_when_sync_is_running():
     assert response.status_code == 409
 
 
+def test_get_coins_as_of_historical_snapshot():
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            name="Ethereum",
+            is_pre_2021=True,
+            listed_checked=True,
+            market_cap=1000.0,
+            current_price_btc=1.0,
+        )
+    )
+    db.add(Coin(symbol="NEWBTC", name="New", is_pre_2021=False, listed_checked=True, market_cap=500.0, current_price_btc=1.0))
+    db.add_all(
+        [
+            Kline(symbol="ETHBTC", timestamp=datetime(2020, 1, 1), open=0.8, high=0.8, low=0.5, close=0.8, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2021, 6, 1), open=0.3, high=0.3, low=0.2, close=0.3, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2022, 6, 1), open=0.5, high=0.5, low=0.4, close=0.5, volume=1),
+            Kline(symbol="ETHBTC", timestamp=datetime(2023, 6, 1), open=0.7, high=0.7, low=0.6, close=0.7, volume=1),
+            Kline(symbol="NEWBTC", timestamp=datetime(2024, 1, 1), open=2, high=2, low=1, close=2, volume=1),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    response = client.get("/api/coins", params={"as_of": "2022-12-31"})
+    assert response.status_code == 200
+    payload = response.json()
+    # NEWBTC has no candles before 2024, so it is excluded from the snapshot.
+    assert [coin["symbol"] for coin in payload] == ["ETHBTC"]
+    coin = payload[0]
+    assert coin["current_price_btc"] == 0.5
+    assert coin["all_time_low"] == 0.2
+    assert coin["event_low"] == 0.2
+    assert coin["price_7d_ago_btc"] == 0.5
+    assert coin["price_30d_ago_btc"] == 0.5
+    assert coin["distance_pct_event"] == pytest.approx(150.0)
+    # Market cap stays current by design.
+    assert coin["market_cap"] == 1000.0
+
+    earlier = client.get("/api/coins", params={"as_of": "2020-12-31"}).json()[0]
+    assert earlier["current_price_btc"] == 0.8
+    assert earlier["all_time_low"] == 0.5
+    # No 2021+ candles yet, so the event low falls back to the all-time low.
+    assert earlier["event_low"] == 0.5
+    assert earlier["distance_pct_event"] == pytest.approx(60.0)
+
+    assert client.get("/api/coins", params={"as_of": "31-12-2022"}).status_code == 422
+
+
 def test_get_coins_with_custom_low_window():
     db = SessionLocal()
     db.add(

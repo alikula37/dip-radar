@@ -2,14 +2,14 @@ import json
 import logging
 import os
 import time
-from collections import defaultdict, deque
-from datetime import datetime
+from collections import OrderedDict, defaultdict, deque
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import models
@@ -83,11 +83,77 @@ async def security_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+_AS_OF_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
+_AS_OF_CACHE_SIZE = 24
+
+
+def _closes_until(db: Session, cutoff: datetime) -> dict:
+    ranked = (
+        select(
+            models.Kline.symbol,
+            models.Kline.close,
+            func.row_number()
+            .over(partition_by=models.Kline.symbol, order_by=models.Kline.timestamp.desc())
+            .label("rank"),
+        )
+        .where(models.Kline.timestamp <= cutoff)
+        .subquery()
+    )
+    return dict(db.execute(select(ranked.c.symbol, ranked.c.close).where(ranked.c.rank == 1)).all())
+
+
+def _as_of_metrics(db: Session, cutoff: datetime, event_start: datetime) -> dict:
+    """Price/lows per symbol computed up to a historical cutoff date."""
+    key = (cutoff.isoformat(), event_start.isoformat())
+    cached = _AS_OF_CACHE.get(key)
+    if cached is not None:
+        _AS_OF_CACHE.move_to_end(key)
+        return cached
+
+    metrics = {
+        "price": _closes_until(db, cutoff),
+        "price_7d": _closes_until(db, cutoff - timedelta(days=7)),
+        "price_30d": _closes_until(db, cutoff - timedelta(days=30)),
+        "atl": dict(
+            db.query(models.Kline.symbol, func.min(models.Kline.low))
+            .filter(models.Kline.timestamp <= cutoff)
+            .group_by(models.Kline.symbol)
+            .all()
+        ),
+        "event_low": dict(
+            db.query(models.Kline.symbol, func.min(models.Kline.low))
+            .filter(models.Kline.timestamp >= event_start, models.Kline.timestamp <= cutoff)
+            .group_by(models.Kline.symbol)
+            .all()
+        ),
+    }
+
+    _AS_OF_CACHE[key] = metrics
+    if len(_AS_OF_CACHE) > _AS_OF_CACHE_SIZE:
+        _AS_OF_CACHE.popitem(last=False)
+    return metrics
+
+
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
 def get_coins(
     low_from: Optional[str] = Query(default=None, description="Custom reference window start (YYYY-MM-DD)"),
+    as_of: Optional[str] = Query(default=None, description="Historical snapshot date (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
 ):
+    cutoff = None
+    if as_of:
+        try:
+            cutoff = datetime.strptime(as_of, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="as_of must be YYYY-MM-DD")
+
+    event_start = None
+    if low_from:
+        try:
+            event_start = datetime.strptime(low_from, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="low_from must be YYYY-MM-DD")
+
     coins = (
         db.query(models.Coin)
         .filter(models.Coin.current_price_btc.isnot(None))
@@ -95,15 +161,31 @@ def get_coins(
         .all()
     )
 
-    if low_from:
-        try:
-            cutoff = datetime.strptime(low_from, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=422, detail="low_from must be YYYY-MM-DD")
+    if cutoff is not None:
+        metrics = _as_of_metrics(db, cutoff, event_start or datetime(2021, 1, 1))
+        result = []
+        for coin in coins:
+            price = metrics["price"].get(coin.symbol)
+            if price is None:
+                continue
 
+            coin.current_price_btc = price
+            coin.price_7d_ago_btc = metrics["price_7d"].get(coin.symbol)
+            coin.price_30d_ago_btc = metrics["price_30d"].get(coin.symbol)
+            all_time_low = metrics["atl"].get(coin.symbol)
+            event_low = metrics["event_low"].get(coin.symbol) or all_time_low
+            if all_time_low is not None:
+                coin.all_time_low = all_time_low
+            if event_low is not None:
+                coin.event_low = event_low
+            coin.distance_pct_event = calculate_distance_pct(price, event_low)
+            coin.distance_pct_atl = calculate_distance_pct(price, all_time_low)
+            result.append(coin)
+        coins = result
+    elif event_start is not None:
         custom_lows = dict(
             db.query(models.Kline.symbol, func.min(models.Kline.low))
-            .filter(models.Kline.timestamp >= cutoff)
+            .filter(models.Kline.timestamp >= event_start)
             .group_by(models.Kline.symbol)
             .all()
         )
