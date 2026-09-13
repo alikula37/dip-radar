@@ -116,12 +116,12 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
     };
   }, [loaded]);
 
-  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+  const updateHoverFromClientX = (element: SVGSVGElement, clientX: number, clientY: number) => {
     if (!scales || loaded.length === 0) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
     const scale = rect.width > 0 ? WIDTH / rect.width : 1;
-    const svgX = (event.clientX - rect.left) * scale;
+    const svgX = (clientX - rect.left) * scale;
     const target = scales.x.invert(svgX).getTime();
 
     const entries = loaded.map((entry) => {
@@ -137,11 +137,21 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
     setHover({
       date: entries[0]?.date ?? '',
       time: entries[0]?.time ?? target,
-      left: containerRect ? event.clientX - containerRect.left : 0,
-      top: containerRect ? event.clientY - containerRect.top : 0,
+      left: containerRect ? clientX - containerRect.left : 0,
+      top: containerRect ? clientY - containerRect.top : 0,
       containerWidth: containerRect?.width ?? WIDTH,
       entries,
     });
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    updateHoverFromClientX(event.currentTarget, event.clientX, event.clientY);
+  };
+
+  const handleTouch = (event: React.TouchEvent<SVGSVGElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    updateHoverFromClientX(event.currentTarget, touch.clientX, touch.clientY);
   };
 
   return (
@@ -150,7 +160,7 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
         <div>
           <h2 className="text-sm font-semibold text-content">Relative performance (start = 1x)</h2>
           <p className="text-[11px] text-content-muted">
-            Each line starts at 1.0x; hover the chart to read exact multiples and percentage changes.
+            Each line starts at 1.0x; hover or tap the chart to read exact multiples and percentage changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -185,7 +195,10 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
             className="mt-2 w-full"
             role="img"
             aria-label="Coin comparison chart"
+            style={{ touchAction: 'pan-y' }}
             onMouseMove={handleMouseMove}
+            onTouchStart={handleTouch}
+            onTouchMove={handleTouch}
             onMouseLeave={() => setHover(null)}
           >
             <g
