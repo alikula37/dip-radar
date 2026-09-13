@@ -13,9 +13,18 @@ interface CoinModalProps {
   useAtl: boolean;
   colorFor: (distance: number) => string;
   onClose: () => void;
+  onCompareToggle?: (coin: Coin) => void;
+  isCompared?: boolean;
 }
 
-export default function CoinModal({ coin, useAtl, colorFor, onClose }: CoinModalProps) {
+export default function CoinModal({
+  coin,
+  useAtl,
+  colorFor,
+  onClose,
+  onCompareToggle,
+  isCompared = false,
+}: CoinModalProps) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -52,14 +61,29 @@ export default function CoinModal({ coin, useAtl, colorFor, onClose }: CoinModal
               <p className="font-mono text-xs text-content-muted">{coin.symbol}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-full p-2 text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onCompareToggle && (
+              <button
+                type="button"
+                onClick={() => onCompareToggle(coin)}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                  isCompared
+                    ? 'border-primary bg-primary text-on-primary'
+                    : 'border-outline text-content-muted hover:border-outline-strong hover:text-content'
+                }`}
+              >
+                {isCompared ? 'Remove from compare' : 'Compare'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-full p-2 text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-outline bg-surface-2 p-4">

@@ -1,15 +1,18 @@
 'use client';
 
-import { Activity, Download, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
+import { Activity, Camera, Download, LayoutDashboard, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import CoinModal from '@/components/CoinModal';
 import CoinTable, { SortDirection, SortKey } from '@/components/CoinTable';
+import ComparePanel from '@/components/ComparePanel';
 import RankedList from '@/components/RankedList';
 import ScatterChart from '@/components/ScatterChart';
+import Treemap from '@/components/Treemap';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
 import { downloadCsv, trendDelta } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
+import { exportSvgToPng } from '@/lib/exportImage';
 import type { Coin, Meta } from '@/types';
 
 const POLL_INTERVAL_MS = 5000;
@@ -49,7 +52,8 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [useAtl, setUseAtl] = useState(false);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'scatter' | 'table'>('scatter');
+  const [viewMode, setViewMode] = useState<'scatter' | 'table' | 'treemap'>('scatter');
+  const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
   const [minCap, setMinCap] = useState(0);
   const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
@@ -122,7 +126,11 @@ export default function Home() {
         const volume = Number(params.get('vol'));
         if (Number.isFinite(volume) && volume > 0) setMinVolume(volume);
         const view = params.get('view');
-        if (view === 'table' || view === 'scatter') setViewMode(view);
+        if (view === 'table' || view === 'scatter' || view === 'treemap') setViewMode(view);
+        const compare = params.get('compare');
+        if (compare) {
+          setCompareSymbols(compare.split(',').filter(Boolean).slice(0, 3));
+        }
         const coinSymbol = params.get('coin');
         if (coinSymbol) {
           const found = coinsData.find((coin) => coin.symbol === coinSymbol);
@@ -152,13 +160,14 @@ export default function Home() {
     if (minVolume > 0) params.set('vol', String(minVolume));
     if (viewMode !== 'scatter') params.set('view', viewMode);
     if (selectedCoin) params.set('coin', selectedCoin.symbol);
+    if (compareSymbols.length > 0) params.set('compare', compareSymbols.join(','));
     const queryString = params.toString();
     window.history.replaceState(
       null,
       '',
       queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
     );
-  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin]);
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -291,6 +300,27 @@ export default function Home() {
     );
   };
 
+  const toggleCompare = useCallback((coin: Coin) => {
+    setCompareSymbols((current) => {
+      if (current.includes(coin.symbol)) return current.filter((symbol) => symbol !== coin.symbol);
+      if (current.length >= 3) return [...current.slice(1), coin.symbol];
+      return [...current, coin.symbol];
+    });
+  }, []);
+
+  const handleExportPng = async () => {
+    const svg = document.querySelector<SVGSVGElement>('svg[data-exportable="true"]');
+    if (!svg) {
+      showToast('Nothing to export yet.', 'error');
+      return;
+    }
+    try {
+      await exportSvgToPng(svg, `dip-radar-${new Date().toISOString().slice(0, 10)}.png`);
+    } catch {
+      showToast('PNG export failed.', 'error');
+    }
+  };
+
   const progress = meta?.sync_progress ?? null;
   const progressPct =
     progress && progress.total > 0 ? Math.min(100, Math.round((progress.processed / progress.total) * 100)) : null;
@@ -416,6 +446,15 @@ export default function Home() {
             <Download size={15} />
             CSV
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleExportPng}
+            disabled={filteredCoins.length === 0 || viewMode === 'table'}
+            title="Export the current chart as PNG"
+          >
+            <Camera size={15} />
+            PNG
+          </Button>
           <div className="flex items-center gap-1 rounded-lg border border-outline bg-surface-2 p-0.5">
             <button
               type="button"
@@ -427,6 +466,17 @@ export default function Home() {
               }`}
             >
               <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label="Treemap view"
+              aria-pressed={viewMode === 'treemap'}
+              onClick={() => setViewMode('treemap')}
+              className={`rounded-md p-2 transition-colors ${
+                viewMode === 'treemap' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+              }`}
+            >
+              <LayoutDashboard size={16} />
             </button>
             <button
               type="button"
@@ -482,28 +532,42 @@ export default function Home() {
           </div>
         </section>
       ) : (
-        <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 rounded-2xl border border-outline bg-surface p-2 sm:p-3">
-            {filteredCoins.length === 0 ? (
-              <p className="py-20 text-center text-sm text-content-muted">No coins match the current filters.</p>
-            ) : viewMode === 'scatter' ? (
-              <ScatterChart coins={filteredCoins} useAtl={useAtl} onCoinClick={setSelectedCoin} />
-            ) : (
-              <CoinTable
-                coins={filteredCoins}
-                useAtl={useAtl}
-                colorFor={colorFor}
-                sort={sort}
-                onToggleSort={toggleSort}
-                onSelect={setSelectedCoin}
-              />
-            )}
-          </div>
+        <>
+          {compareSymbols.length > 0 && (
+            <ComparePanel
+              symbols={compareSymbols}
+              onRemove={(symbol) =>
+                setCompareSymbols((current) => current.filter((entry) => entry !== symbol))
+              }
+              onClear={() => setCompareSymbols([])}
+            />
+          )}
 
-          <aside className="min-w-0">
-            <RankedList coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onSelect={setSelectedCoin} />
-          </aside>
-        </section>
+          <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 rounded-2xl border border-outline bg-surface p-2 sm:p-3">
+              {filteredCoins.length === 0 ? (
+                <p className="py-20 text-center text-sm text-content-muted">No coins match the current filters.</p>
+              ) : viewMode === 'scatter' ? (
+                <ScatterChart coins={filteredCoins} useAtl={useAtl} onCoinClick={setSelectedCoin} />
+              ) : viewMode === 'treemap' ? (
+                <Treemap coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onCoinClick={setSelectedCoin} />
+              ) : (
+                <CoinTable
+                  coins={filteredCoins}
+                  useAtl={useAtl}
+                  colorFor={colorFor}
+                  sort={sort}
+                  onToggleSort={toggleSort}
+                  onSelect={setSelectedCoin}
+                />
+              )}
+            </div>
+
+            <aside className="min-w-0">
+              <RankedList coins={filteredCoins} useAtl={useAtl} colorFor={colorFor} onSelect={setSelectedCoin} />
+            </aside>
+          </section>
+        </>
       )}
 
       {selectedCoin && (
@@ -512,6 +576,8 @@ export default function Home() {
           useAtl={useAtl}
           colorFor={colorFor}
           onClose={() => setSelectedCoin(null)}
+          onCompareToggle={toggleCompare}
+          isCompared={compareSymbols.includes(selectedCoin.symbol)}
         />
       )}
     </div>
