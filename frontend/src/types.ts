@@ -4,7 +4,12 @@ export interface Coin {
   quote_asset?: string | null;
   name: string | null;
   logo_url: string | null;
+  listing_date?: string | null;
   current_price_btc: number | null;
+  price_7d_ago_btc?: number | null;
+  price_30d_ago_btc?: number | null;
+  price_verified?: boolean | null;
+  price_deviation_pct?: number | null;
   event_low: number | null;
   all_time_low: number | null;
   distance_pct_event: number | null;
@@ -24,8 +29,17 @@ export interface Kline {
   volume: number;
 }
 
+export interface SyncProgress {
+  phase: "coins" | "klines" | "metadata" | "done" | "error" | string;
+  processed: number;
+  total: number;
+  message?: string;
+  updated_at?: string;
+}
+
 export interface Meta {
   last_updated: string | null;
   tracked_coins: number;
   sync_in_progress: boolean;
+  sync_progress: SyncProgress | null;
 }
