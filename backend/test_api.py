@@ -138,6 +138,34 @@ def test_refresh_returns_409_when_sync_is_running():
     assert response.status_code == 409
 
 
+def test_watchlist_crud():
+    seed_coin("ETHBTC")
+
+    assert client.get("/api/watchlist").json() == []
+
+    created = client.post("/api/watchlist/ETHBTC", json={"threshold_pct": 25})
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["symbol"] == "ETHBTC"
+    assert payload["base_asset"] == "ETH"
+    assert payload["threshold_pct"] == 25
+    assert payload["distance_pct_event"] == 25.0
+
+    listing = client.get("/api/watchlist").json()
+    assert len(listing) == 1
+
+    updated = client.post("/api/watchlist/ETHBTC", json={"threshold_pct": 10})
+    assert updated.json()["threshold_pct"] == 10
+
+    assert client.delete("/api/watchlist/ETHBTC").status_code == 204
+    assert client.get("/api/watchlist").json() == []
+
+
+def test_watchlist_unknown_coin():
+    assert client.post("/api/watchlist/NOPE", json={}).status_code == 404
+    assert client.delete("/api/watchlist/NOPE").status_code == 404
+
+
 def test_health_endpoint():
     response = client.get("/health")
 

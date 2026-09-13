@@ -134,6 +134,54 @@ def get_meta(db: Session = Depends(get_db)):
     )
 
 
+def _watch_response(watch: models.Watch, coin: Optional[models.Coin]) -> schemas.WatchResponse:
+    return schemas.WatchResponse(
+        symbol=watch.symbol,
+        base_asset=coin.base_asset if coin else None,
+        name=coin.name if coin else None,
+        logo_url=coin.logo_url if coin else None,
+        current_price_btc=coin.current_price_btc if coin else None,
+        distance_pct_event=coin.distance_pct_event if coin else None,
+        distance_pct_atl=coin.distance_pct_atl if coin else None,
+        market_cap=coin.market_cap if coin else None,
+        threshold_pct=watch.threshold_pct,
+        last_distance=watch.last_distance,
+        last_alerted_at=watch.last_alerted_at,
+        created_at=watch.created_at,
+    )
+
+
+@app.get("/api/watchlist", response_model=List[schemas.WatchResponse])
+def get_watchlist(db: Session = Depends(get_db)):
+    watches = db.query(models.Watch).order_by(models.Watch.created_at.desc()).all()
+    return [_watch_response(watch, db.get(models.Coin, watch.symbol)) for watch in watches]
+
+
+@app.post("/api/watchlist/{symbol}", response_model=schemas.WatchResponse, status_code=201)
+def add_watch(symbol: str, payload: schemas.WatchCreate, db: Session = Depends(get_db)):
+    coin = db.get(models.Coin, symbol)
+    if coin is None:
+        raise HTTPException(status_code=404, detail="Coin not found")
+
+    watch = db.get(models.Watch, symbol)
+    if watch is None:
+        watch = models.Watch(symbol=symbol)
+        db.add(watch)
+    watch.threshold_pct = payload.threshold_pct
+    db.commit()
+    db.refresh(watch)
+    return _watch_response(watch, coin)
+
+
+@app.delete("/api/watchlist/{symbol}", status_code=204)
+def remove_watch(symbol: str, db: Session = Depends(get_db)):
+    watch = db.get(models.Watch, symbol)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Coin is not watched")
+    db.delete(watch)
+    db.commit()
+
+
 @app.post("/api/refresh", status_code=202)
 def refresh_data(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     if is_locked(db):

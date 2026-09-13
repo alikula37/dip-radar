@@ -80,15 +80,6 @@ class FakeCoinGecko:
         return {coin_id: self.prices[coin_id] for coin_id in ids if coin_id in self.prices}
 
 
-@pytest.fixture
-def db():
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
-    yield session
-    session.close()
-
-
 def make_kline_row(timestamp_ms, open_, high, low, close, volume=1.0):
     return [timestamp_ms, str(open_), str(high), str(low), str(close), str(volume)]
 
