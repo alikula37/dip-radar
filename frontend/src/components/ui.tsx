@@ -1,6 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Loader2, Minus } from 'lucide-react';
 import React from 'react';
 
+import { formatTrend } from '@/lib/coins';
 import { formatPct } from '@/lib/colors';
 
 export function cn(...classes: (string | false | null | undefined)[]): string {
@@ -72,6 +73,28 @@ export function DistanceBadge({ value, color }: { value: number | null | undefin
       style={{ backgroundColor: color }}
     >
       {formatPct(value)}
+    </span>
+  );
+}
+
+export function TrendBadge({ value }: { value: number | null }) {
+  if (value === null || !Number.isFinite(value)) {
+    return <span className="text-[11px] text-content-muted">N/A</span>;
+  }
+
+  const approaching = value < 0;
+  const Icon = Math.abs(value) < 0.05 ? Minus : approaching ? ArrowDownRight : ArrowUpRight;
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 font-mono text-xs font-semibold',
+        approaching ? 'text-[#4ade80]' : 'text-[#f87171]',
+      )}
+      title={approaching ? 'Moving closer to its dip over 7 days' : 'Moving away from its dip over 7 days'}
+    >
+      <Icon size={13} />
+      {formatTrend(value)}
     </span>
   );
 }

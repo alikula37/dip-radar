@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
+import { Activity, Download, LayoutGrid, List, RefreshCw, Search } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import CoinModal from '@/components/CoinModal';
@@ -8,6 +8,7 @@ import CoinTable, { SortDirection, SortKey } from '@/components/CoinTable';
 import RankedList from '@/components/RankedList';
 import ScatterChart from '@/components/ScatterChart';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
+import { downloadCsv, trendDelta } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import type { Coin, Meta } from '@/types';
 
@@ -25,7 +26,10 @@ const MIN_VOLUME_OPTIONS = [
   { value: 0, label: 'Any volume' },
   { value: 1_000_000, label: '≥ $1M volume' },
   { value: 5_000_000, label: '≥ $5M volume' },
+  { value: 10_000_000, label: '≥ $10M volume' },
 ];
+
+const DEFAULT_MIN_VOLUME = 1_000_000;
 
 const PHASE_LABELS: Record<string, string> = {
   coins: 'Discovering listed coins',
@@ -47,7 +51,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'scatter' | 'table'>('scatter');
   const [minCap, setMinCap] = useState(0);
-  const [minVolume, setMinVolume] = useState(0);
+  const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
@@ -60,6 +64,7 @@ export default function Home() {
   const refreshingRef = useRef(false);
   const lastUpdatedBefore = useRef<string | null>(null);
   const refreshStartedAt = useRef<string | null>(null);
+  const urlApplied = useRef(false);
 
   const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
     setToast({ message, type });
@@ -106,6 +111,24 @@ export default function Home() {
         setCoins(coinsData);
         if (metaResponse.ok) setMeta(await metaResponse.json());
         setError(null);
+
+        // Restore the view state encoded in the URL.
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('ref') === 'atl') setUseAtl(true);
+        const query = params.get('q');
+        if (query) setSearch(query);
+        const cap = Number(params.get('cap'));
+        if (Number.isFinite(cap) && cap > 0) setMinCap(cap);
+        const volume = Number(params.get('vol'));
+        if (Number.isFinite(volume) && volume > 0) setMinVolume(volume);
+        const view = params.get('view');
+        if (view === 'table' || view === 'scatter') setViewMode(view);
+        const coinSymbol = params.get('coin');
+        if (coinSymbol) {
+          const found = coinsData.find((coin) => coin.symbol === coinSymbol);
+          if (found) setSelectedCoin(found);
+        }
+        urlApplied.current = true;
       } catch {
         if (!cancelled) setError('Could not reach the backend API. Is it running?');
       } finally {
@@ -119,6 +142,23 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!urlApplied.current) return;
+    const params = new URLSearchParams();
+    if (useAtl) params.set('ref', 'atl');
+    if (search.trim()) params.set('q', search.trim());
+    if (minCap > 0) params.set('cap', String(minCap));
+    if (minVolume > 0) params.set('vol', String(minVolume));
+    if (viewMode !== 'scatter') params.set('view', viewMode);
+    if (selectedCoin) params.set('coin', selectedCoin.symbol);
+    const queryString = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
+    );
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -228,10 +268,12 @@ export default function Home() {
       else if (sort.key === 'volume_24h') result = (a.volume_24h ?? -1) - (b.volume_24h ?? -1);
       else if (sort.key === 'distance')
         result = (activeDistance(a) ?? Number.MAX_VALUE) - (activeDistance(b) ?? Number.MAX_VALUE);
+      else if (sort.key === 'trend_7d')
+        result = (trendDelta(a, useAtl, 7) ?? Number.MAX_VALUE) - (trendDelta(b, useAtl, 7) ?? Number.MAX_VALUE);
       else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
-  }, [coins, search, minCap, minVolume, sort, activeDistance]);
+  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl]);
 
   const colorFor = useMemo(() => {
     const distances = filteredCoins
@@ -364,29 +406,40 @@ export default function Home() {
           ))}
         </select>
 
-        <div className="ml-auto flex items-center gap-1 rounded-lg border border-outline bg-surface-2 p-0.5">
-          <button
-            type="button"
-            aria-label="Scatter view"
-            aria-pressed={viewMode === 'scatter'}
-            onClick={() => setViewMode('scatter')}
-            className={`rounded-md p-2 transition-colors ${
-              viewMode === 'scatter' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
-            }`}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => downloadCsv(filteredCoins)}
+            disabled={filteredCoins.length === 0}
+            title="Download the filtered coins as CSV"
           >
-            <LayoutGrid size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="Table view"
-            aria-pressed={viewMode === 'table'}
-            onClick={() => setViewMode('table')}
-            className={`rounded-md p-2 transition-colors ${
-              viewMode === 'table' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
-            }`}
-          >
-            <List size={16} />
-          </button>
+            <Download size={15} />
+            CSV
+          </Button>
+          <div className="flex items-center gap-1 rounded-lg border border-outline bg-surface-2 p-0.5">
+            <button
+              type="button"
+              aria-label="Scatter view"
+              aria-pressed={viewMode === 'scatter'}
+              onClick={() => setViewMode('scatter')}
+              className={`rounded-md p-2 transition-colors ${
+                viewMode === 'scatter' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+              }`}
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label="Table view"
+              aria-pressed={viewMode === 'table'}
+              onClick={() => setViewMode('table')}
+              className={`rounded-md p-2 transition-colors ${
+                viewMode === 'table' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+              }`}
+            >
+              <List size={16} />
+            </button>
+          </div>
         </div>
       </section>
 

@@ -6,6 +6,10 @@ export interface Coin {
   logo_url: string | null;
   listing_date?: string | null;
   current_price_btc: number | null;
+  price_7d_ago_btc?: number | null;
+  price_30d_ago_btc?: number | null;
+  price_verified?: boolean | null;
+  price_deviation_pct?: number | null;
   event_low: number | null;
   all_time_low: number | null;
   distance_pct_event: number | null;

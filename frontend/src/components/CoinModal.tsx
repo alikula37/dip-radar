@@ -111,6 +111,24 @@ export default function CoinModal({ coin, useAtl, colorFor, onClose }: CoinModal
               {coin.listing_date ? new Date(coin.listing_date).toLocaleDateString() : 'N/A'}
             </span>
           </div>
+          <div className="flex justify-between">
+            <span className="text-content-muted">Price check</span>
+            <span
+              className={`font-mono ${
+                coin.price_verified === false
+                  ? 'text-[#f87171]'
+                  : coin.price_verified === true
+                    ? 'text-[#4ade80]'
+                    : 'text-content-muted'
+              }`}
+            >
+              {coin.price_verified === false
+                ? `⚠ ${coin.price_deviation_pct?.toFixed(2) ?? '?'}% deviation`
+                : coin.price_verified === true
+                  ? '✓ verified'
+                  : 'N/A'}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4">
