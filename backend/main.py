@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -16,7 +17,7 @@ import schemas
 from database import Base, engine, get_db
 from fetcher import run_sync_with_lock
 from locks import is_locked
-from metrics import calculate_bubble_sizes
+from metrics import calculate_bubble_sizes, calculate_distance_pct
 from migrations import run_migrations
 
 logging.basicConfig(
@@ -83,13 +84,35 @@ async def security_middleware(request: Request, call_next):
 
 
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
-def get_coins(db: Session = Depends(get_db)):
+def get_coins(
+    low_from: Optional[str] = Query(default=None, description="Custom reference window start (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+):
     coins = (
         db.query(models.Coin)
         .filter(models.Coin.current_price_btc.isnot(None))
         .order_by(func.coalesce(models.Coin.market_cap, -1).desc())
         .all()
     )
+
+    if low_from:
+        try:
+            cutoff = datetime.strptime(low_from, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="low_from must be YYYY-MM-DD")
+
+        custom_lows = dict(
+            db.query(models.Kline.symbol, func.min(models.Kline.low))
+            .filter(models.Kline.timestamp >= cutoff)
+            .group_by(models.Kline.symbol)
+            .all()
+        )
+        for coin in coins:
+            low = custom_lows.get(coin.symbol)
+            if low is not None:
+                coin.event_low = low
+                coin.distance_pct_event = calculate_distance_pct(coin.current_price_btc, low)
+
     calculate_bubble_sizes(coins, use_atl=False)
     calculate_bubble_sizes(coins, use_atl=True)
     return coins

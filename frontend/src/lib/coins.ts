@@ -1,5 +1,17 @@
 import type { Coin } from '@/types';
 
+export type ListingFilter = 'any' | 'old' | 'new';
+
+const CUTOFF_2021 = Date.UTC(2021, 0, 1);
+
+export function matchesListingFilter(coin: Coin, filter: ListingFilter): boolean {
+  if (filter === 'any') return true;
+  if (!coin.listing_date) return false;
+  const listed = +new Date(coin.listing_date);
+  if (!Number.isFinite(listed)) return false;
+  return filter === 'old' ? listed < CUTOFF_2021 : listed >= CUTOFF_2021;
+}
+
 /**
  * Change in distance-to-dip over the last 7/30 days, in percentage points.
  * Negative values mean the coin is moving closer to its dip.

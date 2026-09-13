@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import HistoryChart from "./HistoryChart";
@@ -6,6 +6,16 @@ import HistoryChart from "./HistoryChart";
 describe("HistoryChart", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("requests the configured range from the API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("[]", { status: 200 }));
+
+    render(<HistoryChart symbol="ETHBTC" limit={90} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("limit=90"), expect.anything());
+    });
   });
 
   it("renders a line chart once history is fetched", async () => {

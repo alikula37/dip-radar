@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { coinsToCsv, csvEscape, formatTrend, trendDelta } from './coins';
+import { coinsToCsv, csvEscape, formatTrend, matchesListingFilter, trendDelta } from './coins';
 import type { Coin } from '@/types';
 
 function makeCoin(overrides: Partial<Coin> = {}): Coin {
@@ -46,6 +46,30 @@ describe('formatTrend', () => {
     expect(formatTrend(-12.34)).toBe('-12.3 pp');
     expect(formatTrend(5)).toBe('+5.0 pp');
     expect(formatTrend(null)).toBe('N/A');
+  });
+});
+
+describe('matchesListingFilter', () => {
+  const oldCoin = makeCoin({ listing_date: '2018-05-01T00:00:00' });
+  const newCoin = makeCoin({ listing_date: '2023-02-01T00:00:00' });
+  const unknown = makeCoin({ listing_date: null });
+
+  it('passes everything for "any"', () => {
+    expect(matchesListingFilter(oldCoin, 'any')).toBe(true);
+    expect(matchesListingFilter(newCoin, 'any')).toBe(true);
+    expect(matchesListingFilter(unknown, 'any')).toBe(true);
+  });
+
+  it('separates pre-2021 and post-2021 listings', () => {
+    expect(matchesListingFilter(oldCoin, 'old')).toBe(true);
+    expect(matchesListingFilter(newCoin, 'old')).toBe(false);
+    expect(matchesListingFilter(newCoin, 'new')).toBe(true);
+    expect(matchesListingFilter(oldCoin, 'new')).toBe(false);
+  });
+
+  it('excludes coins with unknown listing dates from date filters', () => {
+    expect(matchesListingFilter(unknown, 'old')).toBe(false);
+    expect(matchesListingFilter(unknown, 'new')).toBe(false);
   });
 });
 

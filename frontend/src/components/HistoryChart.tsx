@@ -16,14 +16,14 @@ interface ChartState {
   failed: boolean;
 }
 
-export default function HistoryChart({ symbol }: { symbol: string }) {
+export default function HistoryChart({ symbol, limit = 365 }: { symbol: string; limit?: number }) {
   const [state, setState] = useState<ChartState | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=365`, { cache: 'no-store' })
+    fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=${limit}`, { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -38,7 +38,7 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, limit]);
 
   const current = state?.symbol === symbol ? state : null;
 
