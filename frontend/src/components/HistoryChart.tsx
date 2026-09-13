@@ -75,13 +75,23 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
     return { klines, times, x, y, area: area(klines) ?? '', line: line(klines) ?? '' };
   }, [current]);
 
-  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+  const updateHoverFromClientX = (element: SVGSVGElement, clientX: number) => {
     if (!chart) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
     const scale = rect.width > 0 ? WIDTH / rect.width : 1;
-    const svgX = (event.clientX - rect.left) * scale;
+    const svgX = (clientX - rect.left) * scale;
     const target = chart.x.invert(svgX).getTime();
     setHoverIndex(d3.bisectCenter(chart.times, target));
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    updateHoverFromClientX(event.currentTarget, event.clientX);
+  };
+
+  const handleTouch = (event: React.TouchEvent<SVGSVGElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    updateHoverFromClientX(event.currentTarget, touch.clientX);
   };
 
   if (current?.failed) {
@@ -111,7 +121,10 @@ export default function HistoryChart({ symbol }: { symbol: string }) {
       height={HEIGHT}
       role="img"
       aria-label={`${symbol} price history`}
+      style={{ touchAction: 'pan-y' }}
       onMouseMove={handleMouseMove}
+      onTouchStart={handleTouch}
+      onTouchMove={handleTouch}
       onMouseLeave={() => setHoverIndex(null)}
     >
       <rect width={WIDTH} height={HEIGHT} fill="transparent" />

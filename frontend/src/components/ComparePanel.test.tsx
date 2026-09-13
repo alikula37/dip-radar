@@ -54,4 +54,16 @@ describe('ComparePanel', () => {
     expect(tooltip.textContent).toContain('0.50x');
     expect(tooltip.textContent).toContain('(+100.0%)');
   });
+
+  it('shows values on touch as well', async () => {
+    mockFetch();
+    render(<ComparePanel symbols={['JUPUSDT', 'DASHBTC']} onRemove={vi.fn()} onClear={vi.fn()} />);
+
+    const chart = await screen.findByRole('img', { name: /Coin comparison chart/i });
+    fireEvent.touchStart(chart, { touches: [{ clientX: 800, clientY: 80 }] });
+
+    const tooltip = await screen.findByTestId('compare-tooltip');
+    expect(tooltip.textContent).toContain('2.00x');
+    expect(tooltip.textContent).toContain('0.50x');
+  });
 });

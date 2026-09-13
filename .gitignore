@@ -4,6 +4,7 @@ out/
 build/
 .env
 .env.local
+docker-compose.override.yml
 .db
 __pycache__/
 *.pyc
