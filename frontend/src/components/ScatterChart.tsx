@@ -96,6 +96,20 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     return Math.max(percentile(distances, 90), 25);
   }, [points]);
 
+  // Clip the y axis at the 95th percentile so a few extreme outliers cannot
+  // squash the cluster; small samples keep their full range.
+  const clippedMax = useMemo(() => {
+    const distances = points.map((point) => point.distance);
+    if (distances.length === 0) return 1;
+    if (points.length < 30) return Math.max(...distances, 1);
+    return Math.max(percentile(distances, 95), 50);
+  }, [points]);
+
+  const overflowCount = useMemo(
+    () => points.filter((point) => point.distance > clippedMax).length,
+    [points, clippedMax],
+  );
+
   const colorScale = useMemo(() => makeDistanceColorScale(robustMax), [robustMax]);
   const legendGradient = useMemo(() => distanceLegendGradient(robustMax), [robustMax]);
 
@@ -108,8 +122,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     const innerHeight = Math.max(10, height - MARGIN.top - MARGIN.bottom);
 
     const caps = points.map((point) => point.marketCap);
-    const distances = points.map((point) => point.distance);
-    const maxDistance = Math.max(d3.max(distances) ?? 1, 1);
+    const maxDistance = Math.max(clippedMax, 1);
 
     const x = d3
       .scaleLog()
@@ -117,8 +130,11 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       .range([MARGIN.left, width - MARGIN.right])
       .clamp(true);
 
+    // Symlog keeps small distances readable while the p95 clip removes the
+    // empty space that raw outliers used to create.
     const y = d3
-      .scaleSqrt()
+      .scaleSymlog()
+      .constant(25)
       .domain([0, maxDistance])
       .range([height - MARGIN.bottom, MARGIN.top])
       .clamp(true);
@@ -132,9 +148,13 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     const closeness = (distance: number) =>
       Math.max(0, 1 - Math.min(distance, robustMax) / robustMax);
 
-    const yTicks = [0, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000].filter(
-      (value) => value <= maxDistance * 1.05,
-    );
+    const yTicks = Array.from(
+      new Set(
+        [0, 5, 10, 25, 50, 75, 100, 250, 500, 1000, 2500]
+          .filter((value) => value < maxDistance)
+          .concat([Math.round(maxDistance)]),
+      ),
+    ).sort((a, b) => a - b);
 
     const xAxis = d3
       .axisBottom(x)
@@ -177,13 +197,42 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       .attr('class', 'scatter-axis-label')
       .text('Distance from dip (%)');
 
+    const regularPoints = points.filter((point) => point.distance <= clippedMax);
+    const overflowPoints = points.filter((point) => point.distance > clippedMax);
+
     const markSelection = marksGroup
       .selectAll<SVGCircleElement, ScatterPoint>('circle')
-      .data(points)
+      .data(regularPoints)
       .join('circle')
       .attr('r', (point) => radius(closeness(point.distance)))
       .attr('fill', (point) => colorScale(point.distance))
       .attr('fill-opacity', 0.85)
+      .attr('stroke', 'rgba(18,16,11,0.9)')
+      .attr('stroke-width', 1)
+      .style('cursor', 'pointer')
+      .on('click', (event, point) => {
+        event.stopPropagation();
+        onCoinClickRef.current(point.coin);
+      })
+      .on('mouseenter', function (event, point) {
+        d3.select(this).attr('stroke', 'var(--color-primary)').attr('stroke-width', 2);
+        updateHover(event as MouseEvent, point);
+      })
+      .on('mousemove', (event, point) => updateHover(event as MouseEvent, point))
+      .on('mouseleave', function () {
+        d3.select(this).attr('stroke', 'rgba(18,16,11,0.9)').attr('stroke-width', 1);
+        setHover(null);
+      });
+
+    // Points beyond the p95 clip are pinned to the top edge as triangles so
+    // the axis stays readable without hiding the outliers.
+    const overflowSelection = marksGroup
+      .selectAll<SVGPathElement, ScatterPoint>('path.overflow')
+      .data(overflowPoints)
+      .join('path')
+      .attr('class', 'overflow')
+      .attr('d', d3.symbol().type(d3.symbolTriangle).size(80)())
+      .attr('fill', (point) => colorScale(point.distance))
       .attr('stroke', 'rgba(18,16,11,0.9)')
       .attr('stroke-width', 1)
       .style('cursor', 'pointer')
@@ -208,7 +257,8 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     }
 
     // Greedy label placement: interesting coins first, no overlaps.
-    const labelCandidates = [...points].sort((a, b) => {
+    const labelBudget = points.length > 300 ? 8 : MAX_LABELS;
+    const labelCandidates = [...regularPoints].sort((a, b) => {
       const zoneA = a.marketCap >= ZONE_MIN_CAP && a.distance <= ZONE_MAX_DISTANCE ? 1 : 0;
       const zoneB = b.marketCap >= ZONE_MIN_CAP && b.distance <= ZONE_MAX_DISTANCE ? 1 : 0;
       if (zoneA !== zoneB) return zoneB - zoneA;
@@ -220,7 +270,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     const boxes: { x1: number; y1: number; x2: number; y2: number }[] = [];
 
     for (const point of labelCandidates) {
-      if (placements.length >= MAX_LABELS) break;
+      if (placements.length >= labelBudget) break;
       if (!(point.marketCap >= ZONE_MIN_CAP || point.distance <= NEAR_DISTANCE)) continue;
 
       const text = labelFor(point);
@@ -275,7 +325,10 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       .attr('class', 'scatter-label')
       .text((placement) => placement.text);
 
-    function drawZone(xScale: d3.ScaleLogarithmic<number, number>, yScale: d3.ScalePower<number, number>) {
+    function drawZone(
+      xScale: d3.ScaleContinuousNumeric<number, number>,
+      yScale: d3.ScaleContinuousNumeric<number, number>,
+    ) {
       zoneGroup.selectAll('*').remove();
       const zoneX = xScale(ZONE_MIN_CAP);
       const zoneY = yScale(ZONE_MAX_DISTANCE);
@@ -307,8 +360,8 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
     }
 
     function positionLabels(
-      xScale: d3.ScaleLogarithmic<number, number>,
-      yScale: d3.ScalePower<number, number>,
+      xScale: d3.ScaleContinuousNumeric<number, number>,
+      yScale: d3.ScaleContinuousNumeric<number, number>,
     ) {
       labelSelection.attr('transform', (placement) => {
         const px = xScale(placement.point.marketCap);
@@ -328,6 +381,10 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       markSelection
         .attr('cx', (point) => xScale(point.marketCap))
         .attr('cy', (point) => yScale(point.distance));
+      overflowSelection.attr(
+        'transform',
+        (point) => `translate(${xScale(point.marketCap)},${yScale(maxDistance)})`,
+      );
       positionLabels(xScale, yScale);
       labelsGroup.attr('display', transform.k > 1.5 ? 'none' : null);
     }
@@ -349,7 +406,7 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
       svg.on('.zoom', null);
       svg.selectAll('*').remove();
     };
-  }, [points, dimensions, colorScale, robustMax]);
+  }, [points, dimensions, colorScale, robustMax, clippedMax]);
 
   const activeHover = hover && points.some((point) => point.coin.symbol === hover.point.coin.symbol) ? hover : null;
   const tooltipLeft = activeHover ? Math.min(activeHover.left + 16, Math.max(dimensions.width - 240, 8)) : 0;
@@ -433,6 +490,11 @@ export default function ScatterChart({ coins, useAtl, onCoinClick }: ScatterChar
           </svg>
           <span>Closer to dip = bigger</span>
         </div>
+        {overflowCount > 0 && (
+          <div className="text-[10px] text-content-muted/80">
+            ▲ {overflowCount} coin{overflowCount === 1 ? '' : 's'} beyond {Math.round(clippedMax)}% pinned to the top
+          </div>
+        )}
         <div className="text-[10px] text-content-muted/80">Scroll to zoom · click a bubble for details</div>
       </div>
     </div>

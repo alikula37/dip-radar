@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   List,
+  ListOrdered,
   RefreshCw,
   Search,
   Star,
@@ -18,7 +19,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CoinModal from '@/components/CoinModal';
 import CoinTable, { SortDirection, SortKey } from '@/components/CoinTable';
 import ComparePanel from '@/components/ComparePanel';
-import RankedList from '@/components/RankedList';
+import DipLeaderboard from '@/components/DipLeaderboard';
 import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
@@ -66,7 +67,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [useAtl, setUseAtl] = useState(false);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'scatter' | 'table' | 'treemap'>('scatter');
+  const [viewMode, setViewMode] = useState<'ranked' | 'scatter' | 'table' | 'treemap'>('ranked');
   const [compareSymbols, setCompareSymbols] = useState<string[]>([]);
   const [watches, setWatches] = useState<Watch[]>([]);
   const [watchOnly, setWatchOnly] = useState(false);
@@ -183,7 +184,7 @@ export default function Home() {
         const volume = Number(params.get('vol'));
         if (Number.isFinite(volume) && volume > 0) setMinVolume(volume);
         const view = params.get('view');
-        if (view === 'table' || view === 'scatter' || view === 'treemap') setViewMode(view);
+        if (view === 'table' || view === 'scatter' || view === 'treemap' || view === 'ranked') setViewMode(view);
         const listed = params.get('listed');
         if (listed === 'old' || listed === 'new') setListingFilter(listed);
         const compare = params.get('compare');
@@ -218,7 +219,7 @@ export default function Home() {
     if (search.trim()) params.set('q', search.trim());
     if (minCap > 0) params.set('cap', String(minCap));
     if (minVolume > 0) params.set('vol', String(minVolume));
-    if (viewMode !== 'scatter') params.set('view', viewMode);
+    if (viewMode !== 'ranked') params.set('view', viewMode);
     if (selectedCoin) params.set('coin', selectedCoin.symbol);
     if (compareSymbols.length > 0) params.set('compare', compareSymbols.join(','));
     if (watchOnly) params.set('watch', '1');
@@ -655,13 +656,24 @@ export default function Home() {
           <Button
             variant="outline"
             onClick={handleExportPng}
-            disabled={filteredCoins.length === 0 || viewMode === 'table'}
+            disabled={filteredCoins.length === 0 || viewMode === 'table' || viewMode === 'ranked'}
             title="Export the current chart as PNG"
           >
             <Camera size={15} />
             PNG
           </Button>
           <div className="flex items-center gap-1 rounded-lg border border-outline bg-surface-2 p-0.5">
+            <button
+              type="button"
+              aria-label="Leaderboard view"
+              aria-pressed={viewMode === 'ranked'}
+              onClick={() => setViewMode('ranked')}
+              className={`rounded-md p-2 transition-colors ${
+                viewMode === 'ranked' ? 'bg-primary text-on-primary' : 'text-content-muted hover:text-content'
+              }`}
+            >
+              <ListOrdered size={16} />
+            </button>
             <button
               type="button"
               aria-label="Scatter view"
@@ -765,6 +777,14 @@ export default function Home() {
             <div className="min-w-0 rounded-2xl border border-outline bg-surface p-2 sm:p-3">
               {filteredCoins.length === 0 ? (
                 <p className="py-20 text-center text-sm text-content-muted">No coins match the current filters.</p>
+              ) : viewMode === 'ranked' ? (
+                <DipLeaderboard
+                  coins={filteredCoins}
+                  useAtl={useAtl}
+                  referenceLabel={referenceLabel}
+                  colorFor={colorFor}
+                  onSelect={setSelectedCoin}
+                />
               ) : viewMode === 'scatter' ? (
                 <ScatterChart coins={filteredCoins} useAtl={useAtl} onCoinClick={setSelectedCoin} />
               ) : viewMode === 'treemap' ? (
@@ -800,13 +820,6 @@ export default function Home() {
                   }
                 }}
                 onThresholdChange={updateWatchThreshold}
-              />
-              <RankedList
-                coins={filteredCoins}
-                useAtl={useAtl}
-                referenceLabel={referenceLabel}
-                colorFor={colorFor}
-                onSelect={setSelectedCoin}
               />
             </aside>
           </section>
