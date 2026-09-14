@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { coinsToCsv, csvEscape, formatTrend, matchesListingFilter, matchesStableFilter, trendDelta } from './coins';
+import {
+  coinsToCsv,
+  csvEscape,
+  formatTrend,
+  matchesListingFilter,
+  matchesStableFilter,
+  summarizeHiddenCoins,
+  trendDelta,
+} from './coins';
 import type { Coin } from '@/types';
 
 function makeCoin(overrides: Partial<Coin> = {}): Coin {
@@ -85,6 +93,76 @@ describe('matchesStableFilter', () => {
   it('shows everything when requested', () => {
     expect(matchesStableFilter(stable, true)).toBe(true);
     expect(matchesStableFilter(regular, true)).toBe(true);
+  });
+});
+
+describe('summarizeHiddenCoins', () => {
+  const baseFilters = {
+    search: '',
+    minCap: 0,
+    minVolume: 0,
+    listingFilter: 'any' as const,
+    showStables: false,
+    watchOnly: false,
+  };
+
+  it('attributes each hidden coin to the first failing filter', () => {
+    const coins = [
+      makeCoin({
+        symbol: 'ETHBTC',
+        listing_date: '2021-06-01T00:00:00',
+        market_cap: 100_000_000,
+        volume_24h: 5_000_000,
+      }),
+      makeCoin({ symbol: 'USD1USDT', is_stable: true }),
+      makeCoin({ symbol: 'UNIBTC', listing_date: '2020-09-17T00:00:00' }),
+      makeCoin({
+        symbol: 'TINYBTC',
+        listing_date: '2021-06-01T00:00:00',
+        market_cap: 1_000,
+        volume_24h: 5_000_000,
+      }),
+      makeCoin({
+        symbol: 'QUIETBTC',
+        listing_date: '2021-06-01T00:00:00',
+        market_cap: 100_000_000,
+        volume_24h: 10,
+      }),
+    ];
+
+    const result = summarizeHiddenCoins(
+      coins,
+      { ...baseFilters, minCap: 1_000_000, minVolume: 1_000_000, listingFilter: 'new' },
+      new Set(),
+    );
+
+    expect(result.total).toBe(5);
+    expect(result.visible).toBe(1);
+    expect(result.reasons).toEqual([
+      { key: 'stables', count: 1 },
+      { key: 'listing', count: 1 },
+      { key: 'marketCap', count: 1 },
+      { key: 'volume', count: 1 },
+    ]);
+  });
+
+  it('counts search misses and watchlist filtering', () => {
+    const coins = [
+      makeCoin({ symbol: 'ETHBTC', name: 'Ethereum' }),
+      makeCoin({ symbol: 'LTCBTC', name: 'Litecoin' }),
+    ];
+
+    const searched = summarizeHiddenCoins(coins, { ...baseFilters, search: 'eth' }, new Set());
+    expect(searched.visible).toBe(1);
+    expect(searched.reasons).toEqual([{ key: 'search', count: 1 }]);
+
+    const watched = summarizeHiddenCoins(
+      coins,
+      { ...baseFilters, watchOnly: true },
+      new Set(['ETHBTC']),
+    );
+    expect(watched.visible).toBe(1);
+    expect(watched.reasons).toEqual([{ key: 'watchlist', count: 1 }]);
   });
 });
 
