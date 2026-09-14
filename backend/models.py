@@ -33,6 +33,7 @@ class Coin(Base):
     listing_date = Column(DateTime, nullable=True)
     is_pre_2021 = Column(Boolean, default=False, nullable=False)
     listed_checked = Column(Boolean, default=False, nullable=False)
+    is_stable = Column(Boolean, default=False, nullable=False)
 
     current_price_btc = Column(Float, nullable=True)
     price_7d_ago_btc = Column(Float, nullable=True)

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -32,6 +33,50 @@ BINANCE_BASE_URLS = (
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 COINGECKO_MARKETS_BATCH_SIZE = 250
 COINGECKO_PRICE_BATCH_SIZE = 100
+# CoinGecko categories whose members are pegged assets rather than altcoins.
+STABLE_CATEGORIES = ("stablecoins", "tokenized-gold")
+# Local fallback for coins without a CoinGecko category match.
+STABLE_SYMBOLS = {
+    "DAI",
+    "U",
+    "USTC",
+    "FRAX",
+    "GUSD",
+    "LUSD",
+    "SUSD",
+    "TUSD",
+    "BUSD",
+    "USDP",
+    "USDD",
+    "USDR",
+    "PYUSD",
+    "FDUSD",
+    "EURS",
+    "EURT",
+    "EURC",
+    "CEUR",
+    "AGEUR",
+    "XAUT",
+    "PAXG",
+    "KAU",
+    "XAUM",
+    "ALUSD",
+    "MIM",
+    "CUSD",
+    "USDX",
+    "USDY",
+}
+STABLE_NAME_PATTERN = re.compile(r"\b(usd|stables?|stablecoin|dollar|gold|euro)\b", re.IGNORECASE)
+
+
+def is_probably_stable(symbol: str, name: str = None) -> bool:
+    """Heuristic for pegged assets (stables, tokenized gold) by symbol/name."""
+    if not symbol:
+        return False
+    base = symbol.upper()
+    if base in STABLE_SYMBOLS or "USD" in base:
+        return True
+    return bool(name and STABLE_NAME_PATTERN.search(name))
 # Coins are synced concurrently; Binance rate limits are respected by the
 # client, which sleeps on 429/418 responses.
 SYNC_FETCH_WORKERS = int(os.getenv("SYNC_FETCH_WORKERS", "4"))
@@ -253,6 +298,27 @@ class CoinGeckoClient:
                     prices[coin_id] = float(price)
             self.sleep(COINGECKO_BATCH_DELAY)
         return prices
+
+    def fetch_category_ids(self, category: str, max_pages: int = 3) -> set:
+        """All CoinGecko ids that belong to a category (paged)."""
+        ids = set()
+        for page in range(1, max_pages + 1):
+            data = self._get(
+                "coins/markets",
+                {
+                    "vs_currency": "usd",
+                    "category": category,
+                    "per_page": COINGECKO_MARKETS_BATCH_SIZE,
+                    "page": page,
+                },
+            ).json()
+            if not data:
+                break
+            ids.update(coin.get("id") for coin in data if coin.get("id"))
+            if len(data) < COINGECKO_MARKETS_BATCH_SIZE:
+                break
+            self.sleep(COINGECKO_BATCH_DELAY)
+        return ids
 
 
 def chunked(items: list, size: int):
@@ -680,6 +746,34 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
     logger.info("sync_coingecko done for %s coins.", len(cg_ids))
 
 
+def sync_stable_flags(db: DBSession, client: CoinGeckoClient) -> int:
+    """Flag stablecoins and tokenized-gold style pegged assets.
+
+    Primary signal: CoinGecko category membership. Fallback: symbol/name
+    heuristic so assets without a mapped id are still caught.
+    """
+    stable_ids = set()
+    for category in STABLE_CATEGORIES:
+        try:
+            stable_ids |= client.fetch_category_ids(category)
+        except CoinGeckoError as exc:
+            logger.warning("Could not load category '%s': %s", category, exc)
+
+    coins = db.query(Coin).all()
+    marked = 0
+    for coin in coins:
+        flagged = bool(coin.coingecko_id and coin.coingecko_id in stable_ids) or is_probably_stable(
+            coin.base_asset, coin.name
+        )
+        coin.is_stable = flagged
+        if flagged:
+            marked += 1
+    db.commit()
+
+    logger.info("sync_stable_flags done: %s/%s coins flagged as stable/pegged.", marked, len(coins))
+    return marked
+
+
 def set_meta(db: DBSession, key: str, value: str) -> None:
     meta = db.get(Meta, key)
     if meta is None:
@@ -759,6 +853,7 @@ def run_all_syncs(
     # Metadata (market caps) must run before klines so the market-cap
     # threshold can gate post-2021 coins on the very first sync.
     sync_coingecko(db, cg_client, progress)
+    sync_stable_flags(db, cg_client)
     sync_klines(
         db,
         client,

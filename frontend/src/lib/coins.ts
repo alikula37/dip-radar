@@ -12,6 +12,11 @@ export function matchesListingFilter(coin: Coin, filter: ListingFilter): boolean
   return filter === 'old' ? listed < CUTOFF_2021 : listed >= CUTOFF_2021;
 }
 
+/** Stablecoins and other pegged assets are hidden unless explicitly shown. */
+export function matchesStableFilter(coin: Coin, showStables: boolean): boolean {
+  return showStables || !coin.is_stable;
+}
+
 /**
  * Change in distance-to-dip over the last 7/30 days, in percentage points.
  * Negative values mean the coin is moving closer to its dip.

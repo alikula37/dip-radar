@@ -188,6 +188,19 @@ def test_get_coins_as_of_historical_snapshot():
     assert client.get("/api/coins", params={"as_of": "31-12-2022"}).status_code == 422
 
 
+def test_get_coins_includes_stable_flag():
+    seed_coin("USDSUSDT")
+    db = SessionLocal()
+    coin = db.get(Coin, "USDSUSDT")
+    coin.is_stable = True
+    db.commit()
+    db.close()
+
+    payload = client.get("/api/coins").json()[0]
+
+    assert payload["is_stable"] is True
+
+
 def test_get_coins_with_custom_low_window():
     db = SessionLocal()
     db.add(

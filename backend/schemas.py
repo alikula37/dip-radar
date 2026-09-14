@@ -13,6 +13,7 @@ class CoinBase(BaseModel):
     logo_url: Optional[str] = None
     listing_date: Optional[datetime] = None
     is_pre_2021: bool
+    is_stable: bool = False
     current_price_btc: Optional[float] = None
     price_7d_ago_btc: Optional[float] = None
     price_30d_ago_btc: Optional[float] = None

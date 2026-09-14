@@ -5,6 +5,7 @@ export interface Coin {
   name: string | null;
   logo_url: string | null;
   listing_date?: string | null;
+  is_stable?: boolean;
   current_price_btc: number | null;
   price_7d_ago_btc?: number | null;
   price_30d_ago_btc?: number | null;
