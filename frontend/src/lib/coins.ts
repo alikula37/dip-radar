@@ -17,6 +17,68 @@ export function matchesStableFilter(coin: Coin, showStables: boolean): boolean {
   return showStables || !coin.is_stable;
 }
 
+export interface FilterState {
+  search: string;
+  minCap: number;
+  minVolume: number;
+  listingFilter: ListingFilter;
+  showStables: boolean;
+  watchOnly: boolean;
+}
+
+export interface HiddenReasons {
+  visible: number;
+  total: number;
+  reasons: { key: 'stables' | 'listing' | 'marketCap' | 'volume' | 'watchlist' | 'search'; count: number }[];
+}
+
+/**
+ * Counts how many coins each filter removes (first failing filter wins) so
+ * the UI can explain why a coin is missing from the lists.
+ */
+export function summarizeHiddenCoins(coins: Coin[], filters: FilterState, watchedSymbols: Set<string>): HiddenReasons {
+  const query = filters.search.trim().toLowerCase();
+  const counts: Record<string, number> = { stables: 0, listing: 0, marketCap: 0, volume: 0, watchlist: 0, search: 0 };
+  let visible = 0;
+
+  for (const coin of coins) {
+    if (!matchesStableFilter(coin, filters.showStables)) {
+      counts.stables += 1;
+      continue;
+    }
+    if (!matchesListingFilter(coin, filters.listingFilter)) {
+      counts.listing += 1;
+      continue;
+    }
+    if ((coin.market_cap ?? 0) < filters.minCap) {
+      counts.marketCap += 1;
+      continue;
+    }
+    if ((coin.volume_24h ?? 0) < filters.minVolume) {
+      counts.volume += 1;
+      continue;
+    }
+    if (filters.watchOnly && !watchedSymbols.has(coin.symbol)) {
+      counts.watchlist += 1;
+      continue;
+    }
+    if (query) {
+      const haystack = `${coin.symbol} ${coin.name ?? ''} ${coin.base_asset ?? ''}`.toLowerCase();
+      if (!haystack.includes(query)) {
+        counts.search += 1;
+        continue;
+      }
+    }
+    visible += 1;
+  }
+
+  const reasons = (Object.keys(counts) as HiddenReasons['reasons'][number]['key'][])
+    .filter((key) => counts[key] > 0)
+    .map((key) => ({ key, count: counts[key] }));
+
+  return { visible, total: coins.length, reasons };
+}
+
 /**
  * Change in distance-to-dip over the last 7/30 days, in percentage points.
  * Negative values mean the coin is moving closer to its dip.

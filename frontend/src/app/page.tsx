@@ -25,7 +25,7 @@ import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
-import { downloadCsv, matchesListingFilter, matchesStableFilter, trendDelta } from '@/lib/coins';
+import { downloadCsv, matchesListingFilter, matchesStableFilter, summarizeHiddenCoins, trendDelta } from '@/lib/coins';
 import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import { exportSvgToPng } from '@/lib/exportImage';
@@ -56,6 +56,15 @@ const PHASE_LABELS: Record<string, string> = {
   metadata: 'Fetching market data',
   done: 'Finishing up',
   error: 'Sync failed',
+};
+
+const HIDDEN_REASON_LABELS: Record<string, string> = {
+  stables: 'stable/pegged',
+  listing: 'listing date',
+  marketCap: 'market cap',
+  volume: 'volume',
+  watchlist: 'watchlist',
+  search: 'search',
 };
 
 type Toast = { message: string; type: 'info' | 'error' };
@@ -316,6 +325,25 @@ export default function Home() {
 
   const watchedSymbols = useMemo(() => new Set(watches.map((watch) => watch.symbol)), [watches]);
   const stableCount = useMemo(() => coins.filter((coin) => coin.is_stable).length, [coins]);
+
+  const hiddenSummary = useMemo(
+    () =>
+      summarizeHiddenCoins(
+        coins,
+        { search, minCap, minVolume, listingFilter, showStables, watchOnly },
+        watchedSymbols,
+      ),
+    [coins, search, minCap, minVolume, listingFilter, showStables, watchOnly, watchedSymbols],
+  );
+
+  const resetFilters = useCallback(() => {
+    setSearch('');
+    setMinCap(0);
+    setMinVolume(DEFAULT_MIN_VOLUME);
+    setListingFilter('any');
+    setWatchOnly(false);
+    setShowStables(false);
+  }, []);
 
   const stats = useMemo(() => {
     const distances = coins
@@ -735,6 +763,25 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {!loading && coins.length > 0 && hiddenSummary.reasons.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-content-muted">
+          <span>
+            Showing <strong className="text-content">{hiddenSummary.visible}</strong> of {hiddenSummary.total} tracked
+            coins
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            hidden by{' '}
+            {hiddenSummary.reasons
+              .map((reason) => `${HIDDEN_REASON_LABELS[reason.key]} ${reason.count}`)
+              .join(', ')}
+          </span>
+          <button type="button" onClick={resetFilters} className="font-medium text-primary hover:underline">
+            Reset filters
+          </button>
+        </div>
+      )}
 
       {asOf && !loading && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2.5 text-xs">

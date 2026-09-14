@@ -38,3 +38,14 @@ test('historical as-of view is available through the URL', async ({ page }) => {
   await expect(page.getByText(/Historical view:/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Back to live', exact: true })).toBeVisible();
 });
+
+test('explains which filter hides coins and resets them', async ({ page }) => {
+  await page.goto('/?listed=new&view=table');
+
+  await expect(page.getByText(/hidden by .*listing date/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Reset filters' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Reset filters' }).click();
+
+  await expect(page.getByText(/hidden by .*listing date/)).toHaveCount(0);
+});
