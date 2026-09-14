@@ -142,7 +142,7 @@ npm ci
 npm run dev
 ```
 
-Need data without hitting the providers? `cd backend && python demo_seed.py` inserts five deterministic demo coins with 180 days of candles (the E2E job in CI uses the same script).
+Need data without hitting the providers? `cd backend && python demo_seed.py` inserts five deterministic demo coins with ~4.5 years of candles (the E2E job in CI uses the same script).
 
 ## Troubleshooting 🔧
 
