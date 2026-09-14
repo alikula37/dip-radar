@@ -55,6 +55,31 @@ describe('ScatterChart', () => {
     expect(Number(xlm.getAttribute('r'))).toBeGreaterThan(Number(eth.getAttribute('r')));
   });
 
+  it('pins outliers beyond the p95 clip as triangles', async () => {
+    const many: Coin[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      many.push(
+        makeCoin({
+          symbol: `C${index}BTC`,
+          name: `Coin ${index}`,
+          distance_pct_event: 10 + index * 9,
+          market_cap: 10_000_000 * (index + 1),
+        }),
+      );
+    }
+    many.push(makeCoin({ symbol: 'FARBTC', name: 'Far away', distance_pct_event: 5000, market_cap: 500_000_000 }));
+
+    const { container } = render(<ScatterChart coins={many} useAtl={false} onCoinClick={vi.fn()} />);
+
+    const chart = container.querySelector('svg[aria-label="Altcoin dip scatter chart"]') as SVGSVGElement;
+    await waitFor(() => {
+      // p95 interpolation leaves the extreme outlier and the largest regular
+      // coin above the clip.
+      expect(chart.querySelectorAll('path.overflow')).toHaveLength(2);
+    });
+    expect(chart.querySelectorAll('circle')).toHaveLength(29);
+  });
+
   it('renders labeled axes and the watch zone', () => {
     render(<ScatterChart coins={coins} useAtl={false} onCoinClick={vi.fn()} />);
 

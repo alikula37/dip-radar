@@ -1,7 +1,14 @@
 import { expect, test } from '@playwright/test';
 
-test('dashboard loads coins and opens the detail modal', async ({ page }) => {
+test('leaderboard is the default view', async ({ page }) => {
   await page.goto('/');
+
+  await expect(page.getByTestId('dip-leaderboard')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Closest to their dip')).toBeVisible();
+});
+
+test('dashboard loads coins and opens the detail modal', async ({ page }) => {
+  await page.goto('/?view=scatter');
 
   await expect(page.getByRole('heading', { name: 'Dip Radar' })).toBeVisible();
   await expect(page.getByText('Tracked coins', { exact: true })).toBeVisible();
