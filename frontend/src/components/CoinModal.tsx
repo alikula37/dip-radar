@@ -5,7 +5,9 @@ import React, { useEffect, useState } from 'react';
 
 import HistoryChart from '@/components/HistoryChart';
 import DipHistoryChart from '@/components/DipHistoryChart';
+import DistributionStrip from '@/components/DistributionStrip';
 import { DistanceBadge, Segmented } from '@/components/ui';
+import { scoreBreakdown } from '@/lib/coins';
 import { formatBtc, formatUsd } from '@/lib/colors';
 import type { Coin } from '@/types';
 
@@ -176,6 +178,82 @@ export default function CoinModal({
                   : 'N/A'}
             </span>
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+          {coin.value_score != null && (
+            <span
+              className="rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 font-semibold text-primary"
+              title={scoreBreakdown(coin)}
+            >
+              Value {Math.round(coin.value_score)}
+            </span>
+          )}
+          {coin.valuation_pct_3y != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="Share of the last 3 years spent above today's price (lower = cheaper)"
+            >
+              P{Math.round(coin.valuation_pct_3y)} · 3y
+            </span>
+          )}
+          {coin.median_dist_3y != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="Distance from the 3-year median close"
+            >
+              {coin.median_dist_3y > 0 ? '+' : ''}
+              {coin.median_dist_3y.toFixed(0)}% vs median
+            </span>
+          )}
+          {coin.range_position != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="0% = all-time low close, 100% = all-time high close"
+            >
+              Range {Math.round(coin.range_position * 100)}%
+            </span>
+          )}
+          {coin.basing_pct_90d != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="Share of the last 90 days spent in the bottom price quartile"
+            >
+              Basing {Math.round(coin.basing_pct_90d)}%
+            </span>
+          )}
+          {coin.days_since_atl != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="Days since the all-time low"
+            >
+              ATL {coin.days_since_atl}d ago
+            </span>
+          )}
+          {coin.trend_90d_pct != null && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="90-day price change"
+            >
+              90d {coin.trend_90d_pct > 0 ? '+' : ''}
+              {coin.trend_90d_pct.toFixed(0)}%
+            </span>
+          )}
+          {coin.above_sma200 === false && (
+            <span
+              className="rounded-full border border-[#f87171]/60 px-2 py-0.5 text-[#f87171]"
+              title="Price is below its 200-day average — the trend gate flags a possible value trap"
+            >
+              below 200DMA
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">
+            Where today&apos;s price sits (3y closes)
+          </p>
+          <DistributionStrip symbol={coin.symbol} currentPrice={coin.current_price_btc} />
         </div>
 
         <div className="mt-4">

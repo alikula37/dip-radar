@@ -19,6 +19,20 @@ export interface Coin {
   bubble_size_atl: number | null;
   market_cap: number | null;
   volume_24h: number | null;
+  valuation_pct_1y?: number | null;
+  valuation_pct_3y?: number | null;
+  valuation_pct_all?: number | null;
+  median_dist_1y?: number | null;
+  median_dist_3y?: number | null;
+  range_position?: number | null;
+  days_since_atl?: number | null;
+  basing_pct_90d?: number | null;
+  trend_30d_pct?: number | null;
+  trend_90d_pct?: number | null;
+  above_sma200?: boolean | null;
+  history_days?: number | null;
+  value_score?: number | null;
+  value_parts?: Record<string, number> | null;
 }
 
 export interface Kline {

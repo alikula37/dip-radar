@@ -4,11 +4,19 @@ import { AlertTriangle, Star } from 'lucide-react';
 import React from 'react';
 
 import { DistanceBadge, TrendBadge } from '@/components/ui';
-import { trendDelta } from '@/lib/coins';
+import { scoreBreakdown, trendDelta } from '@/lib/coins';
 import { formatBtc, formatUsd, formatUsdCompact } from '@/lib/colors';
 import type { Coin } from '@/types';
 
-export type SortKey = 'symbol' | 'distance' | 'trend_7d' | 'market_cap' | 'volume_24h';
+export type SortKey =
+  | 'symbol'
+  | 'distance'
+  | 'trend_7d'
+  | 'market_cap'
+  | 'volume_24h'
+  | 'value_score'
+  | 'valuation_3y'
+  | 'range_position';
 export type SortDirection = 'asc' | 'desc';
 
 interface CoinTableProps {
@@ -22,13 +30,16 @@ interface CoinTableProps {
   onToggleWatch: (coin: Coin) => void;
 }
 
-const COLUMNS: { key: SortKey | null; label: string; align?: 'right' }[] = [
+const COLUMNS: { key: SortKey | null; label: string; align?: 'right'; hideBelow?: 'md' | 'lg' }[] = [
   { key: 'symbol', label: 'Coin' },
   { key: null, label: 'Price (BTC)', align: 'right' },
   { key: 'distance', label: 'Distance to dip' },
   { key: 'trend_7d', label: '7d trend' },
+  { key: 'value_score', label: 'Value', align: 'right' },
+  { key: 'valuation_3y', label: '3y pct', align: 'right', hideBelow: 'md' },
+  { key: 'range_position', label: 'Range pos', align: 'right', hideBelow: 'md' },
   { key: 'market_cap', label: 'Market cap', align: 'right' },
-  { key: 'volume_24h', label: '24h volume', align: 'right' },
+  { key: 'volume_24h', label: '24h volume', align: 'right', hideBelow: 'lg' },
 ];
 
 export default function CoinTable({
@@ -54,6 +65,8 @@ export default function CoinTable({
                 key={column.label}
                 className={`px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-content-muted ${
                   column.align === 'right' ? 'text-right' : ''
+                } ${column.hideBelow === 'md' ? 'hidden md:table-cell' : ''} ${
+                  column.hideBelow === 'lg' ? 'hidden lg:table-cell' : ''
                 }`}
               >
                 {column.key ? (
@@ -141,10 +154,28 @@ export default function CoinTable({
                 <td className="px-3 py-2">
                   <TrendBadge value={trendDelta(coin, useAtl, 7)} />
                 </td>
+                <td className="px-3 py-2 text-right">
+                  {coin.value_score == null ? (
+                    <span className="font-mono text-xs text-content-muted">—</span>
+                  ) : (
+                    <span
+                      className="inline-flex min-w-[40px] items-center justify-center rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary"
+                      title={scoreBreakdown(coin)}
+                    >
+                      {Math.round(coin.value_score)}
+                    </span>
+                  )}
+                </td>
+                <td className="hidden px-3 py-2 text-right font-mono text-xs text-content md:table-cell">
+                  {coin.valuation_pct_3y == null ? '—' : `P${Math.round(coin.valuation_pct_3y)}`}
+                </td>
+                <td className="hidden px-3 py-2 text-right font-mono text-xs text-content md:table-cell">
+                  {coin.range_position == null ? '—' : `${Math.round(coin.range_position * 100)}%`}
+                </td>
                 <td className="px-3 py-2 text-right font-mono text-xs text-content">
                   {formatUsd(coin.market_cap)}
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-xs text-content-muted">
+                <td className="hidden px-3 py-2 text-right font-mono text-xs text-content-muted lg:table-cell">
                   {formatUsdCompact(coin.volume_24h)}
                 </td>
               </tr>

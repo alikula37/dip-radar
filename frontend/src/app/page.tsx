@@ -382,6 +382,11 @@ export default function Home() {
         result = (activeDistance(a) ?? Number.MAX_VALUE) - (activeDistance(b) ?? Number.MAX_VALUE);
       else if (sort.key === 'trend_7d')
         result = (trendDelta(a, useAtl, 7) ?? Number.MAX_VALUE) - (trendDelta(b, useAtl, 7) ?? Number.MAX_VALUE);
+      else if (sort.key === 'value_score') result = (a.value_score ?? -1) - (b.value_score ?? -1);
+      else if (sort.key === 'valuation_3y')
+        result = (a.valuation_pct_3y ?? Number.MAX_VALUE) - (b.valuation_pct_3y ?? Number.MAX_VALUE);
+      else if (sort.key === 'range_position')
+        result = (a.range_position ?? Number.MAX_VALUE) - (b.range_position ?? Number.MAX_VALUE);
       else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
