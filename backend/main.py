@@ -83,6 +83,29 @@ async def security_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+def _meta_value(db: Session, key: str) -> Optional[str]:
+    row = db.query(models.Meta).filter(models.Meta.key == key).first()
+    return row.value if row else None
+
+
+def _current_btc_usd(db: Session) -> Optional[float]:
+    raw = _meta_value(db, "btc_usd_price")
+    try:
+        return float(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _btc_usd_at(db: Session, cutoff: datetime) -> Optional[float]:
+    return (
+        db.query(models.BtcRate.close)
+        .filter(models.BtcRate.timestamp <= cutoff)
+        .order_by(models.BtcRate.timestamp.desc())
+        .limit(1)
+        .scalar()
+    )
+
+
 _AS_OF_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
 _AS_OF_CACHE_SIZE = 24
 
@@ -214,6 +237,12 @@ def get_coins(
                 coin.event_low = low
                 coin.distance_pct_event = calculate_distance_pct(coin.current_price_btc, low)
 
+    btc_usd = _btc_usd_at(db, cutoff) if cutoff is not None else _current_btc_usd(db)
+    if btc_usd:
+        for coin in coins:
+            if coin.current_price_btc:
+                coin.current_price_usd = round(coin.current_price_btc * btc_usd, 10)
+
     calculate_bubble_sizes(coins, use_atl=False)
     calculate_bubble_sizes(coins, use_atl=True)
     calculate_value_scores(coins)
@@ -224,6 +253,7 @@ def get_coins(
 def get_coin_history(
     symbol: str,
     limit: int = Query(default=365, ge=1, le=5000),
+    vs: str = Query(default="btc", pattern="^(btc|usd)$"),
     db: Session = Depends(get_db),
 ):
     klines = (
@@ -235,7 +265,41 @@ def get_coin_history(
     )
     if not klines:
         raise HTTPException(status_code=404, detail="History not found")
-    return list(reversed(klines))
+
+    ascending = list(reversed(klines))
+
+    if vs == "btc":
+        return ascending
+
+    rates = dict(
+        db.query(models.BtcRate.timestamp, models.BtcRate.close)
+        .order_by(models.BtcRate.timestamp.asc())
+        .all()
+    )
+    if not rates:
+        raise HTTPException(status_code=404, detail="USD rates not available yet")
+
+    rate_dates = sorted(rates)
+    rate: Optional[float] = None
+    index = 0
+    converted = []
+    for kline in ascending:
+        while index < len(rate_dates) and rate_dates[index] <= kline.timestamp:
+            rate = rates[rate_dates[index]]
+            index += 1
+        if rate is None:
+            continue
+        converted.append(
+            schemas.KlineResponse(
+                timestamp=kline.timestamp,
+                open=kline.open * rate,
+                high=kline.high * rate,
+                low=kline.low * rate,
+                close=kline.close * rate,
+                volume=kline.volume * rate,
+            )
+        )
+    return converted
 
 
 @app.get("/api/coins/{symbol}/dip-history", response_model=List[schemas.DipHistoryPoint])
@@ -296,6 +360,7 @@ def get_meta(db: Session = Depends(get_db)):
         tracked_coins=count,
         sync_in_progress=is_locked(db),
         sync_progress=sync_progress,
+        btc_usd_price=_current_btc_usd(db),
     )
 
 

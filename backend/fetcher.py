@@ -17,7 +17,7 @@ from alerts import check_alerts
 from database import SessionLocal
 from locks import release_lock, try_acquire_lock
 from metrics import calculate_coin_stats, calculate_distance_pct
-from models import Coin, Kline, Meta
+from models import BtcRate, Coin, Kline, Meta
 from timeutils import from_millis, to_millis, utcnow, utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -564,6 +564,30 @@ def _sync_coin_worker(session_factory, symbol: str, client: BinanceClient, btc_r
         db.close()
 
 
+def upsert_btc_rates(db: DBSession, rates: dict) -> int:
+    """Persist daily BTCUSDT candles for USD conversions (idempotent)."""
+    if not rates:
+        return 0
+
+    values = [
+        {"timestamp": from_millis(millis), "high": high, "low": low, "close": close}
+        for millis, (high, low, close) in rates.items()
+    ]
+    for chunk in chunked(values, UPSERT_CHUNK_SIZE):
+        statement = sqlite_insert(BtcRate).values(chunk)
+        statement = statement.on_conflict_do_update(
+            index_elements=[BtcRate.timestamp],
+            set_={
+                "high": statement.excluded.high,
+                "low": statement.excluded.low,
+                "close": statement.excluded.close,
+            },
+        )
+        db.execute(statement)
+    db.commit()
+    return len(values)
+
+
 def sync_klines(
     db: DBSession,
     client: BinanceClient,
@@ -586,6 +610,14 @@ def sync_klines(
         except BinanceError as exc:
             logger.warning("Cannot load BTC rates, skipping USDT pairs: %s", exc)
             btc_rates = {}
+
+    if btc_rates:
+        try:
+            upsert_btc_rates(db, btc_rates)
+            latest_rate = btc_rates[max(btc_rates)]
+            set_meta(db, "btc_usd_price", str(latest_rate[2]))
+        except Exception:
+            logger.exception("Could not persist BTC rates; continuing without USD conversion.")
 
     parallel = workers > 1 and session_factory is not None
 

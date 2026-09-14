@@ -222,6 +222,16 @@ def test_sync_klines_converts_usdt_pairs_to_btc(db):
     coin = db.get(Coin, "XLMUSDT")
     assert coin.current_price_btc == pytest.approx(0.11 / 4000)
 
+    # BTC rates are persisted for USD conversions and mirrored into meta.
+    from models import BtcRate
+
+    rates = db.query(BtcRate).all()
+    assert len(rates) == 1
+    assert rates[0].close == pytest.approx(4000)
+    meta = db.query(fetcher.Meta).filter(fetcher.Meta.key == "btc_usd_price").first()
+    assert meta is not None
+    assert float(meta.value) == pytest.approx(4000)
+
 
 def test_upsert_klines_is_idempotent_and_updates_existing_row(db):
     row = make_kline_row(1609459200000, 1, 2, 0.5, 1.5)

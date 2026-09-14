@@ -74,6 +74,15 @@ export function formatBtcValue(value: number | null | undefined): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+/** USD price with adaptive precision (cents for dollars, more for micro caps). */
+export function formatUsdValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "N/A";
+  if (value >= 1000) return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toPrecision(4)}`;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "N/A";
   return new Date(value).toLocaleString();

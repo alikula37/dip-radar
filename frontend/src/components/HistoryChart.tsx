@@ -3,7 +3,7 @@
 import * as d3 from 'd3';
 import React, { useEffect, useMemo, useState } from 'react';
 
-import { formatBtcValue } from '@/lib/colors';
+import { formatBtcValue, formatUsdValue } from '@/lib/colors';
 import type { Kline } from '@/types';
 
 const WIDTH = 360;
@@ -20,10 +20,12 @@ export default function HistoryChart({
   symbol,
   limit = 365,
   marker = null,
+  vs = 'btc',
 }: {
   symbol: string;
   limit?: number;
   marker?: string | null;
+  vs?: 'btc' | 'usd';
 }) {
   const [state, setState] = useState<ChartState | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -31,7 +33,7 @@ export default function HistoryChart({
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=${limit}`, { cache: 'no-store' })
+    fetch(`/api/coins/${encodeURIComponent(symbol)}/history?limit=${limit}&vs=${vs}`, { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -46,7 +48,7 @@ export default function HistoryChart({
     return () => {
       cancelled = true;
     };
-  }, [symbol, limit]);
+  }, [symbol, limit, vs]);
 
   const current = state?.symbol === symbol ? state : null;
 
@@ -182,7 +184,7 @@ export default function HistoryChart({
               {hoveredDate}
             </text>
             <text x={8} y={27} fontSize={10} fill="#f1e8d7" fontWeight={600}>
-              {formatBtcValue(hovered.kline.close)} BTC
+              {vs === 'usd' ? formatUsdValue(hovered.kline.close) : `${formatBtcValue(hovered.kline.close)} BTC`}
             </text>
           </g>
         </g>

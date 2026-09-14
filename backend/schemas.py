@@ -15,6 +15,7 @@ class CoinBase(BaseModel):
     is_pre_2021: bool
     is_stable: bool = False
     current_price_btc: Optional[float] = None
+    current_price_usd: Optional[float] = None
     price_7d_ago_btc: Optional[float] = None
     price_30d_ago_btc: Optional[float] = None
     price_verified: Optional[bool] = None
@@ -74,6 +75,7 @@ class MetaResponse(BaseModel):
     tracked_coins: int
     sync_in_progress: bool = False
     sync_progress: Optional[dict] = None
+    btc_usd_price: Optional[float] = None
 
 
 class WatchCreate(BaseModel):
