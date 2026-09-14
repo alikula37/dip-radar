@@ -216,7 +216,10 @@ def test_get_coins_includes_value_score():
     payload = client.get("/api/coins").json()[0]
 
     assert payload["valuation_pct_3y"] == 10.0
-    assert payload["value_score"] is not None
+    assert payload["value_score"] is not None, {
+        key: payload.get(key)
+        for key in ("is_stable", "market_cap", "volume_24h", "distance_pct_event", "valuation_pct_3y")
+    }
     assert payload["value_parts"]["valuation"] >= 0
 
 
