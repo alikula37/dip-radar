@@ -7,6 +7,7 @@ export interface Coin {
   listing_date?: string | null;
   is_stable?: boolean;
   current_price_btc: number | null;
+  current_price_usd?: number | null;
   price_7d_ago_btc?: number | null;
   price_30d_ago_btc?: number | null;
   price_verified?: boolean | null;
@@ -66,6 +67,7 @@ export interface Meta {
   tracked_coins: number;
   sync_in_progress: boolean;
   sync_progress: SyncProgress | null;
+  btc_usd_price?: number | null;
 }
 
 export interface Watch {

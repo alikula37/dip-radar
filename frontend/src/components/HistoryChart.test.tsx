@@ -108,6 +108,30 @@ describe("HistoryChart", () => {
     expect(screen.queryByTestId("history-marker")).toBeNull();
   });
 
+  it("requests USD candles when vs=usd and shows dollar values on hover", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          { timestamp: "2025-01-01T00:00:00", open: 1, high: 2, low: 0.5, close: 50000, volume: 10 },
+          { timestamp: "2025-01-02T00:00:00", open: 1.5, high: 3, low: 1, close: 60000, volume: 12 },
+        ]),
+        { status: 200 },
+      ),
+    );
+
+    render(<HistoryChart symbol="ETHBTC" vs="usd" />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("vs=usd"), expect.anything());
+    });
+
+    const chart = await screen.findByRole("img", { name: /ETHBTC price history/i });
+    fireEvent.mouseMove(chart, { clientX: 350 });
+
+    expect(await screen.findByText("2025-01-02")).toBeTruthy();
+    expect(screen.getByText(/\$60,000/)).toBeTruthy();
+  });
+
   it("shows an error message when the request fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("missing", { status: 404 }));
 

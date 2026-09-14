@@ -8,7 +8,7 @@ import DipHistoryChart from '@/components/DipHistoryChart';
 import DistributionStrip from '@/components/DistributionStrip';
 import { DistanceBadge, Segmented } from '@/components/ui';
 import { scoreBreakdown } from '@/lib/coins';
-import { formatBtc, formatUsd } from '@/lib/colors';
+import { formatBtc, formatUsd, formatUsdValue } from '@/lib/colors';
 import type { Coin } from '@/types';
 
 interface CoinModalProps {
@@ -37,6 +37,7 @@ export default function CoinModal({
   asOf = null,
 }: CoinModalProps) {
   const [rangeDays, setRangeDays] = useState<'90' | '365' | '5000'>('365');
+  const [currency, setCurrency] = useState<'btc' | 'usd'>('usd');
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -114,9 +115,31 @@ export default function CoinModal({
         </div>
 
         <div className="mt-4 rounded-xl border border-outline bg-surface-2 p-4">
-          <p className="text-[11px] uppercase tracking-wide text-content-muted">Current price</p>
-          <p className="mt-1 font-mono text-2xl font-semibold text-primary">
-            {formatBtc(coin.current_price_btc)} <span className="text-sm">BTC</span>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] uppercase tracking-wide text-content-muted">Current price</p>
+            <Segmented
+              ariaLabel="Price currency"
+              value={currency}
+              onChange={setCurrency}
+              options={[
+                { value: 'usd', label: 'USD' },
+                { value: 'btc', label: 'BTC' },
+              ]}
+            />
+          </div>
+          <p data-testid="modal-price" className="mt-1 font-mono text-2xl font-semibold text-primary">
+            {currency === 'usd' ? (
+              formatUsdValue(coin.current_price_usd)
+            ) : (
+              <>
+                {formatBtc(coin.current_price_btc)} <span className="text-sm">BTC</span>
+              </>
+            )}
+          </p>
+          <p className="mt-1 font-mono text-[11px] text-content-muted">
+            {currency === 'usd'
+              ? `${formatBtc(coin.current_price_btc)} BTC parity`
+              : formatUsdValue(coin.current_price_usd)}
           </p>
         </div>
 
@@ -251,14 +274,16 @@ export default function CoinModal({
 
         <div className="mt-4">
           <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">
-            Where today&apos;s price sits (3y closes)
+            Where today&apos;s price sits (3y closes · BTC parity)
           </p>
           <DistributionStrip symbol={coin.symbol} currentPrice={coin.current_price_btc} />
         </div>
 
         <div className="mt-4">
           <div className="mb-1 flex items-center justify-between gap-2">
-            <p className="text-[11px] uppercase tracking-wide text-content-muted">Price history</p>
+            <p className="text-[11px] uppercase tracking-wide text-content-muted">
+              Price history ({currency.toUpperCase()})
+            </p>
             <Segmented
               ariaLabel="History range"
               value={rangeDays}
@@ -270,11 +295,13 @@ export default function CoinModal({
               ]}
             />
           </div>
-          <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} />
+          <HistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} vs={currency} />
         </div>
 
         <div className="mt-4">
-          <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">Distance from dip</p>
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-content-muted">
+            Distance from dip (BTC parity)
+          </p>
           <DipHistoryChart symbol={coin.symbol} limit={Number(rangeDays)} marker={asOf} />
         </div>
       </div>
