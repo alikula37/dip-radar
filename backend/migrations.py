@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 # existing tables.
 COIN_COLUMNS = {
     "listed_checked": "BOOLEAN NOT NULL DEFAULT 0",
+    "is_stable": "BOOLEAN NOT NULL DEFAULT 0",
     "price_7d_ago_btc": "FLOAT",
     "price_30d_ago_btc": "FLOAT",
     "price_verified": "BOOLEAN",

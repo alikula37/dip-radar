@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Ban,
   Camera,
   Download,
   History,
@@ -24,7 +25,7 @@ import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
-import { downloadCsv, matchesListingFilter, trendDelta } from '@/lib/coins';
+import { downloadCsv, matchesListingFilter, matchesStableFilter, trendDelta } from '@/lib/coins';
 import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import { exportSvgToPng } from '@/lib/exportImage';
@@ -74,6 +75,7 @@ export default function Home() {
   const [lowFrom, setLowFrom] = useState<string | null>(null);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [listingFilter, setListingFilter] = useState<ListingFilter>('any');
+  const [showStables, setShowStables] = useState(false);
   const [minCap, setMinCap] = useState(0);
   const [minVolume, setMinVolume] = useState(DEFAULT_MIN_VOLUME);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
@@ -187,6 +189,7 @@ export default function Home() {
         if (view === 'table' || view === 'scatter' || view === 'treemap' || view === 'ranked') setViewMode(view);
         const listed = params.get('listed');
         if (listed === 'old' || listed === 'new') setListingFilter(listed);
+        if (params.get('stables') === '1') setShowStables(true);
         const compare = params.get('compare');
         if (compare) {
           setCompareSymbols(compare.split(',').filter(Boolean).slice(0, 3));
@@ -226,13 +229,14 @@ export default function Home() {
     if (lowFrom) params.set('low', lowFrom);
     if (asOf) params.set('asof', asOf);
     if (listingFilter !== 'any') params.set('listed', listingFilter);
+    if (showStables) params.set('stables', '1');
     const queryString = params.toString();
     window.history.replaceState(
       null,
       '',
       queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname,
     );
-  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, asOf, listingFilter]);
+  }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, asOf, listingFilter, showStables]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
   const needsPolling = syncInProgress || (coins.length === 0 && !error);
@@ -311,6 +315,7 @@ export default function Home() {
   );
 
   const watchedSymbols = useMemo(() => new Set(watches.map((watch) => watch.symbol)), [watches]);
+  const stableCount = useMemo(() => coins.filter((coin) => coin.is_stable).length, [coins]);
 
   const stats = useMemo(() => {
     const distances = coins
@@ -336,6 +341,7 @@ export default function Home() {
           (coin.base_asset ?? '').toLowerCase().includes(query),
       )
       .filter((coin) => !watchOnly || watchedSymbols.has(coin.symbol))
+      .filter((coin) => matchesStableFilter(coin, showStables))
       .filter((coin) => matchesListingFilter(coin, listingFilter))
       .filter((coin) => (coin.market_cap ?? 0) >= minCap)
       .filter((coin) => (coin.volume_24h ?? 0) >= minVolume);
@@ -351,7 +357,7 @@ export default function Home() {
       else result = a.symbol.localeCompare(b.symbol);
       return sort.direction === 'asc' ? result : -result;
     });
-  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols, listingFilter]);
+  }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols, listingFilter, showStables]);
 
   const colorFor = useMemo(() => {
     const distances = filteredCoins
@@ -628,6 +634,25 @@ export default function Home() {
             </option>
           ))}
         </select>
+
+        <button
+          type="button"
+          aria-pressed={!showStables}
+          onClick={() => setShowStables((current) => !current)}
+          title={
+            showStables
+              ? 'Hide stablecoins and other pegged assets'
+              : `Show ${stableCount} stablecoins and pegged assets`
+          }
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors ${
+            showStables
+              ? 'border-outline bg-surface-2 text-content-muted hover:text-content'
+              : 'border-primary bg-primary text-on-primary'
+          }`}
+        >
+          <Ban size={13} />
+          {showStables ? 'Stables shown' : `Stables hidden (${stableCount})`}
+        </button>
 
         <button
           type="button"

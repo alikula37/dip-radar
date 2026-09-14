@@ -61,12 +61,14 @@ class FakeBinance:
 
 
 class FakeCoinGecko:
-    def __init__(self, coin_list=None, markets=None, prices=None):
+    def __init__(self, coin_list=None, markets=None, prices=None, category_ids=None):
         self.coin_list = coin_list or []
         self.markets = markets or {}
         self.prices = prices or {}
+        self.category_ids = category_ids or {}
         self.market_batches = []
         self.price_batches = []
+        self.category_calls = []
 
     def fetch_coin_list(self):
         return self.coin_list
@@ -78,6 +80,10 @@ class FakeCoinGecko:
     def fetch_btc_prices(self, ids):
         self.price_batches.append(list(ids))
         return {coin_id: self.prices[coin_id] for coin_id in ids if coin_id in self.prices}
+
+    def fetch_category_ids(self, category, max_pages=3):
+        self.category_calls.append(category)
+        return set(self.category_ids.get(category, set()))
 
 
 def make_kline_row(timestamp_ms, open_, high, low, close, volume=1.0):
@@ -369,6 +375,36 @@ def test_sync_coins_stores_post_2021_symbols_once(db):
     # Second run must not re-check symbols that are already stored.
     fetcher.sync_coins(db, client)
     assert len(client.first_kline_calls) == 2
+
+
+def test_is_probably_stable_heuristic():
+    assert fetcher.is_probably_stable("USDS")
+    assert fetcher.is_probably_stable("XAUT", "Tether Gold")
+    assert fetcher.is_probably_stable("DAI")
+    assert fetcher.is_probably_stable("FOO", "Acme Stablecoin")
+    assert not fetcher.is_probably_stable("GRAM", "Gram (prev. Toncoin)")
+    assert not fetcher.is_probably_stable("ETH", "Ethereum")
+    assert not fetcher.is_probably_stable("USUAL", "Usual")
+    assert not fetcher.is_probably_stable("", None)
+
+
+def test_sync_stable_flags_combines_categories_and_heuristic(db):
+    db.add(Coin(symbol="USDSUSDT", coingecko_id="usds", name="USDS"))
+    db.add(Coin(symbol="XAUTBTC", coingecko_id="tether-gold", name="Tether Gold"))
+    db.add(Coin(symbol="GRAMUSDT", coingecko_id="the-open-network", name="Gram (prev. Toncoin)"))
+    db.add(Coin(symbol="RLUSDUSDT", coingecko_id=None, name=None))
+    db.commit()
+
+    cg = FakeCoinGecko(category_ids={"stablecoins": {"usds"}, "tokenized-gold": {"tether-gold"}})
+
+    marked = fetcher.sync_stable_flags(db, cg)
+
+    assert marked == 3
+    assert db.get(Coin, "USDSUSDT").is_stable is True
+    assert db.get(Coin, "XAUTBTC").is_stable is True
+    assert db.get(Coin, "RLUSDUSDT").is_stable is True
+    assert db.get(Coin, "GRAMUSDT").is_stable is False
+    assert cg.category_calls == ["stablecoins", "tokenized-gold"]
 
 
 def test_sync_coingecko_maps_ids_and_updates_metadata(db):

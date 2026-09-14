@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { coinsToCsv, csvEscape, formatTrend, matchesListingFilter, trendDelta } from './coins';
+import { coinsToCsv, csvEscape, formatTrend, matchesListingFilter, matchesStableFilter, trendDelta } from './coins';
 import type { Coin } from '@/types';
 
 function makeCoin(overrides: Partial<Coin> = {}): Coin {
@@ -70,6 +70,21 @@ describe('matchesListingFilter', () => {
   it('excludes coins with unknown listing dates from date filters', () => {
     expect(matchesListingFilter(unknown, 'old')).toBe(false);
     expect(matchesListingFilter(unknown, 'new')).toBe(false);
+  });
+});
+
+describe('matchesStableFilter', () => {
+  const stable = makeCoin({ is_stable: true });
+  const regular = makeCoin({ is_stable: false });
+
+  it('hides pegged assets by default', () => {
+    expect(matchesStableFilter(stable, false)).toBe(false);
+    expect(matchesStableFilter(regular, false)).toBe(true);
+  });
+
+  it('shows everything when requested', () => {
+    expect(matchesStableFilter(stable, true)).toBe(true);
+    expect(matchesStableFilter(regular, true)).toBe(true);
   });
 });
 
