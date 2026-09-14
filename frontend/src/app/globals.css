@@ -73,3 +73,99 @@
   font-size: 10px;
   font-family: var(--font-mono), ui-monospace, monospace;
 }
+
+/* Dip Radar loader: a radar sweep discovering the dip curve */
+.dr-sweep {
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  animation: dr-sweep 3s linear infinite;
+  will-change: transform;
+}
+
+@keyframes dr-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dr-dip {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: dr-draw 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes dr-draw {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  55%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.dr-blip {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.15;
+  animation: dr-blip 1.5s ease-in-out infinite;
+}
+
+.dr-blip-2 {
+  animation-delay: 0.25s;
+}
+
+.dr-blip-3 {
+  animation-delay: 0.5s;
+}
+
+@keyframes dr-blip {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
+
+.dr-echo {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: dr-echo 3s ease-out infinite;
+}
+
+@keyframes dr-echo {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.4;
+  }
+  75%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dip-radar * {
+    animation: none !important;
+  }
+  .dr-sweep {
+    transform: rotate(45deg);
+  }
+  .dr-dip {
+    stroke-dashoffset: 0;
+  }
+  .dr-blip {
+    opacity: 0.6;
+  }
+  .dr-echo {
+    display: none;
+  }
+}

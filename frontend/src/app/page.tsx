@@ -24,7 +24,7 @@ import DipLeaderboard from '@/components/DipLeaderboard';
 import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
-import { Button, Segmented, Spinner, StatCard } from '@/components/ui';
+import { Button, RadarLoader, Segmented, StatCard } from '@/components/ui';
 import { downloadCsv, matchesListingFilter, matchesStableFilter, summarizeHiddenCoins, trendDelta } from '@/lib/coins';
 import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
@@ -115,6 +115,11 @@ export default function Home() {
   const lastUpdatedBefore = useRef<string | null>(null);
   const refreshStartedAt = useRef<string | null>(null);
   const urlApplied = useRef(false);
+  const coinsRef = useRef<Coin[]>([]);
+
+  useEffect(() => {
+    coinsRef.current = coins;
+  }, [coins]);
 
   const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
     setToast({ message, type });
@@ -122,21 +127,33 @@ export default function Home() {
     toastTimer.current = window.setTimeout(() => setToast(null), 4500);
   }, []);
 
-  const fetchCoinsWith = useCallback(async (referenceLowFrom: string | null, asOfValue: string | null) => {
-    try {
-      const params = new URLSearchParams();
-      if (asOfValue) params.set('as_of', asOfValue);
-      if (referenceLowFrom) params.set('low_from', referenceLowFrom);
-      const query = params.toString();
-      const response = await fetch(query ? `/api/coins?${query}` : '/api/coins', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: Coin[] = await response.json();
-      setCoins(data);
-      setError(null);
-    } catch {
-      setError('Could not reach the backend API. Is it running?');
-    }
-  }, []);
+  const fetchCoinsWith = useCallback(
+    async (referenceLowFrom: string | null, asOfValue: string | null) => {
+      try {
+        const params = new URLSearchParams();
+        if (asOfValue) params.set('as_of', asOfValue);
+        if (referenceLowFrom) params.set('low_from', referenceLowFrom);
+        const query = params.toString();
+        const response = await fetch(query ? `/api/coins?${query}` : '/api/coins', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data: Coin[] = await response.json();
+        setCoins(data);
+        setError(null);
+      } catch {
+        // A transient hiccup should never replace a dashboard that already
+        // has data; only the first load shows the blocking error card.
+        if (coinsRef.current.length === 0) {
+          setError('Could not reach the backend API. Is it running?');
+        } else {
+          showToast('Connection hiccup — retrying automatically.', 'error');
+        }
+      } finally {
+        // The polling/retry path can complete the initial load if it stalled.
+        setLoading(false);
+      }
+    },
+    [showToast],
+  );
 
   const fetchCoins = useCallback(() => fetchCoinsWith(lowFrom, asOf), [fetchCoinsWith, lowFrom, asOf]);
 
@@ -263,7 +280,9 @@ export default function Home() {
   }, [useAtl, search, minCap, minVolume, viewMode, selectedCoin, compareSymbols, watchOnly, lowFrom, asOf, listingFilter, showStables]);
 
   const syncInProgress = refreshing || (meta?.sync_in_progress ?? false);
-  const needsPolling = syncInProgress || (coins.length === 0 && !error);
+  // Keep polling while there are no coins or while an error is showing, so a
+  // transient backend hiccup recovers without a manual retry.
+  const needsPolling = syncInProgress || coins.length === 0 || Boolean(error);
 
   useEffect(() => {
     if (!needsPolling) return;
@@ -339,6 +358,11 @@ export default function Home() {
   );
 
   const watchedSymbols = useMemo(() => new Set(watches.map((watch) => watch.symbol)), [watches]);
+  const watchedRef = useRef<Set<string>>(new Set());
+  const watchlistRequest = useRef(0);
+  useEffect(() => {
+    watchedRef.current = new Set(watches.map((watch) => watch.symbol));
+  }, [watches]);
   const stableCount = useMemo(() => coins.filter((coin) => coin.is_stable).length, [coins]);
 
   const hiddenSummary = useMemo(
@@ -432,9 +456,15 @@ export default function Home() {
   }, []);
 
   const refreshWatchlist = useCallback(async () => {
+    const requestId = watchlistRequest.current + 1;
+    watchlistRequest.current = requestId;
     try {
       const response = await fetch('/api/watchlist', { cache: 'no-store' });
-      if (response.ok) setWatches(await response.json());
+      if (!response.ok) return;
+      const data: Watch[] = await response.json();
+      // Ignore stale responses so an earlier refresh cannot clobber a
+      // newer add/remove.
+      if (requestId === watchlistRequest.current) setWatches(data);
     } catch {
       // Keep the previous list on transient failures.
     }
@@ -442,7 +472,8 @@ export default function Home() {
 
   const toggleWatch = useCallback(
     async (coin: Coin) => {
-      const watched = watches.some((watch) => watch.symbol === coin.symbol);
+      // Use the ref so rapid add/remove clicks never act on a stale list.
+      const watched = watchedRef.current.has(coin.symbol);
       try {
         const response = watched
           ? await fetch(`/api/watchlist/${encodeURIComponent(coin.symbol)}`, { method: 'DELETE' })
@@ -452,6 +483,15 @@ export default function Home() {
               body: JSON.stringify({ threshold_pct: null }),
             });
         if (!response.ok && response.status !== 204) throw new Error(`HTTP ${response.status}`);
+
+        const optimistic = new Set(watchedRef.current);
+        if (watched) {
+          optimistic.delete(coin.symbol);
+        } else {
+          optimistic.add(coin.symbol);
+        }
+        watchedRef.current = optimistic;
+
         await refreshWatchlist();
         const label = coin.base_asset ?? coin.symbol;
         showToast(watched ? `${label} removed from watchlist.` : `${label} added to watchlist.`);
@@ -459,7 +499,7 @@ export default function Home() {
         showToast('Could not update the watchlist.', 'error');
       }
     },
-    [watches, refreshWatchlist, showToast],
+    [refreshWatchlist, showToast],
   );
 
   const updateWatchThreshold = useCallback(
@@ -553,10 +593,7 @@ export default function Home() {
       {syncInProgress && coins.length > 0 && (
         <div className="mt-4 rounded-xl border border-outline bg-surface px-4 py-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2 text-content">
-              <Spinner size={14} className="text-primary" />
-              {phaseLabel}
-            </span>
+            <RadarLoader size="sm" label={phaseLabel} />
             <span className="font-mono text-content-muted">
               {progressPct !== null ? `${progressPct}%` : '…'}
             </span>
@@ -816,10 +853,9 @@ export default function Home() {
       )}
 
       {loading ? (
-        <section className="mt-6 space-y-3">
-          <div className="h-[420px] animate-pulse rounded-2xl border border-outline bg-surface" />
-          <div className="flex items-center justify-center gap-2 text-sm text-content-muted">
-            <Spinner size={16} /> Loading radar data…
+        <section className="mt-6">
+          <div className="flex h-[420px] flex-col items-center justify-center gap-4 rounded-2xl border border-outline bg-surface">
+            <RadarLoader size="lg" label="Loading radar data…" />
           </div>
         </section>
       ) : error && coins.length === 0 ? (
@@ -839,7 +875,7 @@ export default function Home() {
         </section>
       ) : coins.length === 0 ? (
         <section className="mt-6 flex flex-col items-center gap-4 rounded-2xl border border-outline bg-surface px-6 py-16 text-center">
-          <Spinner size={28} className="text-primary" />
+          <RadarLoader size="lg" />
           <div>
             <p className="text-sm font-medium text-content">{phaseLabel}…</p>
             <p className="mx-auto mt-1 max-w-md text-xs text-content-muted">

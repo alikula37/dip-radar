@@ -2,14 +2,30 @@ import { expect, test } from '@playwright/test';
 
 const errors: string[] = [];
 
+test.beforeEach(async ({ request }) => {
+  // The watchlist lives in the database; make the audit idempotent.
+  await request.delete('/api/watchlist/ETHBTC');
+});
+
+test.afterEach(async ({ request }) => {
+  await request.delete('/api/watchlist/ETHBTC');
+});
+
 test('full UI audit', async ({ page }) => {
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const text = message.text();
     if (text.includes('ERR_ABORTED') || text.includes('favicon')) return;
+    // Static asset noise (e.g. a stale coin logo 404) is not an app error.
+    if (text.includes('Failed to load resource')) return;
     errors.push(`console: ${text}`);
   });
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('response', (response) => {
+    if (response.status() >= 500 && response.url().includes('/api/')) {
+      errors.push(`http ${response.status()}: ${response.url()}`);
+    }
+  });
 
   // 1. default leaderboard
   await page.goto('/');
@@ -47,6 +63,10 @@ test('full UI audit', async ({ page }) => {
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Current price')).toBeVisible();
+  await expect(dialog.getByTestId('modal-price')).toContainText('$');
+  await dialog.getByRole('button', { name: 'BTC', exact: true }).click();
+  await expect(dialog.getByTestId('modal-price')).toContainText('BTC');
+  await dialog.getByRole('button', { name: 'USD', exact: true }).click();
   await expect(dialog.getByText(/Where today/)).toBeVisible();
   await expect(dialog.getByRole('img', { name: /price distribution/ })).toBeVisible({ timeout: 20_000 });
   await expect(dialog.getByRole('img', { name: /dip distance/ })).toBeVisible({ timeout: 20_000 });
@@ -88,10 +108,13 @@ test('full UI audit', async ({ page }) => {
   // 12. watchlist star + panel
   await page.getByPlaceholder('Search coins…').fill('ETHBTC');
   await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 15_000 });
-  await page.locator('table tbody tr').first().locator('button[aria-label*="watchlist"]').click();
+  const star = page.locator('table tbody tr').first().locator('button[aria-label*="watchlist"]');
+  await expect(star).toHaveAttribute('aria-label', /Add/);
+  await star.click();
   await expect(page.getByRole('heading', { name: 'Watchlist' })).toBeVisible();
   await expect(page.getByText(/no alerts yet|Alert at/).first()).toBeVisible({ timeout: 15_000 });
-  await page.locator('table tbody tr').first().locator('button[aria-label*="watchlist"]').click();
+  await expect(star).toHaveAttribute('aria-label', /Remove/);
+  await star.click();
   await expect(page.getByText(/Star coins in the table/i)).toBeVisible({ timeout: 15_000 });
 
   // 13. CSV export

@@ -78,4 +78,21 @@ describe('ComparePanel', () => {
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('limit=90'), expect.anything());
     });
   });
+
+  it('recovers when comparison fetches fail', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network down'));
+    render(<ComparePanel symbols={['JUPUSDT']} onRemove={vi.fn()} onClear={vi.fn()} />);
+
+    expect(await screen.findByText(/Comparison unavailable/i)).toBeTruthy();
+
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const symbol = url.includes('JUP') ? 'JUPUSDT' : 'DASHBTC';
+      return new Response(JSON.stringify(histories[symbol]), { status: 200 });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('img', { name: /Coin comparison chart/i })).toBeTruthy();
+  });
 });
