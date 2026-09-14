@@ -41,7 +41,9 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
   const [series, setSeries] = useState<Record<string, SeriesValue>>({});
   const [hover, setHover] = useState<HoverState | null>(null);
   const [range, setRange] = useState<'90' | '365' | '5000'>('365');
-  const key = `${symbols.join(',')}|${range}`;
+  const [reloadKey, setReloadKey] = useState(0);
+  const autoRetried = useRef(false);
+  const key = `${symbols.join(',')}|${range}|${reloadKey}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +70,23 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  const failedCount = symbols.filter((symbol) => series[symbol] === 'error').length;
+  const allFailed = symbols.length > 0 && failedCount === symbols.length;
+  const loading = symbols.some((symbol) => series[symbol] === undefined);
+
+  // One automatic retry covers transient gateway hiccups; a manual retry
+  // stays available after that.
+  useEffect(() => {
+    if (!allFailed || autoRetried.current) return;
+    autoRetried.current = true;
+    const timer = window.setTimeout(() => setReloadKey((current) => current + 1), 1200);
+    return () => window.clearTimeout(timer);
+  }, [allFailed]);
+
+  useEffect(() => {
+    if (!loading) autoRetried.current = false;
+  }, [loading]);
 
   const loaded = useMemo<LoadedSeries[]>(() => {
     return symbols
@@ -200,8 +219,35 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
 
       <div ref={containerRef} className="relative">
         {!scales ? (
-          <p className="py-10 text-center text-xs text-content-muted">Loading comparison…</p>
+          allFailed ? (
+            <p className="py-10 text-center text-xs text-content-muted">
+              Comparison unavailable.{' '}
+              <button
+                type="button"
+                onClick={() => setReloadKey((current) => current + 1)}
+                className="font-medium text-primary hover:underline"
+              >
+                Retry
+              </button>
+            </p>
+          ) : (
+            <p className="py-10 text-center text-xs text-content-muted">Loading comparison…</p>
+          )
         ) : (
+          <>
+            {failedCount > 0 && (
+              <p className="mt-3 text-[11px] text-content-muted">
+                Some series could not be loaded.{' '}
+                <button
+                  type="button"
+                  onClick={() => setReloadKey((current) => current + 1)}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Retry
+                </button>
+              </p>
+            )}
+
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="mt-2 w-full"
@@ -273,6 +319,7 @@ export default function ComparePanel({ symbols, onRemove, onClear }: ComparePane
               </g>
             )}
           </svg>
+          </>
         )}
 
         {hover && (

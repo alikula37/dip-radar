@@ -63,6 +63,19 @@ describe("API proxy route", () => {
     expect(response.status).toBe(204);
   });
 
+  it("retries once on transient network failures", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("socket hang up"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const request = new NextRequest("http://localhost:3000/api/meta");
+    const response = await GET(request, { params: Promise.resolve({ path: ["meta"] }) });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+  });
+
   it("returns 502 when the backend is unreachable", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
 
