@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 import main
 from database import Base, SessionLocal, engine
-from models import Coin, Kline, Meta, SyncLock
+from models import BtcRate, Coin, Kline, Meta, SyncLock
 from timeutils import utcnow_naive
 
 client = TestClient(main.app)
@@ -186,6 +186,53 @@ def test_get_coins_as_of_historical_snapshot():
     assert earlier["distance_pct_event"] == pytest.approx(60.0)
 
     assert client.get("/api/coins", params={"as_of": "31-12-2022"}).status_code == 422
+
+
+def test_history_and_prices_in_usd():
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            name="Ethereum",
+            is_pre_2021=True,
+            listed_checked=True,
+            market_cap=1000.0,
+            current_price_btc=0.05,
+        )
+    )
+    db.add_all(
+        [
+            Kline(symbol="ETHBTC", timestamp=datetime(2021, 6, 1), open=0.04, high=0.06, low=0.03, close=0.05, volume=10),
+            Kline(symbol="ETHBTC", timestamp=datetime(2021, 6, 2), open=0.05, high=0.07, low=0.04, close=0.06, volume=20),
+        ]
+    )
+    db.add_all(
+        [
+            BtcRate(timestamp=datetime(2021, 6, 1), high=41000, low=39000, close=40000),
+            BtcRate(timestamp=datetime(2021, 6, 2), high=43000, low=40500, close=42000),
+        ]
+    )
+    db.add(Meta(key="btc_usd_price", value="42000"))
+    db.commit()
+    db.close()
+
+    # live USD price on the coin payload
+    payload = client.get("/api/coins").json()[0]
+    assert payload["current_price_usd"] == pytest.approx(0.05 * 42000)
+
+    # USDT-quoted history converted with the same-day BTC rate
+    usd_history = client.get("/api/coins/ETHBTC/history", params={"vs": "usd"}).json()
+    assert len(usd_history) == 2
+    assert usd_history[0]["close"] == pytest.approx(0.05 * 40000)
+    assert usd_history[1]["close"] == pytest.approx(0.06 * 42000)
+    assert usd_history[1]["high"] == pytest.approx(0.07 * 42000)
+
+    # BTC parity default is unchanged
+    btc_history = client.get("/api/coins/ETHBTC/history").json()
+    assert btc_history[1]["close"] == pytest.approx(0.06)
+
+    # meta exposes the current rate
+    assert client.get("/api/meta").json()["btc_usd_price"] == pytest.approx(42000)
 
 
 def test_get_coins_includes_value_score():

@@ -103,6 +103,17 @@ class SyncLock(Base):
     expires_at = Column(DateTime)
 
 
+class BtcRate(Base):
+    """Daily BTCUSDT candles used to convert BTC parity values to USD."""
+
+    __tablename__ = "btc_rates"
+
+    timestamp = Column(DateTime, primary_key=True)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+
+
 class Watch(Base):
     __tablename__ = "watchlist"
 
