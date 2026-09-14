@@ -41,7 +41,7 @@ app.add_middleware(
 )
 
 RATE_LIMIT_WINDOW_SECONDS = 60
-DEFAULT_RATE_LIMIT = 120
+DEFAULT_RATE_LIMIT = 600
 
 
 class SlidingWindowLimiter:
@@ -73,6 +73,11 @@ async def security_middleware(request: Request, call_next):
         limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", str(DEFAULT_RATE_LIMIT)))
         if limit > 0:
             client = request.client.host if request.client else "unknown"
+            # Behind the bundled Next.js proxy every browser shares the
+            # container IP, so prefer the forwarded client address.
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                client = forwarded_for.split(",")[0].strip() or client
             if not rate_limiter.allow(client, limit):
                 return JSONResponse(
                     status_code=429,
