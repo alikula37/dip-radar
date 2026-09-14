@@ -19,14 +19,44 @@ function makeCoin(overrides: Partial<Coin> & Pick<Coin, 'symbol'>): Coin {
     bubble_size_atl: 50,
     market_cap: 100_000_000,
     volume_24h: 5_000_000,
+    valuation_pct_1y: 50,
+    valuation_pct_3y: 50,
+    valuation_pct_all: 50,
+    basing_pct_90d: 30,
+    value_score: 50,
+    value_parts: { valuation: 20 },
     ...overrides,
   };
 }
 
 const coins: Coin[] = [
-  makeCoin({ symbol: 'ETHBTC', name: 'Ethereum', distance_pct_event: 80, price_7d_ago_btc: 1.1, market_cap: 300_000_000_000 }),
-  makeCoin({ symbol: 'LTCBTC', name: 'Litecoin', distance_pct_event: 30, price_7d_ago_btc: 1.02, market_cap: 5_000_000_000 }),
-  makeCoin({ symbol: 'XRPBTC', name: 'Ripple', distance_pct_event: 10, price_7d_ago_btc: 1.08, market_cap: 80_000_000_000 }),
+  makeCoin({
+    symbol: 'ETHBTC',
+    name: 'Ethereum',
+    distance_pct_event: 80,
+    price_7d_ago_btc: 1.1,
+    market_cap: 300_000_000_000,
+    valuation_pct_3y: 90,
+    basing_pct_90d: 20,
+  }),
+  makeCoin({
+    symbol: 'LTCBTC',
+    name: 'Litecoin',
+    distance_pct_event: 30,
+    price_7d_ago_btc: 1.02,
+    market_cap: 5_000_000_000,
+    valuation_pct_3y: 40,
+    basing_pct_90d: 60,
+  }),
+  makeCoin({
+    symbol: 'XRPBTC',
+    name: 'Ripple',
+    distance_pct_event: 10,
+    price_7d_ago_btc: 1.08,
+    market_cap: 80_000_000_000,
+    valuation_pct_3y: 5,
+    basing_pct_90d: 10,
+  }),
 ];
 
 function renderBoard(overrides: Partial<Parameters<typeof DipLeaderboard>[0]> = {}) {
@@ -67,6 +97,25 @@ describe('DipLeaderboard', () => {
     const rows = dataRows();
     expect(within(rows[0]).getByText('ETH')).toBeTruthy();
     expect(within(rows[2]).getByText('LTC')).toBeTruthy();
+  });
+
+  it('sorts by valuation percentile in Cheapest mode', () => {
+    renderBoard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cheapest' }));
+
+    const rows = dataRows();
+    expect(within(rows[0]).getByText('XRP')).toBeTruthy();
+    expect(within(rows[2]).getByText('ETH')).toBeTruthy();
+  });
+
+  it('sorts by basing share in Basing mode', () => {
+    renderBoard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Basing' }));
+
+    const rows = dataRows();
+    expect(within(rows[0]).getByText('LTC')).toBeTruthy();
   });
 
   it('expands beyond the top rows', () => {

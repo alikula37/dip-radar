@@ -6,8 +6,10 @@ import {
   formatTrend,
   matchesListingFilter,
   matchesStableFilter,
+  scoreBreakdown,
   summarizeHiddenCoins,
   trendDelta,
+  valuationPct,
 } from './coins';
 import type { Coin } from '@/types';
 
@@ -163,6 +165,30 @@ describe('summarizeHiddenCoins', () => {
     );
     expect(watched.visible).toBe(1);
     expect(watched.reasons).toEqual([{ key: 'watchlist', count: 1 }]);
+  });
+});
+
+describe('valuationPct and scoreBreakdown', () => {
+  const coin = makeCoin({
+    valuation_pct_1y: 12,
+    valuation_pct_3y: 4,
+    valuation_pct_all: 30,
+    value_score: 78,
+    value_parts: { valuation: 24, distance: 20, basing: 12, range: 8, knife: -10 },
+  });
+
+  it('selects the requested valuation window', () => {
+    expect(valuationPct(coin, 1)).toBe(12);
+    expect(valuationPct(coin, 3)).toBe(4);
+    expect(valuationPct(coin, 'all')).toBe(30);
+    expect(valuationPct(makeCoin({}), 3)).toBeNull();
+  });
+
+  it('renders a readable score breakdown', () => {
+    const breakdown = scoreBreakdown(coin);
+    expect(breakdown).toContain('Value score 78');
+    expect(breakdown).toContain('Valuation percentile: +24');
+    expect(breakdown).toContain('Knife-risk penalty: -10');
   });
 });
 

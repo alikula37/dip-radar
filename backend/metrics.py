@@ -1,7 +1,27 @@
+import bisect
 import math
+from statistics import median as _median
 
 MIN_BUBBLE_SIZE = 10.0
 MAX_BUBBLE_SIZE = 100.0
+
+# Minimum history requirements for the history-based stats.
+VALUATION_MIN_1Y = 180
+VALUATION_MIN_3Y = 400
+BASING_MIN = 180
+RANGE_MIN = 30
+SMA_MIN = 60
+
+# Value score gates and weights (cross-sectional percentile ranks).
+VALUE_SCORE_MIN_CAP = 10_000_000
+VALUE_SCORE_MIN_VOLUME = 250_000
+VALUE_SCORE_WEIGHTS = {
+    "valuation": 0.30,
+    "distance": 0.25,
+    "median_gap": 0.15,
+    "basing": 0.15,
+    "range": 0.15,
+}
 
 
 def calculate_distance_pct(current_price: float, reference_low: float) -> float:
@@ -11,12 +31,7 @@ def calculate_distance_pct(current_price: float, reference_low: float) -> float:
 
 
 def calculate_bubble_sizes(coins: list, use_atl: bool = False) -> None:
-    """Size bubbles by market cap (square-root scale), per the README spec.
-
-    The `use_atl` flag is kept for API compatibility: bubble size no longer
-    depends on the selected reference distance, which drives the bubble color
-    on the frontend instead.
-    """
+    """Size bubbles by market cap (square-root scale), per the README spec."""
     caps = [c.market_cap for c in coins if c.market_cap and c.market_cap > 0]
     max_cap = max(caps) if caps else None
     sqrt_max = math.sqrt(max_cap) if max_cap else None
@@ -31,3 +46,161 @@ def calculate_bubble_sizes(coins: list, use_atl: bool = False) -> None:
             coin.bubble_size_atl = round(size, 2)
         else:
             coin.bubble_size_event = round(size, 2)
+
+
+def _percentile_rank(sorted_values: list, value: float) -> float:
+    """Share of values <= value, in percent."""
+    if not sorted_values:
+        return 0.0
+    return 100.0 * bisect.bisect_right(sorted_values, value) / len(sorted_values)
+
+
+def _p25(values: list) -> float:
+    ordered = sorted(values)
+    return ordered[max(0, int(0.25 * len(ordered)) - 1)]
+
+
+def calculate_coin_stats(closes: list, lows: list) -> dict:
+    """History-based valuation stats from ascending daily closes/lows.
+
+    Windows: 1y = 365 candles, 3y = 1095 candles. Windows shorter than the
+    minimum history requirements return None so the UI can show "N/A".
+    """
+    n = len(closes)
+    stats = {
+        "valuation_pct_1y": None,
+        "valuation_pct_3y": None,
+        "valuation_pct_all": None,
+        "median_dist_1y": None,
+        "median_dist_3y": None,
+        "range_position": None,
+        "days_since_atl": None,
+        "basing_pct_90d": None,
+        "trend_30d_pct": None,
+        "trend_90d_pct": None,
+        "above_sma200": None,
+        "history_days": n,
+    }
+    if n == 0:
+        return stats
+
+    current = closes[-1]
+
+    if n >= VALUATION_MIN_1Y:
+        window_1y = closes[-365:]
+        stats["valuation_pct_1y"] = round(_percentile_rank(sorted(window_1y), current), 1)
+        stats["valuation_pct_all"] = round(_percentile_rank(sorted(closes), current), 1)
+        med = _median(window_1y)
+        if med:
+            stats["median_dist_1y"] = round((current - med) / med * 100, 1)
+
+    if n >= VALUATION_MIN_3Y:
+        window_3y = closes[-1095:]
+        stats["valuation_pct_3y"] = round(_percentile_rank(sorted(window_3y), current), 1)
+        med = _median(window_3y)
+        if med:
+            stats["median_dist_3y"] = round((current - med) / med * 100, 1)
+
+    if n >= RANGE_MIN:
+        low_close, high_close = min(closes), max(closes)
+        if high_close > low_close:
+            stats["range_position"] = round((current - low_close) / (high_close - low_close), 3)
+        if lows:
+            stats["days_since_atl"] = n - 1 - min(range(n), key=lows.__getitem__)
+
+    if n >= BASING_MIN:
+        threshold = _p25(closes[-365:])
+        window = closes[-90:]
+        stats["basing_pct_90d"] = round(100.0 * sum(1 for close in window if close <= threshold) / len(window), 1)
+
+    if n >= 31 and closes[-31]:
+        stats["trend_30d_pct"] = round((current / closes[-31] - 1) * 100, 1)
+    if n >= 91 and closes[-91]:
+        stats["trend_90d_pct"] = round((current / closes[-91] - 1) * 100, 1)
+
+    if n >= SMA_MIN:
+        window = closes[-200:] if n >= 200 else closes
+        stats["above_sma200"] = current > (sum(window) / len(window))
+
+    return stats
+
+
+def _rank_percentiles(items: list, value_of) -> dict:
+    """Percentile rank (0-100) by object identity, average ranks on ties."""
+    ordered = sorted(items, key=value_of)
+    count = len(ordered)
+    result = {}
+    index = 0
+    while index < count:
+        end = index
+        while end + 1 < count and value_of(ordered[end + 1]) == value_of(ordered[index]):
+            end += 1
+        percentile = 100.0 * ((index + end) / 2) / (count - 1) if count > 1 else 50.0
+        for position in range(index, end + 1):
+            result[id(ordered[position])] = percentile
+        index = end + 1
+    return result
+
+
+def calculate_value_scores(coins: list) -> None:
+    """Transparent 0-100 composite computed cross-sectionally per request.
+
+    Cheapness components are rank-normalized; the trend only acts as a
+    knife-risk penalty (the backtest was ambiguous about momentum here).
+    """
+    for coin in coins:
+        coin.value_score = None
+        coin.value_parts = None
+
+    eligible = [
+        coin
+        for coin in coins
+        if not coin.is_stable
+        and coin.valuation_pct_3y is not None
+        and (coin.market_cap or 0) >= VALUE_SCORE_MIN_CAP
+        and (coin.volume_24h or 0) >= VALUE_SCORE_MIN_VOLUME
+        and coin.distance_pct_event is not None
+    ]
+    if not eligible:
+        return
+
+    def valuation_raw(coin):
+        p1y = coin.valuation_pct_1y if coin.valuation_pct_1y is not None else coin.valuation_pct_3y
+        pall = coin.valuation_pct_all if coin.valuation_pct_all is not None else coin.valuation_pct_3y
+        return -(0.5 * p1y + 0.3 * coin.valuation_pct_3y + 0.2 * pall)
+
+    def distance_raw(coin):
+        return -(coin.distance_pct_event or 0)
+
+    def median_raw(coin):
+        return -abs(coin.median_dist_3y or 0)
+
+    def basing_raw(coin):
+        return coin.basing_pct_90d or 0.0
+
+    def range_raw(coin):
+        return -(coin.range_position or 0)
+
+    components = {
+        "valuation": valuation_raw,
+        "distance": distance_raw,
+        "median_gap": median_raw,
+        "basing": basing_raw,
+        "range": range_raw,
+    }
+    ranks = {name: _rank_percentiles(eligible, value_of) for name, value_of in components.items()}
+
+    for coin in eligible:
+        parts = {
+            name: ranks[name][id(coin)] * weight
+            for name, weight in VALUE_SCORE_WEIGHTS.items()
+        }
+        penalty = 0.0
+        if (coin.trend_30d_pct is not None and coin.trend_30d_pct < -40) or (
+            coin.trend_90d_pct is not None and coin.trend_90d_pct < -60
+        ):
+            penalty = -10.0
+
+        coin.value_score = round(max(0.0, min(100.0, sum(parts.values()) + penalty)), 1)
+        coin.value_parts = {name: round(value, 1) for name, value in parts.items()}
+        coin.value_parts["knife"] = penalty

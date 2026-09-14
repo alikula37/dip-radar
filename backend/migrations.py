@@ -14,6 +14,18 @@ COIN_COLUMNS = {
     "price_30d_ago_btc": "FLOAT",
     "price_verified": "BOOLEAN",
     "price_deviation_pct": "FLOAT",
+    "valuation_pct_1y": "FLOAT",
+    "valuation_pct_3y": "FLOAT",
+    "valuation_pct_all": "FLOAT",
+    "median_dist_1y": "FLOAT",
+    "median_dist_3y": "FLOAT",
+    "range_position": "FLOAT",
+    "days_since_atl": "INTEGER",
+    "basing_pct_90d": "FLOAT",
+    "trend_30d_pct": "FLOAT",
+    "trend_90d_pct": "FLOAT",
+    "above_sma200": "BOOLEAN",
+    "history_days": "INTEGER",
 }
 
 

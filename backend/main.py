@@ -17,7 +17,7 @@ import schemas
 from database import Base, engine, get_db
 from fetcher import EVENT_CUTOFF, run_sync_with_lock
 from locks import is_locked
-from metrics import calculate_bubble_sizes, calculate_distance_pct
+from metrics import calculate_bubble_sizes, calculate_coin_stats, calculate_distance_pct, calculate_value_scores
 from migrations import run_migrations
 
 logging.basicConfig(
@@ -128,6 +128,21 @@ def _as_of_metrics(db: Session, cutoff: datetime, event_start: datetime) -> dict
         ),
     }
 
+    # History-based stats (valuation percentiles, basing, trend) as of D.
+    closes_by_symbol: dict = defaultdict(list)
+    lows_by_symbol: dict = defaultdict(list)
+    for symbol, close, low in db.execute(
+        select(models.Kline.symbol, models.Kline.close, models.Kline.low)
+        .where(models.Kline.timestamp <= cutoff)
+        .order_by(models.Kline.symbol, models.Kline.timestamp)
+    ).all():
+        closes_by_symbol[symbol].append(close)
+        lows_by_symbol[symbol].append(low)
+    metrics["stats"] = {
+        symbol: calculate_coin_stats(closes, lows_by_symbol[symbol])
+        for symbol, closes in closes_by_symbol.items()
+    }
+
     _AS_OF_CACHE[key] = metrics
     if len(_AS_OF_CACHE) > _AS_OF_CACHE_SIZE:
         _AS_OF_CACHE.popitem(last=False)
@@ -180,6 +195,10 @@ def get_coins(
                 coin.event_low = event_low
             coin.distance_pct_event = calculate_distance_pct(price, event_low)
             coin.distance_pct_atl = calculate_distance_pct(price, all_time_low)
+            stats = metrics["stats"].get(coin.symbol)
+            if stats:
+                for key, value in stats.items():
+                    setattr(coin, key, value)
             result.append(coin)
         coins = result
     elif event_start is not None:
@@ -197,6 +216,7 @@ def get_coins(
 
     calculate_bubble_sizes(coins, use_atl=False)
     calculate_bubble_sizes(coins, use_atl=True)
+    calculate_value_scores(coins)
     return coins
 
 

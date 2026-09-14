@@ -17,6 +17,38 @@ export function matchesStableFilter(coin: Coin, showStables: boolean): boolean {
   return showStables || !coin.is_stable;
 }
 
+export type ValuationWindow = 1 | 3 | 'all';
+
+export const VALUATION_WINDOW_LABELS: Record<string, string> = {
+  '1': '1y',
+  '3': '3y',
+  all: 'all',
+};
+
+/** Valuation percentile (share of days spent above today's price). */
+export function valuationPct(coin: Coin, window: ValuationWindow): number | null {
+  if (window === 1) return coin.valuation_pct_1y ?? null;
+  if (window === 3) return coin.valuation_pct_3y ?? null;
+  return coin.valuation_pct_all ?? null;
+}
+
+const SCORE_PART_LABELS: Record<string, string> = {
+  valuation: 'Valuation percentile',
+  distance: 'Distance to dip',
+  median_gap: 'Below 3y median',
+  basing: 'Basing at lows',
+  range: 'Range position',
+  knife: 'Knife-risk penalty',
+};
+
+export function scoreBreakdown(coin: Coin): string {
+  const parts = coin.value_parts ?? {};
+  const rows = Object.entries(parts).map(
+    ([key, value]) => `${SCORE_PART_LABELS[key] ?? key}: ${value > 0 ? '+' : ''}${value}`,
+  );
+  return [`Value score ${coin.value_score ?? 'N/A'}`, ...rows].join('\n');
+}
+
 export interface FilterState {
   search: string;
   minCap: number;
@@ -123,6 +155,17 @@ export function coinsToCsv(coins: Coin[]): string {
     'distance_pct_atl',
     'price_verified',
     'price_deviation_pct',
+    'valuation_pct_1y',
+    'valuation_pct_3y',
+    'valuation_pct_all',
+    'median_dist_1y',
+    'median_dist_3y',
+    'range_position',
+    'days_since_atl',
+    'basing_pct_90d',
+    'trend_30d_pct',
+    'trend_90d_pct',
+    'value_score',
   ] as const;
 
   const rows = coins.map((coin) =>
