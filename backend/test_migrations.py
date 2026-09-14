@@ -38,6 +38,7 @@ def test_migrations_upgrade_legacy_database(tmp_path):
     coin_columns = {column["name"] for column in inspector.get_columns("coins")}
     assert "listed_checked" in coin_columns
     assert "is_stable" in coin_columns
+    assert "valuation_pct_3y" in coin_columns
     assert "price_7d_ago_btc" in coin_columns
     assert "price_verified" in coin_columns
 

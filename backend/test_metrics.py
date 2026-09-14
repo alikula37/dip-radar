@@ -1,6 +1,13 @@
 import pytest
 
-from metrics import MAX_BUBBLE_SIZE, MIN_BUBBLE_SIZE, calculate_bubble_sizes, calculate_distance_pct
+from metrics import (
+    MAX_BUBBLE_SIZE,
+    MIN_BUBBLE_SIZE,
+    calculate_bubble_sizes,
+    calculate_coin_stats,
+    calculate_distance_pct,
+    calculate_value_scores,
+)
 
 
 class DummyCoin:
@@ -54,3 +61,102 @@ def test_bubble_size_without_market_cap_uses_minimum():
     assert coins[0].bubble_size_event == MIN_BUBBLE_SIZE
     assert coins[1].bubble_size_event == MIN_BUBBLE_SIZE
     assert coins[2].bubble_size_event == MAX_BUBBLE_SIZE
+
+
+def test_coin_stats_percentiles_median_range_and_trend():
+    closes = [float(value) for value in range(1, 201)]
+    lows = [float(value) for value in range(1, 201)]
+
+    stats = calculate_coin_stats(closes, lows)
+
+    assert stats["history_days"] == 200
+    assert stats["valuation_pct_1y"] == 100.0
+    assert stats["valuation_pct_all"] == 100.0
+    assert stats["valuation_pct_3y"] is None
+    assert stats["median_dist_1y"] == pytest.approx((200 - 100.5) / 100.5 * 100, abs=0.1)
+    assert stats["range_position"] == 1.0
+    assert stats["days_since_atl"] == 199
+    assert stats["trend_30d_pct"] == pytest.approx((200 / 170 - 1) * 100, abs=0.1)
+    assert stats["above_sma200"] is True
+
+
+def test_coin_stats_basing_and_short_history():
+    closes = [100.0] * 110 + [10.0] * 90
+    lows = [100.0] * 110 + [10.0] * 90
+
+    stats = calculate_coin_stats(closes, lows)
+
+    assert stats["basing_pct_90d"] == 100.0
+    assert stats["median_dist_1y"] == pytest.approx(-90.0)
+    assert stats["range_position"] == 0.0
+    assert stats["days_since_atl"] == 89
+    assert stats["trend_30d_pct"] == 0.0
+
+    short = calculate_coin_stats([1.0] * 30, [1.0] * 30)
+    assert short["history_days"] == 30
+    assert short["valuation_pct_1y"] is None
+    assert short["basing_pct_90d"] is None
+    assert short["range_position"] is None
+    assert short["days_since_atl"] == 29
+
+
+class ScoreCoin:
+    def __init__(self, **overrides):
+        self.is_stable = False
+        self.market_cap = 1_000_000_000
+        self.volume_24h = 10_000_000
+        self.valuation_pct_1y = 10.0
+        self.valuation_pct_3y = 10.0
+        self.valuation_pct_all = 10.0
+        self.median_dist_3y = -50.0
+        self.distance_pct_event = 20.0
+        self.basing_pct_90d = 50.0
+        self.range_position = 0.2
+        self.trend_30d_pct = 0.0
+        self.trend_90d_pct = 0.0
+        self.value_score = None
+        self.value_parts = None
+        for key, value in overrides.items():
+            setattr(self, key, value)
+
+
+def test_value_score_ranks_cheap_above_expensive():
+    cheap = ScoreCoin()
+    expensive = ScoreCoin(
+        valuation_pct_1y=90.0,
+        valuation_pct_3y=90.0,
+        valuation_pct_all=90.0,
+        median_dist_3y=120.0,
+        distance_pct_event=300.0,
+        basing_pct_90d=0.0,
+        range_position=0.95,
+    )
+
+    calculate_value_scores([cheap, expensive])
+
+    assert cheap.value_score is not None
+    assert 0 <= cheap.value_score <= 100
+    assert cheap.value_score > expensive.value_score
+    assert set(cheap.value_parts) == {"valuation", "distance", "median_gap", "basing", "range", "knife"}
+
+
+def test_value_score_knife_penalty():
+    calm = ScoreCoin()
+    knife = ScoreCoin(trend_30d_pct=-45.0)
+
+    calculate_value_scores([calm, knife])
+
+    assert knife.value_parts["knife"] == -10.0
+    assert knife.value_score == pytest.approx(calm.value_score - 10, abs=0.2)
+
+
+def test_value_score_gates_low_cap_short_history_and_stables():
+    low_cap = ScoreCoin(market_cap=1_000_000)
+    short_history = ScoreCoin(valuation_pct_3y=None)
+    stable = ScoreCoin(is_stable=True)
+
+    calculate_value_scores([low_cap, short_history, stable])
+
+    assert low_cap.value_score is None
+    assert short_history.value_score is None
+    assert stable.value_score is None

@@ -25,12 +25,26 @@ class CoinBase(BaseModel):
     distance_pct_atl: Optional[float] = None
     market_cap: Optional[float] = None
     volume_24h: Optional[float] = None
+    valuation_pct_1y: Optional[float] = None
+    valuation_pct_3y: Optional[float] = None
+    valuation_pct_all: Optional[float] = None
+    median_dist_1y: Optional[float] = None
+    median_dist_3y: Optional[float] = None
+    range_position: Optional[float] = None
+    days_since_atl: Optional[int] = None
+    basing_pct_90d: Optional[float] = None
+    trend_30d_pct: Optional[float] = None
+    trend_90d_pct: Optional[float] = None
+    above_sma200: Optional[bool] = None
+    history_days: Optional[int] = None
     last_updated: Optional[datetime] = None
 
 
 class CoinResponse(CoinBase):
     bubble_size_event: Optional[float] = None
     bubble_size_atl: Optional[float] = None
+    value_score: Optional[float] = None
+    value_parts: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 

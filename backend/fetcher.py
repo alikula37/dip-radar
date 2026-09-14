@@ -16,7 +16,7 @@ from urllib3.util.retry import Retry
 from alerts import check_alerts
 from database import SessionLocal
 from locks import release_lock, try_acquire_lock
-from metrics import calculate_distance_pct
+from metrics import calculate_coin_stats, calculate_distance_pct
 from models import Coin, Kline, Meta
 from timeutils import from_millis, to_millis, utcnow, utcnow_naive
 
@@ -407,6 +407,17 @@ def update_coin_metrics(db: DBSession, coin: Coin) -> None:
     coin.distance_pct_atl = calculate_distance_pct(current_price, all_time_low)
     coin.distance_pct_event = calculate_distance_pct(current_price, event_low)
     coin.last_updated = utcnow_naive()
+
+    series = (
+        db.query(Kline.close, Kline.low)
+        .filter(Kline.symbol == coin.symbol)
+        .order_by(Kline.timestamp.asc())
+        .all()
+    )
+    stats = calculate_coin_stats([row[0] for row in series], [row[1] for row in series])
+    for key, value in stats.items():
+        setattr(coin, key, value)
+
     db.commit()
 
 

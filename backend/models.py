@@ -40,6 +40,18 @@ class Coin(Base):
     price_30d_ago_btc = Column(Float, nullable=True)
     price_verified = Column(Boolean, nullable=True)
     price_deviation_pct = Column(Float, nullable=True)
+    valuation_pct_1y = Column(Float, nullable=True)
+    valuation_pct_3y = Column(Float, nullable=True)
+    valuation_pct_all = Column(Float, nullable=True)
+    median_dist_1y = Column(Float, nullable=True)
+    median_dist_3y = Column(Float, nullable=True)
+    range_position = Column(Float, nullable=True)
+    days_since_atl = Column(Integer, nullable=True)
+    basing_pct_90d = Column(Float, nullable=True)
+    trend_30d_pct = Column(Float, nullable=True)
+    trend_90d_pct = Column(Float, nullable=True)
+    above_sma200 = Column(Boolean, nullable=True)
+    history_days = Column(Integer, nullable=True)
     event_low = Column(Float, nullable=True)  # Lowest since 2021-01-01 or listing
     all_time_low = Column(Float, nullable=True)  # Lowest since listing
 

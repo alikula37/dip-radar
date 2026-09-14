@@ -188,6 +188,38 @@ def test_get_coins_as_of_historical_snapshot():
     assert client.get("/api/coins", params={"as_of": "31-12-2022"}).status_code == 422
 
 
+def test_get_coins_includes_value_score():
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            name="Ethereum",
+            is_pre_2021=True,
+            listed_checked=True,
+            market_cap=1_000_000_000,
+            volume_24h=10_000_000,
+            current_price_btc=1.0,
+            distance_pct_event=20.0,
+            valuation_pct_1y=10.0,
+            valuation_pct_3y=10.0,
+            valuation_pct_all=10.0,
+            median_dist_3y=-40.0,
+            basing_pct_90d=50.0,
+            range_position=0.2,
+            trend_30d_pct=0.0,
+            trend_90d_pct=0.0,
+        )
+    )
+    db.commit()
+    db.close()
+
+    payload = client.get("/api/coins").json()[0]
+
+    assert payload["valuation_pct_3y"] == 10.0
+    assert payload["value_score"] is not None
+    assert payload["value_parts"]["valuation"] >= 0
+
+
 def test_get_coins_includes_stable_flag():
     seed_coin("USDSUSDT")
     db = SessionLocal()
