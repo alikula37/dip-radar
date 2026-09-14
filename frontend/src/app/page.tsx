@@ -67,6 +67,21 @@ const HIDDEN_REASON_LABELS: Record<string, string> = {
   search: 'search',
 };
 
+/** Compare numeric values, keeping missing data last in both directions. */
+function compareNullable(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  direction: SortDirection,
+): number {
+  const aMissing = a === null || a === undefined || !Number.isFinite(a);
+  const bMissing = b === null || b === undefined || !Number.isFinite(b);
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  const base = (a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0;
+  return direction === 'asc' ? base : -base;
+}
+
 type Toast = { message: string; type: 'info' | 'error' };
 
 export default function Home() {
@@ -375,20 +390,20 @@ export default function Home() {
       .filter((coin) => (coin.volume_24h ?? 0) >= minVolume);
 
     return [...list].sort((a, b) => {
-      let result = 0;
-      if (sort.key === 'market_cap') result = (a.market_cap ?? -1) - (b.market_cap ?? -1);
-      else if (sort.key === 'volume_24h') result = (a.volume_24h ?? -1) - (b.volume_24h ?? -1);
-      else if (sort.key === 'distance')
-        result = (activeDistance(a) ?? Number.MAX_VALUE) - (activeDistance(b) ?? Number.MAX_VALUE);
-      else if (sort.key === 'trend_7d')
-        result = (trendDelta(a, useAtl, 7) ?? Number.MAX_VALUE) - (trendDelta(b, useAtl, 7) ?? Number.MAX_VALUE);
-      else if (sort.key === 'value_score') result = (a.value_score ?? -1) - (b.value_score ?? -1);
-      else if (sort.key === 'valuation_3y')
-        result = (a.valuation_pct_3y ?? Number.MAX_VALUE) - (b.valuation_pct_3y ?? Number.MAX_VALUE);
-      else if (sort.key === 'range_position')
-        result = (a.range_position ?? Number.MAX_VALUE) - (b.range_position ?? Number.MAX_VALUE);
-      else result = a.symbol.localeCompare(b.symbol);
-      return sort.direction === 'asc' ? result : -result;
+      if (sort.key === 'symbol') {
+        const base = a.symbol.localeCompare(b.symbol);
+        return sort.direction === 'asc' ? base : -base;
+      }
+      if (sort.key === 'market_cap') return compareNullable(a.market_cap, b.market_cap, sort.direction);
+      if (sort.key === 'volume_24h') return compareNullable(a.volume_24h, b.volume_24h, sort.direction);
+      if (sort.key === 'distance')
+        return compareNullable(activeDistance(a), activeDistance(b), sort.direction);
+      if (sort.key === 'trend_7d')
+        return compareNullable(trendDelta(a, useAtl, 7), trendDelta(b, useAtl, 7), sort.direction);
+      if (sort.key === 'value_score') return compareNullable(a.value_score, b.value_score, sort.direction);
+      if (sort.key === 'valuation_3y')
+        return compareNullable(a.valuation_pct_3y, b.valuation_pct_3y, sort.direction);
+      return compareNullable(a.range_position, b.range_position, sort.direction);
     });
   }, [coins, search, minCap, minVolume, sort, activeDistance, useAtl, watchOnly, watchedSymbols, listingFilter, showStables]);
 

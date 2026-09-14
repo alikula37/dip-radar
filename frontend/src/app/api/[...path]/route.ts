@@ -34,4 +34,4 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path?: s
   }
 }
 
-export { proxy as GET, proxy as POST };
+export { proxy as GET, proxy as POST, proxy as PUT, proxy as PATCH, proxy as DELETE };

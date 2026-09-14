@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GET, POST } from "./route";
+import { DELETE, GET, POST } from "./route";
 
 describe("API proxy route", () => {
   afterEach(() => {
@@ -46,6 +46,21 @@ describe("API proxy route", () => {
       expect.objectContaining({ method: "POST", body: "{}" }),
     );
     expect(response.status).toBe(409);
+  });
+
+  it("forwards DELETE requests (watchlist removal)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const request = new NextRequest("http://localhost:3000/api/watchlist/ETHBTC", { method: "DELETE" });
+    const response = await DELETE(request, { params: Promise.resolve({ path: ["watchlist", "ETHBTC"] }) });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/watchlist/ETHBTC",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(response.status).toBe(204);
   });
 
   it("returns 502 when the backend is unreachable", async () => {

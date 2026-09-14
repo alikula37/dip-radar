@@ -19,7 +19,7 @@ COINS = [
 ]
 
 
-def main(days: int = 180) -> None:
+def main(days: int = 1700) -> None:
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
     try:
@@ -27,7 +27,7 @@ def main(days: int = 180) -> None:
             print("Database already contains coins; skipping demo seed.")
             return
 
-        start = datetime(2024, 1, 1)
+        start = datetime(2022, 1, 1)
         for index, (symbol, name, coingecko_id, market_cap, base_price) in enumerate(COINS):
             coin = Coin(
                 symbol=symbol,
