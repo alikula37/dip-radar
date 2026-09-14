@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine
 from fetcher import update_coin_metrics
-from models import Coin, Kline, Meta
+from models import BtcRate, Coin, Kline, Meta
 from timeutils import utcnow
 
 COINS = [
@@ -61,8 +61,24 @@ def main(days: int = 1700) -> None:
             update_coin_metrics(db, coin)
 
         db.add(Meta(key="last_updated", value=utcnow().isoformat()))
+
+        # Daily BTC/USD rates so USD parity works without any provider call.
+        last_btc_close = 60000.0
+        for day in range(days):
+            timestamp = start + timedelta(days=day)
+            btc_close = 60000.0 * (1 + 0.15 * math.sin(day / 40))
+            last_btc_close = btc_close
+            db.add(
+                BtcRate(
+                    timestamp=timestamp,
+                    high=btc_close * 1.01,
+                    low=btc_close * 0.99,
+                    close=btc_close,
+                )
+            )
+        db.add(Meta(key="btc_usd_price", value=str(round(last_btc_close, 2))))
         db.commit()
-        print(f"Seeded {len(COINS)} demo coins with {days} days of candles.")
+        print(f"Seeded {len(COINS)} demo coins with {days} days of candles and BTC/USD rates.")
     finally:
         db.close()
 
