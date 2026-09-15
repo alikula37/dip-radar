@@ -212,6 +212,29 @@ from scanning the strategy space:
   answer is capital preservation (sit in BTC when risk-off) plus episodic
   alpha, not steady compounding.
 
+### Market-neutral sleeve (long cheap / short expensive)
+
+The long-only book bleeds when the whole alt market bleeds, so the simulator
+has a short sleeve: the most expensive coins (lowest scores, optionally
+`short_max_score`) are shorted every anchor, sized by `short_exposure` and
+charged a `short_funding_apr` drag. Measured on the Balanced preset:
+
+| Variant | Total | Sharpe | Max DD | Gains from best 5% of periods | Funding drag |
+| --- | --- | --- | --- | --- | --- |
+| long-only | +191% | 0.56 | −33% | 61% | 0% |
+| short n3 @25%, 10% APR | **+316%** | **0.66** | −32% | **54%** | 12% |
+| short n3 @50%, 10% APR | +401% | 0.72 | −45% | 47% | 24% |
+| short n3 @75%, 10% APR | +405% | 0.74 | −59% | 41% | 35% |
+
+The sleeve makes the return stream broader-based (concentration 61% → 41-54%,
+Sharpe up, drawdown unchanged at 25% exposure) and improves the train and
+2025+ windows, but the latest holdout (2025-04 → 2026-09) stays negative
+(−12% → −19% at 25% exposure): the cheap-vs-expensive spread itself inverted
+in that regime. Funding is the main practical cost — 20% APR roughly halves
+the sleeve's contribution. Conclusion: the short sleeve is a real
+diversification improvement for the return *sources*, not a fix for the most
+recent regime.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

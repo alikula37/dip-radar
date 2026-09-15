@@ -112,6 +112,7 @@ class BacktestPick(BaseModel):
     weight: float
     period_return: float
     exited: bool = False
+    direction: str = "long"
 
 
 class BacktestPeriod(BaseModel):
@@ -144,6 +145,8 @@ class BacktestMetrics(BaseModel):
     win_rate: float
     avg_holdings: float
     avg_turnover: float
+    avg_short_notional: float = 0.0
+    funding_cost: float = 0.0
     positive_years: float = 0.0
     positive_rolling_share: float = 0.0
     time_in_drawdown: float = 0.0
@@ -229,6 +232,10 @@ class BacktestResponse(BaseModel):
     regime_exposure: float = 0.0
     equity_trend_exposure: Optional[float] = None
     profit_lock_pct: Optional[float] = None
+    short_n: int = 0
+    short_max_score: Optional[float] = None
+    short_funding_apr: float = 0.0
+    short_exposure: float = 1.0
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

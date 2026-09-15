@@ -591,3 +591,38 @@ def test_regime_warmup_start_leaves_room_for_the_trend():
 
     assert warmup < datetime(2022, 1, 1)
     assert (datetime(2022, 1, 1) - warmup).days >= 30
+
+
+def test_short_sleeve_builds_a_market_neutral_book():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, short_n=1, short_funding_apr=0, **_ROTATION_WINDOW)
+
+    picks = {(pick["symbol"], pick["direction"]) for pick in result["holdings"][0]["picks"]}
+    assert ("AAAUSDT", "long") in picks
+    assert ("BBBUSDT", "short") in picks
+    # BBB is flat, AAA jumps 100 -> 110: a dollar-neutral book keeps the gain.
+    assert result["curve"][1]["period_return"] == pytest.approx(0.10, abs=0.005)
+    # The short sleeve is a per-period position: it is not carried as a long.
+    assert result["trades"][0]["symbol"] == "AAAUSDT"
+    assert result["metrics"]["avg_short_notional"] == pytest.approx(1.0)
+
+
+def test_short_funding_is_charged_on_the_short_notional():
+    snapshot = _manual_snapshot()
+
+    free = simulate(snapshot, short_n=1, short_funding_apr=0, **_ROTATION_WINDOW)
+    costly = simulate(snapshot, short_n=1, short_funding_apr=36.5, **_ROTATION_WINDOW)
+
+    assert costly["metrics"]["funding_cost"] > 0
+    assert costly["metrics"]["total_return"] < free["metrics"]["total_return"]
+
+
+def test_short_max_score_filters_the_short_book():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, short_n=1, short_max_score=20, **_ROTATION_WINDOW)
+
+    # BBB scores 30 > 20, so nothing qualifies to short.
+    assert all(pick["direction"] == "long" for pick in result["holdings"][0]["picks"])
+    assert result["metrics"]["avg_short_notional"] == 0.0

@@ -493,6 +493,10 @@ def simulate(
     regime_exposure: float = 0.0,
     equity_trend_exposure: Optional[float] = None,
     profit_lock_pct: Optional[float] = None,
+    short_n: int = 0,
+    short_max_score: Optional[float] = None,
+    short_funding_apr: float = 0.0,
+    short_exposure: float = 1.0,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -535,11 +539,15 @@ def simulate(
 
     equity_history = []
     lock_base = 1.0
+    funding_costs = []
+    short_notionals = []
+    previous_shorts: set = set()
 
     for index in range(len(dates) - 1):
         date = dates[index]
         next_date = dates[index + 1]
         equity_history.append(equity)
+        period_days = max((next_date - date).days, 1)
         pool = entries_by_date.get(date, {})
         next_pool = entries_by_date.get(next_date, {})
 
@@ -576,7 +584,7 @@ def simulate(
             picks = []
             held_symbols = set()
             for symbol in previous_weights:
-                if symbol in blocked_symbols:
+                if symbol in blocked_symbols or symbol in previous_shorts:
                     continue
                 entry = pool.get(symbol)
                 if entry is not None and entry["score"] >= exit_score:
@@ -622,6 +630,26 @@ def simulate(
             weights = {symbol: weight * remaining for symbol, weight in weights.items()}
             lock_base = equity
 
+        # Short book: the most expensive coins (lowest scores) are shorted at
+        # every anchor and held to the next one. Negative signed weights let the
+        # return, turnover and fee math stay symmetric with the long side.
+        short_symbols = []
+        if short_n > 0:
+            short_candidates = [
+                (symbol, entry)
+                for symbol, entry in pool.items()
+                if symbol not in weights
+                and (entry["cap"] or 0.0) >= min_market_cap
+                and (entry["volume"] or 0.0) >= min_volume
+                and (short_max_score is None or entry["score"] <= short_max_score)
+            ]
+            short_candidates.sort(key=lambda item: item[1]["score"])
+            short_picks = short_candidates[:short_n]
+            short_symbols = [symbol for symbol, _ in short_picks]
+            short_scale = max(0.0, min(1.0, short_exposure)) / short_n
+            for symbol, _entry in short_picks:
+                weights[symbol] = -short_scale
+
         # Positions dropped at this anchor are sold at the anchor price; the
         # trade log keeps where each position was bought and sold.
         for symbol in list(open_positions):
@@ -644,7 +672,7 @@ def simulate(
                 reason = "score"
             trades.append(_trade(position, date, exit_price, reason))
 
-        for symbol in weights:
+        for symbol, _long_entry in picks:
             if symbol in open_positions:
                 continue
             entry = pool.get(symbol)
@@ -665,6 +693,26 @@ def simulate(
         period_return = 0.0
         pick_rows = []
         stopped_symbols = set()
+        for symbol in short_symbols:
+            entry = pool.get(symbol)
+            next_entry = next_pool.get(symbol)
+            if entry is None or next_entry is None:
+                continue
+            price_now = entry["price"]
+            price_next = next_entry["price"]
+            coin_return = (price_next / price_now - 1.0) if price_now else 0.0
+            weight = weights.get(symbol, 0.0)
+            period_return += weight * coin_return  # negative weight -> short P&L
+            pick_rows.append(
+                {
+                    "symbol": symbol,
+                    "score": entry["score"],
+                    "weight": weight,
+                    "period_return": -coin_return,
+                    "exited": False,
+                    "direction": "short",
+                }
+            )
         for symbol, entry in picks:
             weight = weights.get(symbol, 0.0)
             price_now = entry["price"]
@@ -706,6 +754,7 @@ def simulate(
                     "weight": weight,
                     "period_return": coin_return,
                     "exited": exit_trigger is not None,
+                    "direction": "long",
                 }
             )
 
@@ -713,7 +762,11 @@ def simulate(
         traded_notional = sum(abs(weights.get(symbol, 0.0) - previous_weights.get(symbol, 0.0)) for symbol in all_symbols)
         turnover = traded_notional / 2
         fee = traded_notional * fee_pct / 100.0
-        period_return -= fee
+        short_notional = sum(abs(weights.get(symbol, 0.0)) for symbol in short_symbols)
+        funding = short_notional * (short_funding_apr / 100.0) * period_days / 365.0
+        funding_costs.append(funding)
+        short_notionals.append(short_notional)
+        period_return -= fee + funding
         equity *= 1.0 + period_return
 
         period_returns.append(period_return)
@@ -721,6 +774,7 @@ def simulate(
         curve.append({"date": next_date, "equity": equity, "period_return": period_return})
         holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on})
         previous_weights = weights
+        previous_shorts = set(short_symbols)
         blocked_symbols = stopped_symbols
 
     last_pool = entries_by_date.get(dates[-1], {})
@@ -808,6 +862,8 @@ def simulate(
         "win_rate": round(win_rate, 4),
         "avg_holdings": round(avg_holdings, 2),
         "avg_turnover": round(avg_turnover, 4),
+        "avg_short_notional": round(statistics.mean(short_notionals), 4) if short_notionals else 0.0,
+        "funding_cost": round(sum(funding_costs), 4) if funding_costs else 0.0,
         "positive_years": round(positive_years, 4),
         "positive_rolling_share": round(positive_rolling_share, 4),
         "time_in_drawdown": round(time_in_drawdown, 4),

@@ -50,6 +50,10 @@ CATEGORICAL_SPACE = {
     "sell_score": [None, 20, 25, 30, 40, 50, 60],
     "equity_trend_exposure": [None, 0.0, 0.35, 0.5, 0.7],
     "profit_lock_pct": [None, 25, 50],
+    "short_n": [0, 2, 3, 5],
+    "short_max_score": [None, 30, 40, 50],
+    "short_funding_apr": [0, 10, 20],
+    "short_exposure": [0.0, 0.25, 0.5, 1.0],
     "min_trend_30d": [None, -60, -40, -25, 0],
     "weighting": ["equal", "score", "market_cap"],
     "rotation": ["hold", "rebalance"],
@@ -84,6 +88,10 @@ DEFAULT_FIXED_PARAMS = {
     "stop_loss_pct": None,
     "equity_trend_exposure": None,
     "profit_lock_pct": None,
+    "short_n": 0,
+    "short_max_score": None,
+    "short_funding_apr": 0.0,
+    "short_exposure": 1.0,
 }
 
 
