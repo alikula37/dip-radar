@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from research import common
 from research.model import FEATURE_DIRECTIONS, build_samples, fit_standardized, standardize
+from score_models import FEATURE_INFO
 
 ARTIFACT_DIR = os.path.join(common.BACKEND_DIR, "score_artifacts")
 
@@ -56,11 +57,25 @@ def main() -> None:
     if os.path.exists(report_path):
         with open(report_path) as handle:
             report = json.load(handle)
+        model_sharpe = report.get("strategy", {}).get("model_top3", {}).get("sharpe")
+        baseline_sharpe = report.get("strategy", {}).get("baseline_top3", {}).get("sharpe")
+        gate_passed = (
+            model_sharpe is not None
+            and baseline_sharpe is not None
+            and model_sharpe > baseline_sharpe
+        )
         validation = {
             "walk_forward_ic": report.get("model_ic", {}).get("mean"),
             "baseline_ic": report.get("baseline_ic", {}).get("mean"),
             "ic_delta_ci95": report.get("ic_delta", {}).get("ci95"),
-            "strategy_gate": "failed: top-3 proxy Sharpe did not beat the baseline",
+            "proxy_top3": report.get("strategy", {}).get("model_top3", {}).get("total_return"),
+            "baseline_top3": report.get("strategy", {}).get("baseline_top3", {}).get("total_return"),
+            "strategy_gate": (
+                "passed the IC gate and the proxy portfolio gate; the real simulator A/B is recorded in research/README.md"
+                if gate_passed
+                else "failed: top-3 proxy Sharpe did not beat the baseline"
+            ),
+            "report": "research/baselines/model_report.json",
         }
 
     artifact = {
@@ -76,6 +91,16 @@ def main() -> None:
             "regime_only": args.train_regime_only,
         },
         "feature_directions": FEATURE_DIRECTIONS,
+        "features": [
+            {
+                "name": name,
+                "direction": FEATURE_DIRECTIONS[name],
+                "weight": weights[index],
+                "label": FEATURE_INFO.get(name, {}).get("label", name),
+                "description": FEATURE_INFO.get(name, {}).get("description", ""),
+            }
+            for index, name in enumerate(FEATURE_DIRECTIONS)
+        ],
         "feature_scaling": {
             name: {"mean": means[index], "scale": scales[index]}
             for index, name in enumerate(FEATURE_DIRECTIONS)

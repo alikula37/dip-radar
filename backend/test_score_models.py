@@ -22,23 +22,38 @@ def _coin(cheapness: float, liquidity: float = 1.0):
         median_dist_3y=cheapness * 50.0 - 25.0,
         basing_pct_90d=(1.0 - cheapness) * 100.0,
         range_position=cheapness,
+        trend_7d=0.0,
         trend_90d=0.0,
+        trend_180d=0.0,
+        trend_365d=0.0,
         volatility_90d=0.5,
         drawdown_from_ath=-cheapness,
         days_since_ath=100,
         dollar_volume_30d=liquidity,
+        band_p05_dist_3y=cheapness * 300.0,
+        band_p25_dist_3y=cheapness * 200.0,
+        band_p75_dist_3y=cheapness * 100.0,
+        band_p95_dist_3y=cheapness * 50.0,
+        band_iqr_width_3y=0.8,
+        band_span_width_3y=2.5,
+        above_p75_3y=1 if cheapness > 0.75 else 0,
+        below_p25_3y=1 if cheapness < 0.25 else 0,
+        top_band_share_90d=(1.0 - cheapness) * 100.0,
         value_score=None,
         value_parts=None,
     )
 
 
 def test_bundled_artifact_loads_and_is_consistent():
-    assert "learned_v1" in available_models()
-    artifact = load_model("learned_v1")
+    assert available_models() == ["learned_v4"]
+    artifact = load_model("learned_v4")
 
     assert set(artifact["weights"]) == set(FEATURE_DIRECTIONS)
     assert set(artifact["feature_scaling"]) == set(FEATURE_DIRECTIONS)
+    assert {feature["name"] for feature in artifact["features"]} == set(FEATURE_DIRECTIONS)
+    assert all(feature["label"] for feature in artifact["features"])
     assert artifact["trained_until"] == "2024-12-31"
+    assert "strategy_gate" in artifact["validation"]
 
 
 def test_unknown_artifact_is_rejected():
@@ -47,7 +62,7 @@ def test_unknown_artifact_is_rejected():
 
 
 def test_apply_model_scores_ranks_cheap_coins_higher():
-    artifact = load_model("learned_v1")
+    artifact = load_model("learned_v4")
     coins = [_coin(0.0, 5.0), _coin(0.5, 2.0), _coin(1.0, 0.5)]
 
     apply_model_scores(coins, artifact)
@@ -58,7 +73,7 @@ def test_apply_model_scores_ranks_cheap_coins_higher():
 
 
 def test_apply_model_scores_handles_missing_features_with_medians():
-    artifact = load_model("learned_v1")
+    artifact = load_model("learned_v4")
     broken = _coin(0.2)
     broken.volatility_90d = None
     coins = [broken, _coin(0.4), _coin(0.9)]

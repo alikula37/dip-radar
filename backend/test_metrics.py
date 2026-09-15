@@ -147,7 +147,9 @@ def test_value_score_knife_penalty():
     calculate_value_scores([calm, knife])
 
     assert knife.value_parts["knife"] == -10.0
-    assert knife.value_score == pytest.approx(calm.value_score - 10, abs=0.2)
+    # The headline score is the cross-sectional percentile of the composite,
+    # so the penalized coin simply ranks below the calm one.
+    assert knife.value_score < calm.value_score
 
 
 def test_value_score_gates_low_cap_short_history_and_stables():

@@ -36,11 +36,23 @@ FEATURE_DIRECTIONS = {
     "abs_median_dist_3y": -1,
     "basing_pct_90d": +1,
     "range_position": -1,
+    "trend_7d": +1,
     "trend_90d": +1,
+    "trend_180d": +1,
+    "trend_365d": +1,
     "volatility_90d": -1,
     "drawdown_from_ath": -1,
     "days_since_ath": +1,
     "dollar_volume_30d": +1,
+    "band_p05_dist_3y": -1,
+    "band_p25_dist_3y": -1,
+    "band_p75_dist_3y": -1,
+    "band_p95_dist_3y": -1,
+    "band_iqr_width_3y": -1,
+    "band_span_width_3y": -1,
+    "above_p75_3y": -1,
+    "below_p25_3y": +1,
+    "top_band_share_90d": -1,
 }
 
 

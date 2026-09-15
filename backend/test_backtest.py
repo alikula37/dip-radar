@@ -115,7 +115,7 @@ def test_snapshot_entries_carry_point_in_time_research_features(seeded_db):
 def test_snapshot_can_use_a_learned_score_artifact(seeded_db):
     end = START + timedelta(days=DAYS - 1)
     rule = build_snapshot(seeded_db, "monthly", end, use_cache=False)
-    learned = build_snapshot(seeded_db, "monthly", end, use_cache=False, score_model="learned_v1")
+    learned = build_snapshot(seeded_db, "monthly", end, use_cache=False, score_model="learned_v4")
 
     entry_date = learned["dates"][5]
     assert set(learned["entries"][entry_date]) == set(rule["entries"][entry_date])

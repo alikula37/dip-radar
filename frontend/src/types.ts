@@ -194,6 +194,7 @@ export interface BacktestForm {
   topN: number;
   minScore: number;
   minCap: number;
+  maxCap: number | null;
   minVolume: number;
   weighting: 'equal' | 'score' | 'market_cap';
   fillWithBtc: boolean;
@@ -204,7 +205,7 @@ export interface BacktestForm {
   stopLoss: number | null;
   trailingStop: number | null;
   takeProfit: number | null;
-  scoreModel: 'rule' | 'learned_v1' | 'learned_v2' | 'learned_v3_regime';
+  scoreModel: string;
   regimeFilter: 'none' | 'alt_trend' | 'breadth';
   regimeMinBreadth: number;
   regimeExposure: number;
@@ -221,6 +222,23 @@ export interface BacktestForm {
   icWindow: number;
   icThreshold: number;
   icExposure: number;
+}
+
+export interface ScoreModelFeature {
+  name: string;
+  label: string;
+  description: string;
+  weight: number;
+  direction: number;
+}
+
+export interface ScoreModelInfo {
+  version: string;
+  label: string;
+  experimental: boolean;
+  trained_until: string | null;
+  validation: Record<string, unknown> | null;
+  features: ScoreModelFeature[];
 }
 
 export interface OptimizerFold {

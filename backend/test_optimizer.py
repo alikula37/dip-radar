@@ -73,6 +73,7 @@ def test_scope_validation_requires_full_coverage():
     optimize, pinned = validate_scope(
         ["top_n", "min_score"],
         {"sell_score": None, "min_trend_30d": None, "weighting": "score", "rotation": "hold",
+         "min_market_cap": 10_000_000, "max_market_cap": None,
          "regime_filter": None, "regime_exposure": 1.0, "trailing_stop_pct": None,
          "take_profit_pct": None, "stop_loss_pct": None, "equity_trend_exposure": None,
          "profit_lock_pct": None, "short_n": 0, "short_max_score": None,

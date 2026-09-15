@@ -98,6 +98,23 @@ class WatchResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class ScoreModelFeature(BaseModel):
+    name: str
+    label: str
+    description: str = ""
+    weight: float
+    direction: int = 1
+
+
+class ScoreModelResponse(BaseModel):
+    version: str
+    label: str
+    experimental: bool = False
+    trained_until: Optional[str] = None
+    validation: Optional[dict] = None
+    features: List[ScoreModelFeature]
+
+
 class BacktestPoint(BaseModel):
     date: datetime
     equity: float
@@ -162,6 +179,7 @@ class OptimizerRequest(BaseModel):
     end: Optional[str] = None
     rebalance: str = "weekly"
     min_market_cap: float = 10_000_000.0
+    max_market_cap: Optional[float] = None
     min_volume: float = 250_000.0
     fee_pct: float = 0.1
     fill_with_btc: bool = True
@@ -194,6 +212,7 @@ class OptimizerResponse(BaseModel):
     rebalance: str
     score_model: str
     min_market_cap: float
+    max_market_cap: Optional[float] = None
     min_volume: float
     fee_pct: float
     validation_fraction: float
@@ -221,6 +240,7 @@ class BacktestResponse(BaseModel):
     top_n: int
     min_score: float
     min_market_cap: float
+    max_market_cap: Optional[float] = None
     min_volume: float
     weighting: str
     fill_with_btc: bool

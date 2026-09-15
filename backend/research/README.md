@@ -99,6 +99,71 @@ for the exact snapshot):
 - Score weights/thresholds never get tuned on the Strategy Lab metrics of the
   same period they are evaluated on.
 
+## Band features, the percentile score and learned_v4 (Sept 2026)
+
+Three changes moved the score line forward:
+
+1. **The dashboard's 3-year bands became model features.** `metrics.py` now emits
+   the P05/P25/P75/P95 distances of the current close inside the last 3 years of
+   daily closes, the IQR and P05–P95 band widths, the above-P75 / below-P25
+   flags, the share of the last 90 days spent in the top quartile, and 7d/180d/365d
+   trends. The app was already BTC-denominated end to end (USDT klines are
+   converted to BTC parity), so these features measure exactly the dips a BTC
+   accumulator cares about: how far a coin is above its BTC-parity dip, and how
+   stretched it is inside its own 3-year distribution.
+2. **The rule score became a percentile.** The headline score is now the
+   cross-sectional percentile of the weighted composite instead of the raw sum of
+   percentiles (a sum is bell-shaped: almost nothing above 80 or below 20). The
+   scale is uniform by construction and the tails are comparable indicators. The
+   side effect had to be managed: old thresholds meant different things on the
+   new scale (sell < 25 used to mean "among the most expensive 2-3%", now it means
+   the bottom quartile), so the presets' exit thresholds were re-tuned to sell < 3.
+3. **learned_v4** retrains the constrained model on the enlarged feature set
+   (24 features, anchors up to 2024-12-31, 15,651 samples):
+
+| Metric | Rule score | learned_v4 |
+| --- | --- | --- |
+| Walk-forward IC (54 folds) | 0.062 | **0.170** |
+| Positive IC share | 70% | **91%** |
+| IC delta 95% CI | — | [+0.070, +0.146] |
+| Top-3 proxy in the harness | −64.8% | **+17.9%** |
+
+   Largest weights: `dollar_volume_30d`, `valuation_pct_1y`, `band_p05_dist_3y`,
+   `below_p25_3y`, `distance` — the BTC-parity dip distance and band-edge
+   features carry real weight, which matches the manual read of the BCH/BTC
+   parity chart (buy at the BTC-parity dip, rotate back at the top).
+
+   Real-simulator A/B with the re-tuned presets (rule → learned_v4): Balanced
+   2025+ +31% (Sharpe 0.60) → **+49% (1.57)**, holdout +19% (0.46) → +18% (0.60);
+   Aggressive FULL +29% (0.36) → **+168% (0.74)** and holdout −6% (0.17) →
+   **+36% (0.86)**. Turnover is unchanged (0.11–0.22). FULL-window Balanced
+   favours the rule score (+122% vs +22%), so `rule` stays the default and the
+   artifact ships as an experimental option with the shadow period open.
+   `learned_v1`/`v2`/`v3_regime` were removed with this change; `learned_v4` is
+   the only learned artifact.
+
+### Market-cap search and the optimized preset
+
+The optimizer's parameter space now includes the market-cap **floor and ceiling**
+(`min_market_cap` / `max_market_cap`), so universe selection is part of the
+search instead of a fixed form field. The retune (8,000+ trials across return and
+Sharpe objectives, funding pinned at 10%, nested CV→holdout gate) produced two
+families: mid-caps (<$500M) that compound the most but carry −81% drawdowns, and
+large caps ($500M–$10B) with Sharpe 1.16–1.62 at −12%…−21% drawdowns but a flat
+holdout. The shipped **Optimized** preset blends them: the validated large-cap
+family switched to the hold rule (sell < 3) inside a $50M–$1B band, top-5
+score-weighted momentum:
+
+| Window | Return (BTC) | Sharpe | Max DD | Rolling-1y positive |
+| --- | --- | --- | --- | --- |
+| Holdout 2025-04 → 2026-09 | +26% | 1.43 | −7% | 100% |
+| 2025+ | +48% | 1.83 | −4% | 100% |
+| 2022-2023 | +77% | 1.21 | −15% | 100% |
+| Full 2022+ | +150% | 0.80 | −42% | 82% |
+
+The cap band uses today's market caps (look-ahead/survivorship caveat, already
+documented for liquidity filters), so the preset is aggressive by design.
+
 ## Shipping gates for a learned score
 
 A model replaces the rule-based score only if, on walk-forward evaluation, it:
@@ -136,9 +201,10 @@ If it fails, the rule-based score stays — a negative result is still a result.
   cross-sectional ranks, or train against simulator outcomes (e.g. Optuna over
   weights) rather than forward-return ranks.
 - Phase 4 (shipped): the Strategy Lab exposes a `score_model` selector
-  (`rule` default; `learned_v1`, `learned_v2` and `learned_v3_regime` are
-  labelled experimental artifacts with their validation notes). Shadow
-  scoring remains open.
+  (`rule` default; `learned_v4` is the experimental artifact with its validation
+  notes and a clickable feature-importance panel). Shadow scoring remains open —
+  the IC gate and the 2025+ simulator A/B are passed, the FULL-window rule score
+  still wins, so the artifact is not promoted.
 
 ### Phase 3/4 outcome in one line
 

@@ -60,6 +60,11 @@ def _p25(values: list) -> float:
     return ordered[max(0, int(0.25 * len(ordered)) - 1)]
 
 
+def _quantile(sorted_values: list, q: float) -> float:
+    """Nearest-rank quantile of an ascending list."""
+    return sorted_values[min(len(sorted_values) - 1, max(0, int(q * (len(sorted_values) - 1))))]
+
+
 def calculate_coin_stats(closes: list, lows: list) -> dict:
     """History-based valuation stats from ascending daily closes/lows.
 
@@ -80,6 +85,21 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
         "trend_90d_pct": None,
         "above_sma200": None,
         "history_days": n,
+        # Dashboard-band features: where the price sits inside the last 3
+        # years' distribution (the same P05/P25/P75/P95 the chart draws).
+        "band_p05_dist_3y": None,
+        "band_p25_dist_3y": None,
+        "band_p75_dist_3y": None,
+        "band_p95_dist_3y": None,
+        "band_iqr_width_3y": None,
+        "band_span_width_3y": None,
+        "above_p75_3y": None,
+        "below_p25_3y": None,
+        "top_band_share_90d": None,
+        # Multi-horizon trend: the model should see more than 30/90 days.
+        "trend_7d_pct": None,
+        "trend_180d_pct": None,
+        "trend_365d_pct": None,
     }
     if n == 0:
         return stats
@@ -101,6 +121,30 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
         if med:
             stats["median_dist_3y"] = round((current - med) / med * 100, 1)
 
+        ordered = sorted(window_3y)
+        p05, p25, p50, p75, p95 = (_quantile(ordered, q) for q in (0.05, 0.25, 0.5, 0.75, 0.95))
+        band = {}
+        for name, level in (
+            ("band_p05_dist_3y", p05),
+            ("band_p25_dist_3y", p25),
+            ("band_p75_dist_3y", p75),
+            ("band_p95_dist_3y", p95),
+        ):
+            if level:
+                band[name] = round((current - level) / level * 100, 1)
+        stats.update(band)
+        if p50:
+            stats["band_iqr_width_3y"] = round((p75 - p25) / p50, 3)
+            stats["band_span_width_3y"] = round((p95 - p05) / p50, 3)
+        if p75:
+            stats["above_p75_3y"] = 1 if current > p75 else 0
+            window_90d = closes[-90:]
+            stats["top_band_share_90d"] = round(
+                100.0 * sum(1 for close in window_90d if close >= p75) / len(window_90d), 1
+            )
+        if p25:
+            stats["below_p25_3y"] = 1 if current < p25 else 0
+
     if n >= RANGE_MIN:
         low_close, high_close = min(closes), max(closes)
         if high_close > low_close:
@@ -115,8 +159,14 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
 
     if n >= 31 and closes[-31]:
         stats["trend_30d_pct"] = round((current / closes[-31] - 1) * 100, 1)
+    if n >= 8 and closes[-8]:
+        stats["trend_7d_pct"] = round((current / closes[-8] - 1) * 100, 1)
     if n >= 91 and closes[-91]:
         stats["trend_90d_pct"] = round((current / closes[-91] - 1) * 100, 1)
+    if n >= 181 and closes[-181]:
+        stats["trend_180d_pct"] = round((current / closes[-181] - 1) * 100, 1)
+    if n >= 366 and closes[-366]:
+        stats["trend_365d_pct"] = round((current / closes[-366] - 1) * 100, 1)
 
     if n >= SMA_MIN:
         window = closes[-200:] if n >= 200 else closes
@@ -206,7 +256,17 @@ def calculate_value_scores(
             coin.trend_90d_pct is not None and coin.trend_90d_pct < -60
         ):
             penalty = -10.0
-
-        coin.value_score = round(max(0.0, min(100.0, sum(parts.values()) + penalty)), 1)
         coin.value_parts = {name: round(value, 1) for name, value in parts.items()}
         coin.value_parts["knife"] = penalty
+        coin.value_score = sum(parts.values()) + penalty
+
+    # The headline score is the *cross-sectional percentile* of the composite,
+    # not the raw weighted sum: a sum of percentiles is bell-shaped (almost
+    # nothing above 80 or below 20), while percentiles make the score uniform
+    # by construction. A score of 95 now means "cheaper than 95% of the
+    # eligible universe" — high and low values are direct, comparable
+    # indicators instead of compressed mid-band noise.
+    composites = {id(coin): coin.value_score for coin in eligible}
+    ranked = _rank_percentiles(eligible, value_of=lambda coin: composites[id(coin)])
+    for coin in eligible:
+        coin.value_score = round(max(0.0, min(100.0, ranked[id(coin)])), 1)
