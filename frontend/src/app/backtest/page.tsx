@@ -570,7 +570,9 @@ export default function BacktestPage() {
   }, [autoOpen]);
 
   useEffect(() => {
-    void loadScoreModels();
+    // Defer so the state is not set synchronously inside the effect.
+    const timer = window.setTimeout(() => void loadScoreModels(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadScoreModels]);
 
   useEffect(() => {
