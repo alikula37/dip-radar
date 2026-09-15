@@ -19,6 +19,10 @@ const response: BacktestResponse = {
   fee_pct: 0.1,
   rotation: 'hold',
   sell_score: 40,
+  min_trend_30d: -25,
+  stop_loss_pct: null,
+  trailing_stop_pct: 50,
+  take_profit_pct: 100,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -121,11 +125,12 @@ describe('BacktestPage', () => {
 
     fireEvent.change(screen.getByLabelText('Exit rule'), { target: { value: 'rebalance' } });
     fireEvent.change(screen.getByLabelText(/sell when score/i), { target: { value: '55' } });
+    fireEvent.change(screen.getByLabelText(/take profit/i), { target: { value: '200' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
-        expect.stringMatching(/rotation=rebalance.*sell_score=55/),
+        expect.stringMatching(/rotation=rebalance.*sell_score=55.*take_profit_pct=200/),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });

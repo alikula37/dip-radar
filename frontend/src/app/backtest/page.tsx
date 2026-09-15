@@ -15,16 +15,20 @@ type Weighting = 'equal' | 'score' | 'market_cap';
 const DEFAULT_FORM: BacktestForm = {
   start: '2022-01-01',
   end: '',
-  rebalance: 'monthly',
-  topN: 5,
+  rebalance: 'weekly',
+  topN: 3,
   minScore: 50,
   minCap: 10_000_000,
   minVolume: 250_000,
-  weighting: 'equal',
+  weighting: 'score',
   fillWithBtc: true,
   feePct: 0.1,
   rotation: 'hold',
-  sellScore: 40,
+  sellScore: 25,
+  minTrend: -25,
+  stopLoss: null,
+  trailingStop: 50,
+  takeProfit: 100,
   optimize: false,
 };
 
@@ -34,25 +38,33 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
     label: 'Conservative',
     values: {
       rebalance: 'quarterly',
-      topN: 3,
-      minScore: 60,
+      topN: 6,
+      minScore: 70,
       weighting: 'equal',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 50,
+      sellScore: 60,
+      minTrend: 0,
+      stopLoss: null,
+      trailingStop: null,
+      takeProfit: 100,
     },
   },
   {
     key: 'balanced',
     label: 'Balanced',
     values: {
-      rebalance: 'monthly',
-      topN: 5,
+      rebalance: 'weekly',
+      topN: 3,
       minScore: 50,
-      weighting: 'equal',
+      weighting: 'score',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 40,
+      sellScore: 25,
+      minTrend: -25,
+      stopLoss: null,
+      trailingStop: 50,
+      takeProfit: 100,
     },
   },
   {
@@ -60,12 +72,16 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
     label: 'Aggressive',
     values: {
       rebalance: 'weekly',
-      topN: 10,
-      minScore: 40,
+      topN: 2,
+      minScore: 50,
       weighting: 'score',
-      fillWithBtc: false,
-      rotation: 'rebalance',
-      sellScore: 40,
+      fillWithBtc: true,
+      rotation: 'hold',
+      sellScore: 25,
+      minTrend: -25,
+      stopLoss: null,
+      trailingStop: 50,
+      takeProfit: 100,
     },
   },
 ];
@@ -99,6 +115,10 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
     rotation: form.rotation,
     sell_score: String(form.sellScore),
   });
+  if (form.minTrend !== null) query.set('min_trend_30d', String(form.minTrend));
+  if (form.stopLoss !== null) query.set('stop_loss_pct', String(form.stopLoss));
+  if (form.trailingStop !== null) query.set('trailing_stop_pct', String(form.trailingStop));
+  if (form.takeProfit !== null) query.set('take_profit_pct', String(form.takeProfit));
   if (form.end) query.set('end', form.end);
   if (form.optimize) query.set('optimize', 'true');
 
@@ -376,6 +396,63 @@ export default function BacktestPage() {
             />
           </label>
           <label className="text-[11px] text-content-muted">
+            Min 30d trend (%, blank = any)
+            <input
+              type="number"
+              min={-100}
+              max={100}
+              placeholder="e.g. -25"
+              value={form.minTrend ?? ''}
+              onChange={(event) => update('minTrend', event.target.value === '' ? null : Number(event.target.value))}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Stop loss (%, blank = off)
+            <input
+              type="number"
+              min={0}
+              max={95}
+              placeholder="off"
+              value={form.stopLoss ?? ''}
+              onChange={(event) =>
+                update('stopLoss', event.target.value === '' ? null : Math.min(95, Math.max(0, Number(event.target.value))))
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Trailing stop (%, blank = off)
+            <input
+              type="number"
+              min={0}
+              max={95}
+              placeholder="off"
+              value={form.trailingStop ?? ''}
+              onChange={(event) =>
+                update(
+                  'trailingStop',
+                  event.target.value === '' ? null : Math.min(95, Math.max(0, Number(event.target.value))),
+                )
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Take profit (%, blank = off)
+            <input
+              type="number"
+              min={0}
+              max={10000}
+              placeholder="off"
+              value={form.takeProfit ?? ''}
+              onChange={(event) =>
+                update('takeProfit', event.target.value === '' ? null : Math.max(0, Number(event.target.value)))
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
             Unfilled slots
             <select
               value={form.fillWithBtc ? 'btc' : 'cash'}
@@ -558,6 +635,7 @@ export default function BacktestPage() {
                                 <span className="text-content">{pick.symbol.replace(/(USDT|BTC)$/, '')}</span>
                                 <span className="text-primary">{pick.score.toFixed(0)}</span>
                                 <span className="text-content-muted">{(pick.weight * 100).toFixed(0)}%</span>
+                                {pick.exited && <span className="text-[#f87171]">stop</span>}
                               </span>
                             ))}
                           </div>

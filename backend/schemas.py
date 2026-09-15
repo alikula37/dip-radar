@@ -110,6 +110,7 @@ class BacktestPick(BaseModel):
     score: float
     weight: float
     period_return: float
+    exited: bool = False
 
 
 class BacktestPeriod(BaseModel):
@@ -157,6 +158,10 @@ class BacktestResponse(BaseModel):
     fee_pct: float
     rotation: str
     sell_score: Optional[float] = None
+    min_trend_30d: Optional[float] = None
+    stop_loss_pct: Optional[float] = None
+    trailing_stop_pct: Optional[float] = None
+    take_profit_pct: Optional[float] = None
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]
