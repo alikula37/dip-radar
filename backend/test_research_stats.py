@@ -21,7 +21,7 @@ def test_summarize_reports_mean_t_and_win_share():
     summary = summarize([0.1, -0.05, 0.2, 0.05])
 
     assert summary["n"] == 4
-    assert summary["mean"] == 0.075
+    assert summary["mean"] == pytest.approx(0.075)
     assert summary["positive_share"] == 0.75
     assert summary["t"] > 0
     assert summarize([])["n"] == 0
