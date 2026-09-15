@@ -30,6 +30,9 @@ const DEFAULT_FORM: BacktestForm = {
   trailingStop: null,
   takeProfit: null,
   scoreModel: 'rule',
+  regimeFilter: 'alt_trend',
+  regimeMinBreadth: 50,
+  regimeExposure: 35,
   optimize: false,
 };
 
@@ -50,6 +53,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       trailingStop: 75,
       takeProfit: 100,
       scoreModel: 'rule',
+      regimeFilter: 'none',
+      regimeExposure: 35,
     },
   },
   {
@@ -68,6 +73,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       trailingStop: null,
       takeProfit: null,
       scoreModel: 'rule',
+      regimeFilter: 'alt_trend',
+      regimeExposure: 35,
     },
   },
   {
@@ -86,6 +93,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       trailingStop: null,
       takeProfit: null,
       scoreModel: 'rule',
+      regimeFilter: 'alt_trend',
+      regimeExposure: 35,
     },
   },
 ];
@@ -124,6 +133,11 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   if (form.trailingStop !== null) query.set('trailing_stop_pct', String(form.trailingStop));
   if (form.takeProfit !== null) query.set('take_profit_pct', String(form.takeProfit));
   query.set('score_model', form.scoreModel);
+  if (form.regimeFilter !== 'none') {
+    query.set('regime_filter', form.regimeFilter);
+    query.set('regime_exposure', String(form.regimeExposure / 100));
+    if (form.regimeFilter === 'breadth') query.set('regime_min_breadth', String(form.regimeMinBreadth / 100));
+  }
   if (form.end) query.set('end', form.end);
   if (form.optimize) query.set('optimize', 'true');
 
@@ -315,6 +329,13 @@ export default function BacktestPage() {
                 ? ` · hold until score < ${result.sell_score ?? result.min_score}`
                 : ' · reset to top N'}
               {result.score_model !== 'rule' ? ` · ${result.score_model} score` : ' · rule-based score'}
+              {result.regime_filter
+                ? ` · risk-off: ${
+                    result.regime_filter === 'alt_trend'
+                      ? 'alt/BTC trend'
+                      : `breadth < ${Math.round(result.regime_min_breadth * 100)}%`
+                  } at ${Math.round(result.regime_exposure * 100)}% exposure`
+                : ''}
             </span>
           )}
         </div>
@@ -425,6 +446,48 @@ export default function BacktestPage() {
               <option value="learned_v1">Learned v1 (experimental)</option>
             </select>
           </label>
+          <label className="text-[11px] text-content-muted">
+            Regime filter
+            <select
+              value={form.regimeFilter}
+              onChange={(event) => update('regimeFilter', event.target.value as BacktestForm['regimeFilter'])}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="none">Off</option>
+              <option value="alt_trend">Alt/BTC trend</option>
+              <option value="breadth">Breadth (200d SMA)</option>
+            </select>
+          </label>
+          {form.regimeFilter !== 'none' && (
+            <label className="text-[11px] text-content-muted">
+              Risk-off exposure (%)
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={form.regimeExposure}
+                onChange={(event) =>
+                  update('regimeExposure', Math.min(100, Math.max(0, Number(event.target.value) || 0)))
+                }
+                className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+              />
+            </label>
+          )}
+          {form.regimeFilter === 'breadth' && (
+            <label className="text-[11px] text-content-muted">
+              Min breadth (%)
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={form.regimeMinBreadth}
+                onChange={(event) =>
+                  update('regimeMinBreadth', Math.min(100, Math.max(0, Number(event.target.value) || 0)))
+                }
+                className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+              />
+            </label>
+          )}
           <label className="text-[11px] text-content-muted">
             Fee per trade (%)
             <input
@@ -695,7 +758,11 @@ export default function BacktestPage() {
                         <td className="py-2 pr-3 whitespace-nowrap font-mono">{period.date.slice(0, 10)}</td>
                         <td className="py-2 pr-3">
                           <div className="flex flex-wrap gap-1.5">
-                            {period.picks.length === 0 && <span className="text-content-muted">No candidates — BTC/cash</span>}
+                            {period.picks.length === 0 && (
+                              <span className={period.risk_on === false ? 'text-[#facc15]' : 'text-content-muted'}>
+                                {period.risk_on === false ? 'Risk-off — BTC' : 'No candidates — BTC/cash'}
+                              </span>
+                            )}
                             {period.picks.map((pick) => (
                               <span
                                 key={pick.symbol}

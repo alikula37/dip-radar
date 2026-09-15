@@ -502,6 +502,15 @@ def test_backtest_endpoint_replays_value_score_history():
     assert learned.status_code == 200
     assert learned.json()["score_model"] == "learned_v1"
 
+    regime = client.get(
+        "/api/backtest",
+        params={"start": "2023-01-01", "regime_filter": "breadth", "regime_min_breadth": 0.3, "min_score": 50},
+    )
+    assert regime.status_code == 200
+    assert regime.json()["regime_filter"] == "breadth"
+    assert regime.json()["regime_min_breadth"] == 0.3
+
+    assert client.get("/api/backtest", params={"start": "2023-01-01", "regime_filter": "moon"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "score_model": "nope"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rotation": "daily"}).status_code == 422

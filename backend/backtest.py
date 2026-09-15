@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 FREQUENCY_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 91}
 WARMUP_CANDLES = 400  # matches the 3y valuation percentile requirement
 MAX_SNAPSHOT_CACHE = 4
+REGIME_SMA_ANCHORS = 6  # anchors in the alt/BTC index trend window
 
 _SNAPSHOT_CACHE: dict = {}
 
@@ -344,11 +345,47 @@ def build_snapshot(
     if sum(1 for entries in entries_by_date.values() if entries) < 2:
         raise BacktestError("Not enough scored history for a backtest")
 
+    # Altcoin dominance proxy from our own universe (no external data): an
+    # equal-weight alt/BTC index built only from anchor prices available at
+    # each date, plus breadth (share of coins above their 200d SMA). When this
+    # keeps falling ("OTHERS.D down"), altcoin strategies in BTC terms bleed,
+    # so the simulator can sit in BTC instead.
+    regime = {}
+    index_level = 1.0
+    levels = []
+    previous_prices = None
+    for date in snapshot_dates:
+        entries = entries_by_date[date]
+        if previous_prices:
+            returns = [
+                entries[symbol]["price"] / previous_prices[symbol] - 1.0
+                for symbol in entries
+                if symbol in previous_prices and previous_prices[symbol]
+            ]
+            if returns:
+                index_level *= 1.0 + sum(returns) / len(returns)
+        levels.append(index_level)
+        window = levels[-REGIME_SMA_ANCHORS:]
+        sma = sum(window) / len(window)
+        breadth_values = [
+            1.0 if entry.get("above_sma200") else 0.0
+            for entry in entries.values()
+            if entry.get("above_sma200") is not None
+        ]
+        regime[date] = {
+            "alt_index": index_level,
+            "alt_above_sma": (index_level > sma) if len(levels) >= 3 else None,
+            "alt_trend": (index_level / sma - 1.0) if sma else None,
+            "breadth": (sum(breadth_values) / len(breadth_values)) if breadth_values else None,
+        }
+        previous_prices = {symbol: entry["price"] for symbol, entry in entries.items()}
+
     snapshot = {
         "frequency": frequency,
         "end": end,
         "dates": snapshot_dates,
         "entries": entries_by_date,
+        "regime": regime,
         "rates": rates,
         "rate_dates": rate_dates,
         "series": {
@@ -441,6 +478,9 @@ def simulate(
     stop_loss_pct: Optional[float] = None,
     trailing_stop_pct: Optional[float] = None,
     take_profit_pct: Optional[float] = None,
+    regime_filter: Optional[str] = None,
+    regime_min_breadth: float = 0.5,
+    regime_exposure: float = 0.0,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -454,6 +494,8 @@ def simulate(
     """
     if rotation not in ("rebalance", "hold"):
         raise BacktestError("rotation must be rebalance or hold")
+    if regime_filter not in (None, "alt_trend", "breadth"):
+        raise BacktestError("regime_filter must be alt_trend or breadth")
     exit_score = min_score if sell_score is None else sell_score
     daily_exits = any(
         value is not None for value in (stop_loss_pct, trailing_stop_pct, take_profit_pct)
@@ -464,6 +506,7 @@ def simulate(
         raise BacktestError("The selected window has fewer than two rebalance dates")
 
     entries_by_date = snapshot["entries"]
+    regime = snapshot.get("regime", {})
     rates = snapshot["rates"]
     rate_dates = snapshot["rate_dates"]
     series = snapshot.get("series", {})
@@ -483,6 +526,15 @@ def simulate(
         next_date = dates[index + 1]
         pool = entries_by_date.get(date, {})
         next_pool = entries_by_date.get(next_date, {})
+
+        risk_on = True
+        if regime_filter:
+            info = regime.get(date) or {}
+            if regime_filter == "alt_trend":
+                risk_on = info.get("alt_above_sma") is not False
+            else:
+                breadth = info.get("breadth")
+                risk_on = breadth is None or breadth >= regime_min_breadth
 
         candidates = [
             (symbol, entry)
@@ -527,10 +579,16 @@ def simulate(
         else:
             picks = candidates[:top_n]
 
+        if not risk_on and regime_exposure <= 0:
+            picks = []
+
         weights = _weights_for(picks, weighting)
         if fill_with_btc and picks:
             scale = len(picks) / top_n
             weights = {symbol: weight * scale for symbol, weight in weights.items()}
+        if not risk_on and regime_exposure > 0:
+            exposure = max(0.0, min(1.0, regime_exposure))
+            weights = {symbol: weight * exposure for symbol, weight in weights.items()}
 
         # Positions dropped at this anchor are sold at the anchor price; the
         # trade log keeps where each position was bought and sold.
@@ -544,7 +602,9 @@ def simulate(
             position = open_positions.pop(symbol)
             entry = pool.get(symbol)
             exit_price = entry["price"] if entry is not None else position["last_price"]
-            if rotation == "rebalance":
+            if not risk_on:
+                reason = "regime"
+            elif rotation == "rebalance":
                 reason = "rebalance"
             elif entry is None:
                 reason = "missing"
@@ -627,7 +687,7 @@ def simulate(
         period_returns.append(period_return)
         turnovers.append(turnover)
         curve.append({"date": next_date, "equity": equity, "period_return": period_return})
-        holdings.append({"date": date, "picks": pick_rows})
+        holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on})
         previous_weights = weights
         blocked_symbols = stopped_symbols
 

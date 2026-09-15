@@ -368,6 +368,9 @@ def run_backtest(
     stop_loss_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much below entry (checked daily)"),
     trailing_stop_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much from its peak since entry"),
     take_profit_pct: Optional[float] = Query(default=None, ge=0, le=10000, description="Sell when the price rises this much above entry"),
+    regime_filter: Optional[str] = Query(default=None, pattern="^(alt_trend|breadth)$", description="Sit in BTC when altcoin dominance/breadth is deteriorating"),
+    regime_min_breadth: float = Query(default=0.5, ge=0, le=1, description="Minimum share of coins above their 200d SMA for regime_filter=breadth"),
+    regime_exposure: float = Query(default=0.0, ge=0, le=1, description="Exposure kept while risk-off (0 = move fully to BTC)"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
     db: Session = Depends(get_db),
@@ -406,6 +409,9 @@ def run_backtest(
         "stop_loss_pct": stop_loss_pct,
         "trailing_stop_pct": trailing_stop_pct,
         "take_profit_pct": take_profit_pct,
+        "regime_filter": regime_filter,
+        "regime_min_breadth": regime_min_breadth,
+        "regime_exposure": regime_exposure,
     }
 
     try:
