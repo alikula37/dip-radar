@@ -84,3 +84,80 @@ export interface Watch {
   last_alerted_at?: string | null;
   created_at?: string | null;
 }
+
+export interface BacktestPoint {
+  date: string;
+  equity: number;
+  period_return: number;
+  equity_usd: number | null;
+  benchmark_usd: number | null;
+}
+
+export interface BacktestPick {
+  symbol: string;
+  score: number;
+  weight: number;
+  period_return: number;
+}
+
+export interface BacktestPeriod {
+  date: string;
+  picks: BacktestPick[];
+}
+
+export interface BacktestMetrics {
+  total_return: number;
+  total_return_usd: number | null;
+  benchmark_btc_usd_return: number | null;
+  cagr: number;
+  volatility: number;
+  sharpe: number;
+  max_drawdown: number;
+  calmar: number | null;
+  win_rate: number;
+  avg_holdings: number;
+  avg_turnover: number;
+  periods: number;
+}
+
+export interface BacktestOptimizeRow {
+  top_n: number;
+  min_score: number;
+  fill_with_btc: boolean;
+  total_return: number;
+  sharpe: number;
+  max_drawdown: number;
+}
+
+export interface BacktestResponse {
+  requested_start: string;
+  requested_end: string;
+  start: string;
+  end: string;
+  rebalance: string;
+  top_n: number;
+  min_score: number;
+  min_market_cap: number;
+  min_volume: number;
+  weighting: string;
+  fill_with_btc: boolean;
+  fee_pct: number;
+  metrics: BacktestMetrics;
+  curve: BacktestPoint[];
+  holdings: BacktestPeriod[];
+  optimization: BacktestOptimizeRow[] | null;
+}
+
+export interface BacktestForm {
+  start: string;
+  end: string;
+  rebalance: 'weekly' | 'monthly' | 'quarterly';
+  topN: number;
+  minScore: number;
+  minCap: number;
+  minVolume: number;
+  weighting: 'equal' | 'score' | 'market_cap';
+  fillWithBtc: boolean;
+  feePct: number;
+  optimize: boolean;
+}

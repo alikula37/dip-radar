@@ -142,11 +142,17 @@ def _rank_percentiles(items: list, value_of) -> dict:
     return result
 
 
-def calculate_value_scores(coins: list) -> None:
+def calculate_value_scores(
+    coins: list,
+    min_cap: float = VALUE_SCORE_MIN_CAP,
+    min_volume: float = VALUE_SCORE_MIN_VOLUME,
+) -> None:
     """Transparent 0-100 composite computed cross-sectionally per request.
 
     Cheapness components are rank-normalized; the trend only acts as a
     knife-risk penalty (the backtest was ambiguous about momentum here).
+    The liquidity gates can be relaxed (e.g. by the backtest simulator,
+    which applies its own thresholds at selection time).
     """
     for coin in coins:
         coin.value_score = None
@@ -157,8 +163,8 @@ def calculate_value_scores(coins: list) -> None:
         for coin in coins
         if not coin.is_stable
         and coin.valuation_pct_3y is not None
-        and (coin.market_cap or 0) >= VALUE_SCORE_MIN_CAP
-        and (coin.volume_24h or 0) >= VALUE_SCORE_MIN_VOLUME
+        and (coin.market_cap or 0) >= min_cap
+        and (coin.volume_24h or 0) >= min_volume
         and coin.distance_pct_event is not None
     ]
     if not eligible:

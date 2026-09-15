@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -95,3 +95,66 @@ class WatchResponse(BaseModel):
     last_distance: Optional[float] = None
     last_alerted_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+
+
+class BacktestPoint(BaseModel):
+    date: datetime
+    equity: float
+    period_return: float
+    equity_usd: Optional[float] = None
+    benchmark_usd: Optional[float] = None
+
+
+class BacktestPick(BaseModel):
+    symbol: str
+    score: float
+    weight: float
+    period_return: float
+
+
+class BacktestPeriod(BaseModel):
+    date: datetime
+    picks: List[BacktestPick]
+
+
+class BacktestMetrics(BaseModel):
+    total_return: float
+    total_return_usd: Optional[float] = None
+    benchmark_btc_usd_return: Optional[float] = None
+    cagr: float
+    volatility: float
+    sharpe: float
+    max_drawdown: float
+    calmar: Optional[float] = None
+    win_rate: float
+    avg_holdings: float
+    avg_turnover: float
+    periods: int
+
+
+class BacktestOptimizeRow(BaseModel):
+    top_n: int
+    min_score: float
+    fill_with_btc: bool
+    total_return: float
+    sharpe: float
+    max_drawdown: float
+
+
+class BacktestResponse(BaseModel):
+    requested_start: str
+    requested_end: str
+    start: str
+    end: str
+    rebalance: str
+    top_n: int
+    min_score: float
+    min_market_cap: float
+    min_volume: float
+    weighting: str
+    fill_with_btc: bool
+    fee_pct: float
+    metrics: BacktestMetrics
+    curve: List[BacktestPoint]
+    holdings: List[BacktestPeriod]
+    optimization: Optional[List[BacktestOptimizeRow]] = None

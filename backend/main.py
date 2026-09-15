@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
+from backtest import BacktestError, build_snapshot, simulate
+from backtest import optimize as optimize_grid
 from database import Base, engine, get_db
 from fetcher import EVENT_CUTOFF, run_sync_with_lock
 from locks import is_locked
@@ -345,6 +347,71 @@ def get_dip_history(
         )
 
     return points[-limit:]
+
+
+@app.get("/api/backtest", response_model=schemas.BacktestResponse)
+def run_backtest(
+    start: str = Query(..., description="Backtest start date (YYYY-MM-DD)"),
+    end: Optional[str] = Query(default=None, description="Backtest end date (YYYY-MM-DD), defaults to the latest candle"),
+    rebalance: str = Query(default="monthly", pattern="^(weekly|monthly|quarterly)$"),
+    top_n: int = Query(default=5, ge=1, le=25),
+    min_score: float = Query(default=50.0, ge=0, le=100),
+    min_market_cap: float = Query(default=10_000_000.0, ge=0),
+    min_volume: float = Query(default=250_000.0, ge=0),
+    weighting: str = Query(default="equal", pattern="^(equal|score|market_cap)$"),
+    fill_with_btc: bool = Query(default=True),
+    fee_pct: float = Query(default=0.1, ge=0, le=5),
+    optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
+    db: Session = Depends(get_db),
+):
+    """Replays the Value Score at historical rebalance dates and simulates the portfolio."""
+    try:
+        start_at = datetime.strptime(start, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start must be YYYY-MM-DD")
+
+    if end:
+        try:
+            end_at = datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="end must be YYYY-MM-DD")
+    else:
+        latest = db.query(func.max(models.Kline.timestamp)).scalar()
+        if latest is None:
+            raise HTTPException(status_code=404, detail="No price history yet")
+        end_at = latest
+
+    if end_at <= start_at:
+        raise HTTPException(status_code=422, detail="end must be after start")
+
+    params = {
+        "top_n": top_n,
+        "min_score": min_score,
+        "min_market_cap": min_market_cap,
+        "min_volume": min_volume,
+        "weighting": weighting,
+        "fill_with_btc": fill_with_btc,
+        "fee_pct": fee_pct,
+    }
+
+    try:
+        snapshot = build_snapshot(db, rebalance, end_at)
+        outcome = simulate(snapshot, start=start_at, end=end_at, **params)
+    except BacktestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    optimization = None
+    if optimize:
+        optimization = optimize_grid(snapshot, {"start": start_at, "end": end_at, **params})
+
+    return {
+        "requested_start": start,
+        "requested_end": end_at.date().isoformat(),
+        "rebalance": rebalance,
+        **params,
+        **outcome,
+        "optimization": optimization,
+    }
 
 
 @app.get("/api/meta", response_model=schemas.MetaResponse)
