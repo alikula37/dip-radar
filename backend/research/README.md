@@ -282,6 +282,27 @@ the expensive basket falls much harder than the cheap one rises), and it is
 also negative in the holdout. Practical conclusion: in an inverted regime the
 honest position for this product is BTC, not a factor bet.
 
+### Factor-IC timing (tested, rejected)
+
+The simulator can also time the factor on its own rolling information
+coefficient (`ic_filter` / `ic_window` / `ic_threshold` / `ic_exposure`):
+each anchor measures how well the score ranked the previous period's
+cross-sectional returns and shrinks exposure while that rolling IC is below
+the threshold. Measured on the Balanced long-short preset:
+
+| IC exposure | Full 2022+ | Holdout 2025-04+ | 2025+ |
+| --- | --- | --- | --- |
+| filter off | +248% / 0.7 | −10% / 0.0 | +30% / 0.6 |
+| 0% | +465% / 0.9 | −22% / −0.6 | −17% / −0.6 |
+| 35% | +381% / 0.9 | −16% / −0.3 | −1% / 0.1 |
+| 70% | +306% / 0.8 | −12% / −0.1 | +15% / 0.4 |
+
+IC timing raises the full-period number (it dodges the 2023-24 chop) but
+makes the recent windows worse: the losses arrive faster than the rolling IC
+can react, and re-entry happens right before the next leg down. It ships as
+a research parameter, off by default — the practical response to an inverted
+factor regime remains sitting in BTC.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats
