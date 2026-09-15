@@ -303,6 +303,29 @@ can react, and re-entry happens right before the next leg down. It ships as
 a research parameter, off by default — the practical response to an inverted
 factor regime remains sitting in BTC.
 
+### "Optimize all" with the consistency objective finds the first holdout-positive configs
+
+Searching all 24 parameters at once (consistency objective, loose verdict,
+30 trials) produced three **validated** candidates — the first configurations
+that are positive in both the CV folds and the untouched holdout. The clearest
+winner is a momentum-side, market-cap-weighted, swept book:
+
+`top_n=4, min_score=10, invert_score=true, weighting=market_cap, rotation=rebalance,
+profit_sweep=30%, stop 30 / trail 50 / TP 100, no regime filter, short sleeve off`
+
+| Window | Return | Sharpe | Max DD |
+| --- | --- | --- | --- |
+| Holdout 2025-04 → 2026-09 | **+56.0%** | **0.96** | −25% |
+| 2025+ | +30.5% | 0.57 | −33% |
+| Full 2022+ | +109% | 0.54 | −62% |
+| 2024+ | −20.4% | 0.12 | −61% |
+
+Read it honestly: the config wins where the *momentum* side wins (the factor
+inversion documented above) and carries a −62% full-period drawdown from the
+2022-2024 stretch. It is a regime-timing discovery surfaced by the optimizer,
+not an all-weather strategy — which is exactly why the search now always shows
+its candidates with verdicts instead of hiding them.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

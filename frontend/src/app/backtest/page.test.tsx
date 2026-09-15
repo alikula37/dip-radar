@@ -296,8 +296,8 @@ describe('BacktestPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
     expect(screen.getByRole('dialog', { name: 'Auto-optimize' })).toBeTruthy();
 
-    // Move a fixed parameter into the search scope with its "+" button.
-    fireEvent.click(screen.getByRole('button', { name: 'Optimize take_profit_pct' }));
+    // One click moves every parameter into the search scope.
+    fireEvent.click(screen.getByRole('button', { name: 'Optimize all' }));
 
     fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
 
@@ -311,8 +311,8 @@ describe('BacktestPage', () => {
     expect(optimizerCall).toBeTruthy();
     expect(optimizerCall?.[1]?.method).toBe('POST');
     const body = JSON.parse(String(optimizerCall?.[1]?.body));
-    expect(body.optimize_params).toContain('take_profit_pct');
-    expect(body.fixed_params).not.toHaveProperty('take_profit_pct');
+    expect(body.optimize_params).toEqual(expect.arrayContaining(['take_profit_pct', 'short_n', 'profit_sweep_pct', 'ic_filter']));
+    expect(Object.keys(body.fixed_params)).toHaveLength(0);
     expect(body.cv_folds).toBe(3);
     expect(body.strictness).toBe('strict');
 
