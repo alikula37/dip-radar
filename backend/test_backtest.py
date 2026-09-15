@@ -95,6 +95,18 @@ def test_simulate_rotates_into_cheap_coin(seeded_db):
     assert result["curve"][-1]["equity"] > 1.0
 
 
+def test_snapshot_entries_carry_point_in_time_research_features(seeded_db):
+    snapshot = _snapshot(seeded_db)
+    entry = snapshot["entries"][snapshot["dates"][5]]["CHEAPUSDT"]
+
+    assert entry["valuation_pct_3y"] is not None
+    assert entry["volatility_30d"] is not None and entry["volatility_30d"] > 0
+    assert entry["volatility_90d"] is not None and entry["volatility_90d"] > 0
+    assert entry["drawdown_from_ath"] is not None and entry["drawdown_from_ath"] <= 0
+    assert entry["days_since_ath"] is not None and entry["days_since_ath"] >= 0
+    assert entry["dollar_volume_30d"] is not None and entry["dollar_volume_30d"] > 0
+
+
 def test_fees_reduce_returns(seeded_db):
     snapshot = _snapshot(seeded_db)
     common = {
