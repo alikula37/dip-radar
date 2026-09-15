@@ -162,6 +162,7 @@ class BacktestResponse(BaseModel):
     start: str
     end: str
     rebalance: str
+    score_model: str = "rule"
     top_n: int
     min_score: float
     min_market_cap: float

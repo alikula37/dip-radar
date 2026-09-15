@@ -163,6 +163,7 @@ export interface BacktestResponse {
   stop_loss_pct: number | null;
   trailing_stop_pct: number | null;
   take_profit_pct: number | null;
+  score_model: string;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -187,5 +188,6 @@ export interface BacktestForm {
   stopLoss: number | null;
   trailingStop: number | null;
   takeProfit: number | null;
+  scoreModel: 'rule' | 'learned_v1';
   optimize: boolean;
 }

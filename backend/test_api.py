@@ -495,6 +495,14 @@ def test_backtest_endpoint_replays_value_score_history():
     assert hold.json()["rotation"] == "hold"
     assert hold.json()["sell_score"] == 40
 
+    learned = client.get(
+        "/api/backtest",
+        params={"start": "2023-01-01", "score_model": "learned_v1", "min_score": 50},
+    )
+    assert learned.status_code == 200
+    assert learned.json()["score_model"] == "learned_v1"
+
+    assert client.get("/api/backtest", params={"start": "2023-01-01", "score_model": "nope"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rotation": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "end": "2022-01-01"}).status_code == 422
