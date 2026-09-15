@@ -67,12 +67,16 @@ def rank_percentiles(values: list):
     return result
 
 
-def build_samples(rows: list, horizon: int = 1, min_universe: int = 30) -> list:
+def build_samples(rows: list, horizon: int = 1, min_universe: int = 30, regime_only: bool = False) -> list:
     """Group feature rows into dated cross-sections with forward-return labels.
 
+    ``regime_only`` keeps only anchors where the alt/BTC trend is above its SMA
+    (the periods the simulator is actually allowed to buy in).
+
     Returns a list of anchors: ``{"date", "symbols", "features", "labels",
-    "baseline", "forward"}`` where ``labels`` are centered rank percentiles of
-    the forward return and ``features`` are oriented rank percentiles.
+    "baseline", "forward", "alt_above_sma", "breadth"}`` where ``labels`` are
+    centered rank percentiles of the forward return and ``features`` are
+    oriented rank percentiles.
     """
     by_date = {}
     for row in rows:
@@ -86,6 +90,10 @@ def build_samples(rows: list, horizon: int = 1, min_universe: int = 30) -> list:
         pool = by_date[date]
         symbols = [symbol for symbol in pool if symbol in future and pool[symbol]["price"]]
         if len(symbols) < min_universe:
+            continue
+
+        reference = pool[symbols[0]]
+        if regime_only and reference.get("alt_above_sma") is not True:
             continue
 
         forward = [future[symbol]["price"] / pool[symbol]["price"] - 1.0 for symbol in symbols]
@@ -129,6 +137,8 @@ def build_samples(rows: list, horizon: int = 1, min_universe: int = 30) -> list:
                 "labels": labels,
                 "baseline": [pool[symbol]["score"] for symbol in symbols],
                 "forward": forward,
+                "alt_above_sma": reference.get("alt_above_sma"),
+                "breadth": reference.get("breadth"),
             }
         )
     return anchors
@@ -237,6 +247,7 @@ def evaluate(
     min_train: int = 24,
     embargo: int = 1,
     periods_per_year: int = 12,
+    train_regime_only: bool = False,
 ) -> dict:
     folds = walk_forward_folds(len(anchors), horizon, test_size, min_train, embargo)
     assert_no_overlap(folds, horizon)
@@ -252,10 +263,16 @@ def evaluate(
     model_periods = []
     baseline_periods = []
     universe_periods = []
+    model_ics_risk_on = []
+    baseline_ics_risk_on = []
 
     for fold in folds:
         train = anchors[fold["train"][0] : fold["train"][1]]
+        if train_regime_only:
+            train = [anchor for anchor in train if anchor.get("alt_above_sma") is True]
         test = anchors[fold["test"][0] : fold["test"][1]]
+        if len(train) < 6:
+            continue
 
         train_features = [vector for anchor in train for vector in anchor["features"]]
         train_labels = [label for anchor in train for label in anchor["labels"]]
@@ -282,6 +299,9 @@ def evaluate(
             model_periods.append(_top_n_return(predictions, anchor["forward"]))
             baseline_periods.append(_top_n_return(anchor["baseline"], anchor["forward"]))
             universe_periods.append(sum(anchor["forward"]) / len(anchor["forward"]))
+            if anchor.get("alt_above_sma") is True:
+                model_ics_risk_on.append(model_ic)
+                baseline_ics_risk_on.append(baseline_ic)
 
         fold_reports.append(
             {
@@ -300,6 +320,10 @@ def evaluate(
         "folds": fold_reports,
         "model_ic": summarize(model_ics),
         "baseline_ic": summarize(baseline_ics),
+        "risk_on_ic": {
+            "model": summarize(model_ics_risk_on),
+            "baseline": summarize(baseline_ics_risk_on),
+        },
         "ic_delta": {**summarize(deltas), "ci95": list(block_bootstrap_ci(deltas, 3))},
         "model_spread": summarize(model_spreads),
         "baseline_spread": summarize(baseline_spreads),
@@ -323,6 +347,8 @@ def main() -> None:
     parser.add_argument("--min-train", type=int, default=24)
     parser.add_argument("--embargo", type=int, default=1)
     parser.add_argument("--start", default="2020-01-01", help="Ignore anchors before this date")
+    parser.add_argument("--regime-only", action="store_true", help="Evaluate only on risk-on anchors (diagnostic)")
+    parser.add_argument("--train-regime-only", action="store_true", help="Fit on risk-on anchors, evaluate on all")
     parser.add_argument("--save", default=None)
     args = parser.parse_args()
 
@@ -335,7 +361,7 @@ def main() -> None:
         session.close()
 
     rows = [row for row in rows if row["date"] >= args.start]
-    anchors = build_samples(rows, horizon=args.horizon)
+    anchors = build_samples(rows, horizon=args.horizon, regime_only=args.regime_only)
     periods_per_year = {"weekly": 52, "monthly": 12, "quarterly": 4}[args.frequency]
     report = evaluate(
         anchors,
@@ -344,6 +370,7 @@ def main() -> None:
         args.min_train,
         args.embargo,
         periods_per_year,
+        train_regime_only=args.train_regime_only,
     )
     report["provenance"] = {
         "frequency": args.frequency,
@@ -351,6 +378,8 @@ def main() -> None:
         "embargo": args.embargo,
         "anchors": len(anchors),
         "start": args.start,
+        "regime_only": args.regime_only,
+        "train_regime_only": args.train_regime_only,
         "git_commit": common.git_commit(),
     }
 
