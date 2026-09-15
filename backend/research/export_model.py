@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--cutoff", default="2024-12-31", help="Train only on anchors up to this date")
     parser.add_argument("--start", default="2020-01-01")
     parser.add_argument("--version", default="learned_v1")
+    parser.add_argument("--train-regime-only", action="store_true", help="Fit only on risk-on anchors")
     parser.add_argument("--report", default=os.path.join("research", "baselines", "model_report.json"))
     args = parser.parse_args()
 
@@ -39,11 +40,14 @@ def main() -> None:
 
     rows = [row for row in rows if args.start <= row["date"] <= args.cutoff]
     anchors = build_samples(rows, horizon=1)
+    training_anchors = [a for a in anchors if a.get("alt_above_sma") is True] if args.train_regime_only else anchors
+    if len(training_anchors) < 12:
+        raise SystemExit(f"Only {len(training_anchors)} training anchors; refusing to export a model")
     if len(anchors) < 12:
         raise SystemExit(f"Only {len(anchors)} anchors before {args.cutoff}; refusing to export a model")
 
-    features = [vector for anchor in anchors for vector in anchor["features"]]
-    labels = [label for anchor in anchors for label in anchor["labels"]]
+    features = [vector for anchor in training_anchors for vector in anchor["features"]]
+    labels = [label for anchor in training_anchors for label in anchor["labels"]]
     standardized, means, scales = standardize(features)
     weights = fit_standardized(standardized, labels)
 
@@ -64,7 +68,13 @@ def main() -> None:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "git_commit": common.git_commit(),
         "trained_until": args.cutoff,
-        "training": {"frequency": args.frequency, "horizon": 1, "anchors": len(anchors), "samples": len(features)},
+        "training": {
+            "frequency": args.frequency,
+            "horizon": 1,
+            "anchors": len(training_anchors),
+            "samples": len(features),
+            "regime_only": args.train_regime_only,
+        },
         "feature_directions": FEATURE_DIRECTIONS,
         "feature_scaling": {
             name: {"mean": means[index], "scale": scales[index]}

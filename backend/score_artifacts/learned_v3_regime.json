@@ -1,0 +1,130 @@
+{
+  "created_at": "2026-09-15T13:51:24.130786+00:00",
+  "feature_directions": {
+    "abs_median_dist_3y": -1,
+    "basing_pct_90d": 1,
+    "days_since_ath": 1,
+    "distance": -1,
+    "dollar_volume_30d": 1,
+    "drawdown_from_ath": -1,
+    "range_position": -1,
+    "trend_90d": 1,
+    "valuation_pct_1y": -1,
+    "valuation_pct_3y": -1,
+    "valuation_pct_all": -1,
+    "volatility_90d": -1
+  },
+  "feature_scaling": {
+    "abs_median_dist_3y": {
+      "mean": 0.31421822452356807,
+      "scale": 0.18928152844749513
+    },
+    "basing_pct_90d": {
+      "mean": 0.6021392729407996,
+      "scale": 0.2843580003542463
+    },
+    "days_since_ath": {
+      "mean": 0.9624526237121658,
+      "scale": 0.12378882946579976
+    },
+    "distance": {
+      "mean": 0.16423557358671861,
+      "scale": 0.133520745859829
+    },
+    "dollar_volume_30d": {
+      "mean": 0.49814498478620617,
+      "scale": 0.26856485502023536
+    },
+    "drawdown_from_ath": {
+      "mean": 0.9457975230875993,
+      "scale": 0.04459788629892681
+    },
+    "range_position": {
+      "mean": 0.7725471093791705,
+      "scale": 0.08678268147238287
+    },
+    "trend_90d": {
+      "mean": 0.21851812309827576,
+      "scale": 0.2947146648372029
+    },
+    "valuation_pct_1y": {
+      "mean": 0.37565392622644533,
+      "scale": 0.12142098939917885
+    },
+    "valuation_pct_3y": {
+      "mean": 0.46181204291891315,
+      "scale": 0.12144105800933933
+    },
+    "valuation_pct_all": {
+      "mean": 0.48704825708642496,
+      "scale": 0.12896998932029896
+    },
+    "volatility_90d": {
+      "mean": 0.7599423477286074,
+      "scale": 0.07831252005407832
+    }
+  },
+  "git_commit": null,
+  "trained_until": "2024-12-31",
+  "training": {
+    "anchors": 29,
+    "frequency": "monthly",
+    "horizon": 1,
+    "regime_only": true,
+    "samples": 6812
+  },
+  "validation": {
+    "baseline_ic": 0.056,
+    "ic_delta_ci95": [
+      0.073,
+      0.2
+    ],
+    "proxy_2020_2026": {
+      "baseline_top3_total_return": -0.667,
+      "model_top3_total_return": 0.493,
+      "universe_mean_total_return": -0.729
+    },
+    "simulator_ab": {
+      "fair_threshold_sweep_2025": "best learned_v3 config (min_score any, sell 30): -5.8% vs rule +18.2%; thresholds tuned for the rule score are not the cause",
+      "in_sample_2022": {
+        "learned_v3_regime": {
+          "sharpe": -0.43,
+          "total_return": -0.613
+        },
+        "rule": {
+          "sharpe": 0.56,
+          "total_return": 1.913
+        }
+      },
+      "out_of_sample_2025": {
+        "learned_v3_regime": {
+          "sharpe": -0.31,
+          "total_return": -0.199
+        },
+        "rule": {
+          "sharpe": 0.45,
+          "total_return": 0.182
+        }
+      },
+      "preset": "Balanced + alt_trend regime at 35% exposure"
+    },
+    "strategy_gate": "failed across three model variants (v1/v2/v3) and a fair threshold sweep; rule-based stays the default",
+    "universe": "survivorship-corrected (253 archived/delisted coins); trained only on risk-on anchors (alt/BTC trend above its SMA)",
+    "walk_forward_ic": 0.193
+  },
+  "version": "learned_v3_regime",
+  "weights": {
+    "abs_median_dist_3y": 0.0,
+    "basing_pct_90d": 0.0,
+    "days_since_ath": 0.0,
+    "distance": 0.024986685931763508,
+    "dollar_volume_30d": 0.02116848483015456,
+    "drawdown_from_ath": 0.0,
+    "range_position": 0.0,
+    "trend_90d": 0.0,
+    "valuation_pct_1y": 0.01567514676219003,
+    "valuation_pct_3y": 0.008437799728077974,
+    "valuation_pct_all": 0.0011947433195617302,
+    "volatility_90d": 0.0
+  }
+}

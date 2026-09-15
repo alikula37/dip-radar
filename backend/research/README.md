@@ -123,27 +123,26 @@ If it fails, the rule-based score stays — a negative result is still a result.
   (`feature_store.py`) plus purged/embargoed walk-forward folds (`cv.py`), with
   a leakage regression test proving anchor features never change when future
   candles arrive.
-- Phase 3 after the survivorship fix (see `baselines/model_report.json` and
-  `score_artifacts/learned_v2.json`): recovering 253 delisted coins cut the
-  rule-based baseline IC from +0.069 to +0.056 while the learned model's IC
-  rose to +0.190 (delta CI [+0.072, +0.198]) and its top-3 proxy returned
-  **+31.0%** versus −66.7% for the baseline — yet the real simulator A/B on
-  2025+ (Balanced + alt-trend regime) still lost: rule **+19.7%** (Sharpe
-  0.47) vs learned_v2 **−40.6%** (−0.82). The strategy gate remains the
-  binding constraint; `learned_v2` stays a labelled experimental option, not
-  a promotion. Learned weights concentrate on `dollar_volume_30d`,
-  `distance` and `valuation_pct_1y` (liquidity acts as a survival proxy when
-  delisted coins are in the universe).
+- Phase 3, regime-conditional variant (`learned_v3_regime`, see
+  `baselines/model_report_train_regime.json`): fitting only on risk-on anchors
+  (where the simulator is allowed to buy) keeps the IC edge (+0.193 vs +0.056,
+  CI [+0.073, +0.200]) and lifts the proxy top-3 to **+49.3%**, but the real
+  simulator still loses badly: 2025+ OOS rule +18.2% (Sharpe 0.45) vs
+  learned_v3 −19.9% (−0.31). A fair threshold sweep (min_score/sell tuned for
+  the model) does not rescue it (best −5.8% vs +18.2%). **Three model variants
+  and a fair sweep have now failed the strategy gate** while winning on IC and
+  proxy metrics — the gate stays closed and `score_model` stays experimental.
+  Next ideas if pursued: model the hold/sell dynamics directly instead of
+  cross-sectional ranks, or train against simulator outcomes (e.g. Optuna over
+  weights) rather than forward-return ranks.
 - Phase 4 (shipped): the Strategy Lab exposes a `score_model` selector
-  (`rule` default, `learned_v1` experimental). The A/B in the real simulator is
-  decisive: with the Balanced preset the rule-based score returns +132.4% BTC
-  (Sharpe 0.51) vs **−82.0%** for the learned artifact over 2022→2026, and
-  +2.5% vs −38.4% out-of-sample (2025+) after the artifact's training cutoff.
-  The artifact stays selectable for research, labelled in the UI, and is
-  **not** promoted. Shadow scoring/versioning remains open.
+  (`rule` default; `learned_v1`, `learned_v2` and `learned_v3_regime` are
+  labelled experimental artifacts with their validation notes). Shadow
+  scoring remains open.
 
 ### Phase 3/4 outcome in one line
 
-The learned score improves cross-sectional IC but destroys strategy returns
-in the actual simulator, in-sample and out-of-sample — concrete evidence that
-the IC gate alone is not enough and that the strategy gate must stay.
+Learned scores improve cross-sectional IC and proxy portfolios but destroy
+strategy returns in the actual simulator — in-sample, out-of-sample and after
+per-model threshold tuning. Concrete evidence that the IC gate alone is not
+enough and that the strategy gate must stay.

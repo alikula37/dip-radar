@@ -444,6 +444,8 @@ export default function BacktestPage() {
             >
               <option value="rule">Rule-based (default)</option>
               <option value="learned_v1">Learned v1 (experimental)</option>
+              <option value="learned_v2">Learned v2 (survivorship-fixed)</option>
+              <option value="learned_v3_regime">Learned v3 (regime-trained)</option>
             </select>
           </label>
           <label className="text-[11px] text-content-muted">

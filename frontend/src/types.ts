@@ -192,7 +192,7 @@ export interface BacktestForm {
   stopLoss: number | null;
   trailingStop: number | null;
   takeProfit: number | null;
-  scoreModel: 'rule' | 'learned_v1';
+  scoreModel: 'rule' | 'learned_v1' | 'learned_v2' | 'learned_v3_regime';
   regimeFilter: 'none' | 'alt_trend' | 'breadth';
   regimeMinBreadth: number;
   regimeExposure: number;
