@@ -1324,11 +1324,8 @@ export default function BacktestPage() {
                       : ''}
                   </p>
                   {optimizeResult.message && (
-                    <p className="mt-3 rounded-xl border border-[#f87171]/40 bg-[#f87171]/10 px-3 py-2 text-xs text-[#f87171]">
+                    <p className="mt-3 rounded-xl border border-[#facc15]/40 bg-[#facc15]/10 px-3 py-2 text-xs text-[#facc15]">
                       {optimizeResult.message}
-                      {optimizeResult.strictness === 'strict'
-                        ? ' Try the Balanced or Loose strictness, a longer date range or different filters.'
-                        : ' Try a longer date range or different filters.'}
                     </p>
                   )}
                   {optimizeResult.best.length > 0 && (
@@ -1365,6 +1362,16 @@ export default function BacktestPage() {
                                 {candidate.params.take_profit_pct !== null && (
                                   <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">tp {String(candidate.params.take_profit_pct)}%</span>
                                 )}
+                                {candidate.passed ? (
+                                  <span className="rounded-full bg-[#4ade80]/15 px-2 py-0.5 text-[#4ade80]">validated</span>
+                                ) : (
+                                  <span
+                                    className="rounded-full bg-[#facc15]/15 px-2 py-0.5 text-[#facc15]"
+                                    title="Failed validation — shown for reference"
+                                  >
+                                    {candidate.reason ?? 'overfit risk'}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="py-2 pr-3 font-mono text-[11px] text-content-muted">{metricsText(candidate.train_metrics)}</td>
@@ -1392,19 +1399,6 @@ export default function BacktestPage() {
                     The holdout column is the only untouched evidence. A positive CV that turns negative on the
                     holdout means the search overfit — stay with the presets in that case.
                   </p>
-                  )}
-                  {optimizeResult.best.length === 0 && optimizeResult.closest && (
-                    <p className="mt-2 text-[11px] text-content-muted">
-                      Closest attempt (rejected: {optimizeResult.closest.reason}) — train{' '}
-                      {metricsText(optimizeResult.closest.train_metrics)} · CV{' '}
-                      {optimizeResult.closest.cv_metrics
-                        ? `mean ${optimizeResult.closest.cv_metrics.mean.toFixed(2)} / min ${optimizeResult.closest.cv_metrics.min.toFixed(2)}`
-                        : '—'}{' '}
-                      · holdout{' '}
-                      {optimizeResult.closest.holdout_metrics
-                        ? metricsText(optimizeResult.closest.holdout_metrics)
-                        : '—'}
-                    </p>
                   )}
                 </>
               )}

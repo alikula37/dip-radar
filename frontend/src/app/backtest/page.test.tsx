@@ -270,10 +270,11 @@ describe('BacktestPage', () => {
           train_metrics: response.metrics,
           cv_metrics: { mean: 0.42, min: 0.1, per_fold: [] },
           holdout_metrics: response.metrics,
+          passed: true,
+          reason: null,
         },
       ],
       validated: 1,
-      closest: null,
       rejected: { count: 3, reasons: { 'holdout not positive': 3 } },
       gap_fraction: 0.5,
       optimize_params: ['top_n', 'min_score'],
@@ -328,7 +329,67 @@ describe('BacktestPage', () => {
     });
   });
 
-  it('shows only the message when no candidate passes validation', async () => {
+  it('shows the table with warnings when no candidate passes validation', async () => {
+    const flaggedOptimizer: OptimizerResponse = {
+      optimizer: 'optuna-tpe',
+      objective: 'sharpe',
+      trials: 50,
+      evaluated: 42,
+      max_drawdown_limit: null,
+      rebalance: 'weekly',
+      score_model: 'rule',
+      min_market_cap: 10_000_000,
+      min_volume: 250_000,
+      fee_pct: 0.1,
+      validation_fraction: 0.3,
+      cv_folds: 3,
+      strictness: 'strict',
+      train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
+      holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
+      cv: {
+        folds: [{ train: ['2022-01-01T00:00:00', '2024-01-01T00:00:00'], test: ['2024-02-01T00:00:00', '2024-12-01T00:00:00'] }],
+        horizon_anchors: 1,
+        embargo_anchors: 1,
+        folds_requested: 3,
+        candidates_scored: 16,
+      },
+      validated: 0,
+      best: [
+        {
+          params: { top_n: 4, min_score: 45, sell_score: 30, min_trend_30d: -25, weighting: 'score', rotation: 'hold', regime_filter: 'alt_trend', regime_exposure: 0.35, trailing_stop_pct: null, take_profit_pct: null },
+          train_metrics: response.metrics,
+          cv_metrics: { mean: 0.42, min: 0.1, per_fold: [] },
+          holdout_metrics: response.metrics,
+          passed: false,
+          reason: 'holdout loses money',
+        },
+      ],
+      rejected: { count: 16, reasons: { 'holdout loses money': 16 } },
+      gap_fraction: 0.5,
+      optimize_params: ['top_n', 'min_score'],
+      fixed_params: { trailing_stop_pct: null },
+      message: 'No configuration passed validation with the current strictness.',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/backtest/optimize')) {
+        return Promise.resolve(new Response(JSON.stringify(flaggedOptimizer), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(response), { status: 200 }));
+    });
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
+
+    expect(await screen.findByText('holdout loses money')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeTruthy();
+    expect(screen.getByText('top 4')).toBeTruthy();
+  });
+
+  it('shows only the message when there are no candidates at all', async () => {
     const emptyOptimizer: OptimizerResponse = {
       optimizer: 'optuna-tpe',
       objective: 'sharpe',
@@ -354,7 +415,6 @@ describe('BacktestPage', () => {
       },
       validated: 0,
       best: [],
-      closest: null,
       rejected: { count: 16, reasons: { 'CV mean not positive': 16 } },
       gap_fraction: 0.5,
       optimize_params: ['top_n', 'min_score'],

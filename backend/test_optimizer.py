@@ -139,9 +139,8 @@ def test_optimizer_respects_universe_constraints():
     )
 
     assert result["evaluated"] > 0
-    assert result["best"] == []
     assert result["validated"] == 0
-    assert result["message"]
+    assert all(item["passed"] is False for item in result["best"])
 
 
 def _crashing_snapshot():
@@ -170,10 +169,9 @@ def test_optimizer_drawdown_limit_rejects_everything_when_impossible():
         top_k=3,
     )
 
-    # Nothing survives the drawdown + validation gates on a crash.
-    assert result["best"] == []
+    # Nothing survives the validation gates on a crash; rows are flagged.
     assert result["validated"] == 0
-    assert result["message"]
+    assert all(item["passed"] is False for item in result["best"])
 
 
 def test_optimizer_is_reproducible_for_a_seed():
@@ -219,8 +217,10 @@ def test_optimizer_reports_purged_cv_and_rejects_overfits():
     holdout_start = result["holdout"]["start"]
     for fold in result["cv"]["folds"]:
         assert fold["test"][1] <= holdout_start  # CV never touches the holdout
-    assert result["best"] == []  # everything loses in a crash
     assert result["validated"] == 0
+    assert result["best"]  # best attempts are still shown…
+    assert all(item["passed"] is False for item in result["best"])  # …with flags
+    assert all(item["reason"] for item in result["best"])
     assert result["rejected"]["count"] > 0
     assert result["message"]
 

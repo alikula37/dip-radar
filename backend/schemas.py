@@ -181,6 +181,8 @@ class OptimizerCandidate(BaseModel):
     train_metrics: BacktestMetrics
     cv_metrics: Optional[dict] = None
     holdout_metrics: Optional[BacktestMetrics] = None
+    passed: bool = False
+    reason: Optional[str] = None
 
 
 class OptimizerResponse(BaseModel):
@@ -201,7 +203,6 @@ class OptimizerResponse(BaseModel):
     holdout: dict
     cv: dict
     best: List[OptimizerCandidate]
-    closest: Optional[dict] = None
     validated: int
     rejected: dict
     gap_fraction: float

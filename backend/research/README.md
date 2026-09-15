@@ -155,11 +155,11 @@ parameters to search with **+** (the rest are pinned to editable values) and
 Optuna TPE searches on a training region → unique candidates are re-scored by
 purged + embargoed walk-forward CV inside that region (the number of folds is
 a user-facing knob, `cv_folds`, 1-6) → only finalists touch the trailing
-holdout. **Hard gates** decide what is shown: every CV fold must
-be positive, the holdout must be positive and retain at least half of the CV
-edge (`gap_fraction`), otherwise the candidate is rejected. When nothing
-survives, the API/UI returns an explicit "stay with the presets" message —
-overfit numbers are never dressed up as recommendations. Measured: on the
+holdout. The **verdict** is a flag, not a filter: every returned candidate is either
+*validated* (all CV folds positive, holdout positive and retaining at least
+half of the CV edge, `gap_fraction`) or flagged with its exact failure reason
+(`passed: false` + `reason`), and the search looks at up to ~60 configurations
+when nothing validates so the flagged list still spans different behaviours. Measured: on the
 current data both the default and the $1B+ universes end with zero validated
 configs, which is itself the honest answer at this sample size.
 
