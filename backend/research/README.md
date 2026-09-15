@@ -326,6 +326,49 @@ inversion documented above) and carries a −62% full-period drawdown from the
 not an all-weather strategy — which is exactly why the search now always shows
 its candidates with verdicts instead of hiding them.
 
+### The large search (5,000+ trials) and the funding trap
+
+Following that lead we ran the full-scope search much harder — 2,000 trials
+with the **consistency** objective, 1,500 with **Sharpe**, 1,500 with
+**return** — and the objectives told different stories:
+
+- **consistency / Sharpe overfit the CV.** Their top candidates looked superb
+  in-sample (+354…+375% full, Sharpe 1.3) and lost 31-35% in the holdout. More
+  trials made this *worse*, not better — TPE got better at exploiting the
+  validation window's quirks.
+- **return** produced 5 validated candidates, all in one family: the momentum
+  side (`invert_score=true`), market-cap weights, IC filter with a 0-35%
+  risk-off exposure, a short sleeve, stops 30/50-75/100 and a 30-50% sweep.
+  The single best variant kept `ic_exposure=0.35` (partial de-risk),
+  half-sized the short book and paid a realistic 10% funding rate.
+
+Funding is the trap worth recording: the unconstrained winners set
+`short_funding_apr=0`, which is not a real assumption. Charging 10% APR costs
+20-40% cumulatively over this window (short notional averages 0.4-0.9) and was
+the difference between "holdout +25%" and "holdout −2%" for otherwise similar
+configs. The search was therefore re-run with funding pinned at 10%; its one
+validated winner became the **Optimized** preset in the UI:
+
+`top_n=9, min_score=45, momentum side, market_cap weights, hold/exits at
+sell_score=20, trend ≥ −40, stops 40/75/100, breadth gate at full exposure,
+equity-trend brake 35%, IC filter @0.35 window 4, profit lock 25%, sweep 30%,
+max hold 52, short n5 @100%, funding 10%`
+
+| Window | Return (BTC) | Sharpe | Max DD | Rolling-1y positive |
+| --- | --- | --- | --- | --- |
+| Holdout 2025-04 → 2026-09 | +11% | 0.38 | −29% | 100% |
+| 2025+ | +91% | 1.11 | −22% | 100% |
+| 2024 | +55% | 0.96 | −47% | 100% |
+| 2022-2023 | +39% | 0.56 | −66% | 58% |
+| Full 2022+ | **+630%** | **1.04** | −66% | 89% |
+
+So the honest position stands: the highest-return answer is the *momentum*
+side with the factor-timing filter and a funded short sleeve, it compounds BTC
+much faster than the classic presets (+630% vs +232% for Balanced) and it
+accepts a −66% drawdown to do it. The classic value-side presets remain the
+steadier choice; the Optimized preset is the empirically searched aggressive
+one, not a claim of all-weather robustness.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

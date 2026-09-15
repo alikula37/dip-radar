@@ -32,7 +32,7 @@ from research.cv import assert_no_overlap
 logger = logging.getLogger(__name__)
 
 OBJECTIVES = ("return", "sharpe", "calmar", "consistency")
-MAX_TRIALS = 1000
+MAX_TRIALS = 3000
 DEFAULT_CV_CANDIDATES = 16
 DEFAULT_GAP_FRACTION = 0.5  # the holdout must retain half of the CV edge
 LABEL_HORIZON = 1  # anchors; the simulator's period return spans one anchor

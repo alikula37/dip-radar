@@ -133,6 +133,26 @@ describe('BacktestPage', () => {
     expect(screen.getByRole('img', { name: /backtest equity curve in usd/i })).toBeTruthy();
   });
 
+  it('applies the optimized preset found by the large search', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Optimized' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(
+          /top_n=9.*min_score=45.*weighting=market_cap.*rotation=hold.*sell_score=20.*min_trend_30d=-40.*stop_loss_pct=40.*trailing_stop_pct=75.*take_profit_pct=100.*equity_trend_exposure=0\.35.*profit_lock_pct=25.*short_n=5.*short_funding_apr=10.*short_exposure=1.*short_max_score=50.*profit_sweep_pct=30.*max_holding_periods=52.*invert_score=true.*ic_filter=true.*ic_window=4.*ic_threshold=0.*ic_exposure=0\.35.*score_model=rule.*regime_filter=breadth.*regime_exposure=1.*regime_min_breadth=0\.5/,
+        ),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
+  });
+
   it('sends the exit rule and sell threshold when they change', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
