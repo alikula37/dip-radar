@@ -148,6 +148,8 @@ npm run dev
 
 Need data without hitting the providers? `cd backend && python demo_seed.py` inserts five deterministic demo coins with ~4.5 years of candles (the E2E job in CI uses the same script).
 
+**Value Score research**: `backend/research/` is a read-only, deterministic harness (baseline IC study, bootstrap CIs, provenance/fingerprint freezing). See `backend/research/README.md` for how to run it against a database copy, the data caveats (survivorship, no point-in-time liquidity) and the shipping gates for any future learned score.
+
 ## Troubleshooting 🔧
 
 - **No data appearing?** Check the worker logs:
