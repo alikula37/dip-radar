@@ -42,6 +42,35 @@ def _row(open_time_ms, close, close_time_ms):
     return [open_time_ms, "1", "1.2", "0.9", str(close), "100", close_time_ms, "0", "1", "0", "0", "0"]
 
 
+def test_fetch_listed_months_downloads_concurrently_and_sorts():
+    calls = []
+
+    class FakeClient:
+        def fetch_month(self, symbol, year, month):
+            calls.append((symbol, year, month))
+            if month == 2:
+                return None
+            return [_row((year * 100 + month) * 1_000_000, 1.0, (year * 100 + month) * 1_000_000)]
+
+    rows = binance_mirror._fetch_listed_months(FakeClient(), "X", [(2021, 1), (2021, 2), (2020, 12)], workers=4)
+
+    assert [row[0] for row in rows] == [202012 * 1_000_000, 202101 * 1_000_000]
+    assert len(calls) == 3
+
+
+def test_list_months_parses_archive_keys():
+    body = (
+        "<ListBucketResult><IsTruncated>false</IsTruncated><Contents>"
+        "<Key>data/spot/monthly/klines/FTTBTC/1d/FTTBTC-1d-2021-01.zip</Key>"
+        "<Key>data/spot/monthly/klines/FTTBTC/1d/FTTBTC-1d-2021-02.zip</Key>"
+        "<Key>data/spot/monthly/klines/FTTBTC/1d/checksum.txt</Key>"
+        "</Contents></ListBucketResult>"
+    )
+    client = MirrorClient(session=FakeSession(lambda url, params: FakeResponse(text=body)), sleep=lambda _: None)
+
+    assert client.list_months("FTTBTC") == [(2021, 1), (2021, 2)]
+
+
 def test_list_symbols_paginates_with_marker():
     page_one = (
         "<ListBucketResult><IsTruncated>true</IsTruncated>"

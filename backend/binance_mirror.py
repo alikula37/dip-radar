@@ -49,6 +49,7 @@ FIAT_BASES = {
 }
 
 _PREFIX_RE = re.compile(r"<Prefix>" + re.escape(PREFIX) + r"([^<]+?)/</Prefix>")
+_KEY_RE = re.compile(r"<Key>([^<]+)</Key>")
 _TRUNCATED_RE = re.compile(r"<IsTruncated>true</IsTruncated>")
 _MARKER_RE = re.compile(r"<NextMarker>([^<]+)</NextMarker>")
 
@@ -88,6 +89,31 @@ class MirrorClient:
             marker = marker_match.group(1)
             self.sleep(0.2)
         return sorted(set(symbols))
+
+    def list_months(self, symbol: str, max_pages: int = 3) -> list:
+        """Available monthly archives for a symbol: [(year, month), …]."""
+        months = set()
+        marker = None
+        for _ in range(max_pages):
+            params = {"prefix": f"data/spot/monthly/klines/{symbol}/1d/"}
+            if marker:
+                params["marker"] = marker
+            response = self.session.get(self.listing_url, params=params, timeout=(5, 60))
+            if response.status_code != 200:
+                raise MirrorError(f"Monthly listing failed with HTTP {response.status_code}")
+            body = response.text
+            for key in _KEY_RE.findall(body):
+                match = re.search(r"-1d-(\d{4})-(\d{2})\.zip$", key)
+                if match:
+                    months.add((int(match.group(1)), int(match.group(2))))
+            if not _TRUNCATED_RE.search(body):
+                break
+            marker_match = _MARKER_RE.search(body)
+            if not marker_match:
+                break
+            marker = marker_match.group(1)
+            self.sleep(0.2)
+        return sorted(months)
 
     def fetch_month(self, symbol: str, year: int, month: int):
         """Return the monthly CSV rows for a symbol, or None when missing."""
@@ -163,6 +189,24 @@ def _last_day(rows):
     return moment.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _fetch_listed_months(client, symbol: str, months: list, workers: int = 8, delay: float = 0.0) -> list:
+    """Download the given (year, month) archives concurrently and sort by time."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def fetch(month):
+        if delay:
+            time.sleep(delay)
+        return client.fetch_month(symbol, month[0], month[1])
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for month_rows in executor.map(fetch, months):
+            if month_rows:
+                rows.extend(month_rows)
+    rows.sort(key=lambda row: row[0])
+    return rows
+
+
 def sync_delisted(
     db,
     client: MirrorClient,
@@ -171,6 +215,7 @@ def sync_delisted(
     until: datetime = None,
     btc_rates=None,
     delay: float = 0.2,
+    workers: int = 8,
     progress=None,
 ):
     """Create archived coins and ingest their daily candles from the mirror."""
@@ -184,23 +229,49 @@ def sync_delisted(
         collected = []
         collected_months = 0
         empty_streak = 0
-        for year, month in _monthly_range(since, until):
+
+        months = None
+        listed = False
+        lister = getattr(client, "list_months", None)
+        if lister is not None:
             try:
-                rows = client.fetch_month(symbol, year, month)
+                months = [
+                    (year, month)
+                    for year, month in lister(symbol)
+                    if (year, month) >= (since.year, since.month)
+                ]
+                listed = bool(months)
             except MirrorError as exc:
-                logger.warning("Mirror fetch failed for %s %s-%02d: %s", symbol, year, month, exc)
-                summary["failed"].append(symbol)
-                rows = None
-            if rows:
-                collected.extend(rows)
-                collected_months += 1
-                empty_streak = 0
-            else:
-                empty_streak += 1
-                if collected and empty_streak >= 3:
-                    break
-            if delay:
-                time.sleep(delay)
+                logger.warning("Monthly listing failed for %s: %s", symbol, exc)
+                months = None
+        if not months:
+            months = list(_monthly_range(since, until))
+
+        if listed and workers > 1:
+            try:
+                collected = _fetch_listed_months(client, symbol, months, workers=workers, delay=delay)
+            except MirrorError as exc:
+                logger.warning("Parallel fetch failed for %s: %s", symbol, exc)
+                collected = []
+            collected_months = len(months) if collected else 0
+        else:
+            for year, month in months:
+                try:
+                    rows = client.fetch_month(symbol, year, month)
+                except MirrorError as exc:
+                    logger.warning("Mirror fetch failed for %s %s-%02d: %s", symbol, year, month, exc)
+                    summary["failed"].append(symbol)
+                    rows = None
+                if rows:
+                    collected.extend(rows)
+                    collected_months += 1
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+                    if collected and empty_streak >= 3:
+                        break
+                if delay:
+                    time.sleep(delay)
 
         if not collected:
             summary["failed"].append(symbol)
@@ -261,6 +332,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--since", default="2017-08", help="First month to fetch (YYYY-MM)")
     parser.add_argument("--delay", type=float, default=0.2)
+    parser.add_argument("--workers", type=int, default=8, help="Concurrent archive downloads per symbol")
     args = parser.parse_args()
 
     client = MirrorClient()
@@ -301,6 +373,7 @@ def main() -> None:
             since,
             btc_rates=btc_rates,
             delay=args.delay,
+            workers=args.workers,
             progress=lambda symbol, index, total, rows: print(f"[{index}/{total}] {symbol}: {rows} rows"),
         )
     finally:

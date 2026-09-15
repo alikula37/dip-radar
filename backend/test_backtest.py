@@ -106,6 +106,11 @@ def test_snapshot_entries_carry_point_in_time_research_features(seeded_db):
     assert entry["days_since_ath"] is not None and entry["days_since_ath"] >= 0
     assert entry["dollar_volume_30d"] is not None and entry["dollar_volume_30d"] > 0
 
+    regime = snapshot["regime"][snapshot["dates"][5]]
+    assert regime["alt_index"] > 0
+    assert regime["alt_above_sma"] in (True, False)
+    assert regime["breadth"] is not None
+
 
 def test_snapshot_can_use_a_learned_score_artifact(seeded_db):
     end = START + timedelta(days=DAYS - 1)
@@ -291,6 +296,45 @@ def test_hold_rotation_defaults_to_the_buy_threshold():
 def test_simulate_rejects_unknown_rotation():
     with pytest.raises(BacktestError):
         simulate(_manual_snapshot(), rotation="daily", **_ROTATION_WINDOW)
+
+
+def _regime_snapshot():
+    snapshot = _manual_snapshot()
+    dates = snapshot["dates"]
+    snapshot["regime"] = {
+        dates[0]: {"alt_above_sma": True, "breadth": 0.8, "alt_index": 1.01},
+        dates[1]: {"alt_above_sma": False, "breadth": 0.2, "alt_index": 0.95},
+        dates[2]: {"alt_above_sma": True, "breadth": 0.6, "alt_index": 1.02},
+        dates[3]: {"alt_above_sma": True, "breadth": 0.6, "alt_index": 1.03},
+    }
+    return snapshot
+
+
+def test_regime_filter_sits_in_btc_when_the_alt_trend_turns_down():
+    snapshot = _regime_snapshot()
+
+    result = simulate(snapshot, regime_filter="alt_trend", **_ROTATION_WINDOW)
+
+    assert [period["risk_on"] for period in result["holdings"]] == [True, False, True]
+    assert result["holdings"][1]["picks"] == []
+    regime_exits = [trade for trade in result["trades"] if trade["exit_reason"] == "regime"]
+    assert len(regime_exits) == 1
+
+
+def test_regime_filter_breadth_threshold_is_configurable():
+    snapshot = _regime_snapshot()
+    window = {**_ROTATION_WINDOW, "regime_filter": "breadth"}
+
+    strict = simulate(snapshot, regime_min_breadth=0.5, **window)
+    loose = simulate(snapshot, regime_min_breadth=0.1, **window)
+
+    assert [period["risk_on"] for period in strict["holdings"]] == [True, False, True]
+    assert all(period["risk_on"] for period in loose["holdings"])
+
+
+def test_simulate_rejects_unknown_regime_filter():
+    with pytest.raises(BacktestError):
+        simulate(_manual_snapshot(), regime_filter="moon", **_ROTATION_WINDOW)
 
 
 def test_snapshot_includes_archived_coins_without_market_cap(db):

@@ -24,6 +24,9 @@ const response: BacktestResponse = {
   trailing_stop_pct: 50,
   take_profit_pct: 100,
   score_model: 'rule',
+  regime_filter: null,
+  regime_min_breadth: 0.5,
+  regime_exposure: 0,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -155,6 +158,26 @@ describe('BacktestPage', () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
         expect.stringMatching(/rotation=rebalance.*sell_score=55.*take_profit_pct=200/),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
+  });
+
+  it('sends the regime filter, exposure and breadth threshold', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.change(screen.getByLabelText('Regime filter'), { target: { value: 'breadth' } });
+    fireEvent.change(screen.getByLabelText(/min breadth/i), { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(/regime_filter=breadth.*regime_exposure=0\.35.*regime_min_breadth=0\.6/),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });

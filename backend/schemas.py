@@ -117,6 +117,7 @@ class BacktestPick(BaseModel):
 class BacktestPeriod(BaseModel):
     date: datetime
     picks: List[BacktestPick]
+    risk_on: bool = True
 
 
 class BacktestTrade(BaseModel):
@@ -176,6 +177,9 @@ class BacktestResponse(BaseModel):
     stop_loss_pct: Optional[float] = None
     trailing_stop_pct: Optional[float] = None
     take_profit_pct: Optional[float] = None
+    regime_filter: Optional[str] = None
+    regime_min_breadth: float = 0.5
+    regime_exposure: float = 0.0
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

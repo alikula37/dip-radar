@@ -1,16 +1,1012 @@
 {
   "delisted_symbols": [
     {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "BCNBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "CHATBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "HSRBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "ICNBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "RPXBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "TRIGBTC"
+    },
+    {
+      "delisted_at": "2018-10-20 00:00:00.000000",
+      "symbol": "VENBTC"
+    },
+    {
+      "delisted_at": "2018-11-21 00:00:00.000000",
+      "symbol": "BCCBTC"
+    },
+    {
+      "delisted_at": "2018-12-01 00:00:00.000000",
+      "symbol": "PAXBTC"
+    },
+    {
+      "delisted_at": "2019-02-23 00:00:00.000000",
+      "symbol": "CLOAKBTC"
+    },
+    {
+      "delisted_at": "2019-02-23 00:00:00.000000",
+      "symbol": "MODBTC"
+    },
+    {
+      "delisted_at": "2019-02-23 00:00:00.000000",
+      "symbol": "SUBBTC"
+    },
+    {
+      "delisted_at": "2019-05-23 00:00:00.000000",
+      "symbol": "PHXBTC"
+    },
+    {
+      "delisted_at": "2019-09-28 00:00:00.000000",
+      "symbol": "BTCBBTC"
+    },
+    {
+      "delisted_at": "2019-10-01 00:00:00.000000",
+      "symbol": "BTTBTC"
+    },
+    {
+      "delisted_at": "2019-10-01 00:00:00.000000",
+      "symbol": "DENTBTC"
+    },
+    {
+      "delisted_at": "2019-10-01 00:00:00.000000",
+      "symbol": "NPXSBTC"
+    },
+    {
+      "delisted_at": "2020-03-28 00:00:00.000000",
+      "symbol": "DGDBTC"
+    },
+    {
+      "delisted_at": "2020-04-01 00:00:00.000000",
+      "symbol": "BEARUSDT"
+    },
+    {
+      "delisted_at": "2020-04-01 00:00:00.000000",
+      "symbol": "BULLUSDT"
+    },
+    {
+      "delisted_at": "2020-04-01 00:00:00.000000",
+      "symbol": "EOSBEARUSDT"
+    },
+    {
+      "delisted_at": "2020-04-01 00:00:00.000000",
+      "symbol": "EOSBULLUSDT"
+    },
+    {
+      "delisted_at": "2020-04-04 00:00:00.000000",
+      "symbol": "KEYBTC"
+    },
+    {
+      "delisted_at": "2020-04-04 00:00:00.000000",
+      "symbol": "MFTBTC"
+    },
+    {
+      "delisted_at": "2020-04-04 00:00:00.000000",
+      "symbol": "NCASHBTC"
+    },
+    {
+      "delisted_at": "2020-04-25 00:00:00.000000",
+      "symbol": "COCOSBTC"
+    },
+    {
+      "delisted_at": "2020-06-19 00:00:00.000000",
+      "symbol": "EDOBTC"
+    },
+    {
+      "delisted_at": "2020-07-21 00:00:00.000000",
+      "symbol": "ARNBTC"
+    },
+    {
+      "delisted_at": "2020-07-21 00:00:00.000000",
+      "symbol": "FUELBTC"
+    },
+    {
+      "delisted_at": "2020-07-21 00:00:00.000000",
+      "symbol": "LUNBTC"
+    },
+    {
+      "delisted_at": "2020-08-01 00:00:00.000000",
+      "symbol": "TNTBTC"
+    },
+    {
+      "delisted_at": "2020-09-01 00:00:00.000000",
+      "symbol": "ERDBTC"
+    },
+    {
+      "delisted_at": "2020-09-12 00:00:00.000000",
+      "symbol": "INSBTC"
+    },
+    {
+      "delisted_at": "2020-09-28 00:00:00.000000",
+      "symbol": "ENGBTC"
+    },
+    {
+      "delisted_at": "2020-10-13 00:00:00.000000",
+      "symbol": "LENDBTC"
+    },
+    {
+      "delisted_at": "2020-10-24 00:00:00.000000",
+      "symbol": "MCOBTC"
+    },
+    {
+      "delisted_at": "2020-11-13 00:00:00.000000",
+      "symbol": "POEBTC"
+    },
+    {
+      "delisted_at": "2020-11-13 00:00:00.000000",
+      "symbol": "STRATBTC"
+    },
+    {
+      "delisted_at": "2020-12-08 00:00:00.000000",
+      "symbol": "GNTBTC"
+    },
+    {
+      "delisted_at": "2020-12-31 00:00:00.000000",
+      "symbol": "AEBTC"
+    },
+    {
+      "delisted_at": "2020-12-31 00:00:00.000000",
+      "symbol": "HCBTC"
+    },
+    {
+      "delisted_at": "2021-01-26 00:00:00.000000",
+      "symbol": "XZCBTC"
+    },
+    {
+      "delisted_at": "2021-01-30 00:00:00.000000",
+      "symbol": "CMTBTC"
+    },
+    {
+      "delisted_at": "2021-02-11 00:00:00.000000",
+      "symbol": "BCPTBTC"
+    },
+    {
+      "delisted_at": "2021-02-11 00:00:00.000000",
+      "symbol": "TNBBTC"
+    },
+    {
+      "delisted_at": "2021-02-11 00:00:00.000000",
+      "symbol": "VIBEBTC"
+    },
+    {
+      "delisted_at": "2021-02-22 00:00:00.000000",
+      "symbol": "BOTBTC"
+    },
+    {
+      "delisted_at": "2021-04-28 00:00:00.000000",
+      "symbol": "EASYBTC"
+    },
+    {
+      "delisted_at": "2021-05-29 00:00:00.000000",
+      "symbol": "AGIBTC"
+    },
+    {
+      "delisted_at": "2021-06-26 00:00:00.000000",
+      "symbol": "OSTBTC"
+    },
+    {
+      "delisted_at": "2021-07-20 00:00:00.000000",
+      "symbol": "RCNBTC"
+    },
+    {
+      "delisted_at": "2021-07-20 00:00:00.000000",
+      "symbol": "WPRBTC"
+    },
+    {
+      "delisted_at": "2021-08-07 00:00:00.000000",
+      "symbol": "NBSBTC"
+    },
+    {
+      "delisted_at": "2021-08-07 00:00:00.000000",
+      "symbol": "TROYBTC"
+    },
+    {
+      "delisted_at": "2021-08-17 00:00:00.000000",
+      "symbol": "BQXBTC"
+    },
+    {
+      "delisted_at": "2021-08-27 00:00:00.000000",
+      "symbol": "SNGLSBTC"
+    },
+    {
+      "delisted_at": "2021-08-27 00:00:00.000000",
+      "symbol": "VIABTC"
+    },
+    {
+      "delisted_at": "2021-09-19 00:00:00.000000",
+      "symbol": "SUSDBTC"
+    },
+    {
+      "delisted_at": "2021-10-01 00:00:00.000000",
+      "symbol": "PPTBTC"
+    },
+    {
+      "delisted_at": "2021-10-19 00:00:00.000000",
+      "symbol": "CDTBTC"
+    },
+    {
+      "delisted_at": "2021-11-06 00:00:00.000000",
+      "symbol": "DLTBTC"
+    },
+    {
+      "delisted_at": "2021-11-06 00:00:00.000000",
+      "symbol": "GVTBTC"
+    },
+    {
+      "delisted_at": "2021-11-06 00:00:00.000000",
+      "symbol": "POABTC"
+    },
+    {
+      "delisted_at": "2021-11-26 00:00:00.000000",
+      "symbol": "SXPDOWNUSDT"
+    },
+    {
+      "delisted_at": "2021-11-26 00:00:00.000000",
+      "symbol": "SXPUPUSDT"
+    },
+    {
+      "delisted_at": "2021-12-11 00:00:00.000000",
+      "symbol": "FUNBTC"
+    },
+    {
+      "delisted_at": "2021-12-24 00:00:00.000000",
+      "symbol": "EOSDOWNUSDT"
+    },
+    {
+      "delisted_at": "2021-12-24 00:00:00.000000",
+      "symbol": "EOSUPUSDT"
+    },
+    {
+      "delisted_at": "2021-12-28 00:00:00.000000",
+      "symbol": "APPCBTC"
+    },
+    {
+      "delisted_at": "2021-12-28 00:00:00.000000",
+      "symbol": "EVXBTC"
+    },
+    {
+      "delisted_at": "2021-12-28 00:00:00.000000",
+      "symbol": "RDNBTC"
+    },
+    {
+      "delisted_at": "2022-01-25 00:00:00.000000",
+      "symbol": "NANOBTC"
+    },
+    {
+      "delisted_at": "2022-02-17 00:00:00.000000",
+      "symbol": "KEEPBTC"
+    },
+    {
+      "delisted_at": "2022-02-17 00:00:00.000000",
+      "symbol": "NUBTC"
+    },
+    {
+      "delisted_at": "2022-03-09 00:00:00.000000",
+      "symbol": "BCDBTC"
+    },
+    {
+      "delisted_at": "2022-03-09 00:00:00.000000",
+      "symbol": "CNDBTC"
+    },
+    {
+      "delisted_at": "2022-03-09 00:00:00.000000",
+      "symbol": "MTHBTC"
+    },
+    {
+      "delisted_at": "2022-03-09 00:00:00.000000",
+      "symbol": "YOYOBTC"
+    },
+    {
+      "delisted_at": "2022-03-15 00:00:00.000000",
+      "symbol": "RGTBTC"
+    },
+    {
+      "delisted_at": "2022-03-19 00:00:00.000000",
+      "symbol": "WNXMBTC"
+    },
+    {
+      "delisted_at": "2022-03-31 00:00:00.000000",
+      "symbol": "ANYBTC"
+    },
+    {
+      "delisted_at": "2022-04-12 00:00:00.000000",
+      "symbol": "RENBTCBTC"
+    },
+    {
+      "delisted_at": "2022-04-23 00:00:00.000000",
+      "symbol": "USTBTC"
+    },
+    {
+      "delisted_at": "2022-04-26 00:00:00.000000",
+      "symbol": "GXSBTC"
+    },
+    {
+      "delisted_at": "2022-05-10 00:00:00.000000",
+      "symbol": "EPSBTC"
+    },
+    {
+      "delisted_at": "2022-05-15 00:00:00.000000",
+      "symbol": "AKROBTC"
+    },
+    {
+      "delisted_at": "2022-05-27 00:00:00.000000",
+      "symbol": "REEFBTC"
+    },
+    {
+      "delisted_at": "2022-07-08 00:00:00.000000",
+      "symbol": "TRIBEBTC"
+    },
+    {
+      "delisted_at": "2022-07-09 00:00:00.000000",
+      "symbol": "GOBTC"
+    },
+    {
+      "delisted_at": "2022-07-09 00:00:00.000000",
+      "symbol": "GRSBTC"
+    },
+    {
+      "delisted_at": "2022-07-09 00:00:00.000000",
+      "symbol": "NASBTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "BRDBTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "EZBTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "MDABTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "NAVBTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "NXSBTC"
+    },
+    {
+      "delisted_at": "2022-08-12 00:00:00.000000",
+      "symbol": "QSPBTC"
+    },
+    {
+      "delisted_at": "2022-10-15 00:00:00.000000",
+      "symbol": "HNTBTC"
+    },
+    {
+      "delisted_at": "2022-10-25 00:00:00.000000",
+      "symbol": "BTGBTC"
+    },
+    {
+      "delisted_at": "2022-10-25 00:00:00.000000",
+      "symbol": "DNTBTC"
+    },
+    {
+      "delisted_at": "2022-10-25 00:00:00.000000",
+      "symbol": "TCTBTC"
+    },
+    {
       "delisted_at": "2022-11-16 00:00:00.000000",
       "symbol": "FTTBTC"
+    },
+    {
+      "delisted_at": "2022-11-19 00:00:00.000000",
+      "symbol": "VGXBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "BEAMBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "BTCSTBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "GTOBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "MITHBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "PERLBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "PNTBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "REPBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "SRMBTC"
+    },
+    {
+      "delisted_at": "2022-11-29 00:00:00.000000",
+      "symbol": "XEMBTC"
+    },
+    {
+      "delisted_at": "2022-12-28 00:00:00.000000",
+      "symbol": "ANCBTC"
+    },
+    {
+      "delisted_at": "2022-12-28 00:00:00.000000",
+      "symbol": "MIRBTC"
+    },
+    {
+      "delisted_at": "2022-12-28 00:00:00.000000",
+      "symbol": "TORNBTC"
+    },
+    {
+      "delisted_at": "2023-01-28 00:00:00.000000",
+      "symbol": "AIONBTC"
+    },
+    {
+      "delisted_at": "2023-01-28 00:00:00.000000",
+      "symbol": "BTSBTC"
+    },
+    {
+      "delisted_at": "2023-03-01 00:00:00.000000",
+      "symbol": "NBTUSDT"
+    },
+    {
+      "delisted_at": "2023-03-25 00:00:00.000000",
+      "symbol": "WABIBTC"
+    },
+    {
+      "delisted_at": "2023-04-19 00:00:00.000000",
+      "symbol": "AUTOBTC"
+    },
+    {
+      "delisted_at": "2023-04-19 00:00:00.000000",
+      "symbol": "NEBLBTC"
+    },
+    {
+      "delisted_at": "2023-04-19 00:00:00.000000",
+      "symbol": "QLCBTC"
+    },
+    {
+      "delisted_at": "2023-05-12 00:00:00.000000",
+      "symbol": "OMGBTC"
+    },
+    {
+      "delisted_at": "2023-05-19 00:00:00.000000",
+      "symbol": "WRXBTC"
+    },
+    {
+      "delisted_at": "2023-05-27 00:00:00.000000",
+      "symbol": "STMXBTC"
+    },
+    {
+      "delisted_at": "2023-08-23 00:00:00.000000",
+      "symbol": "SNMBTC"
+    },
+    {
+      "delisted_at": "2023-11-08 00:00:00.000000",
+      "symbol": "MCBTC"
+    },
+    {
+      "delisted_at": "2023-11-21 00:00:00.000000",
+      "symbol": "TOMOBTC"
+    },
+    {
+      "delisted_at": "2023-11-28 00:00:00.000000",
+      "symbol": "TVKBTC"
+    },
+    {
+      "delisted_at": "2023-12-08 00:00:00.000000",
+      "symbol": "WTCBTC"
+    },
+    {
+      "delisted_at": "2024-01-13 00:00:00.000000",
+      "symbol": "MULTIBTC"
+    },
+    {
+      "delisted_at": "2024-02-21 00:00:00.000000",
+      "symbol": "ANTBTC"
+    },
+    {
+      "delisted_at": "2024-02-21 00:00:00.000000",
+      "symbol": "XMRBTC"
+    },
+    {
+      "delisted_at": "2024-02-27 00:00:00.000000",
+      "symbol": "PLABTC"
+    },
+    {
+      "delisted_at": "2024-02-29 00:00:00.000000",
+      "symbol": "BTCDOWNUSDT"
+    },
+    {
+      "delisted_at": "2024-02-29 00:00:00.000000",
+      "symbol": "BTCUPUSDT"
+    },
+    {
+      "delisted_at": "2024-03-09 00:00:00.000000",
+      "symbol": "AERGOBTC"
+    },
+    {
+      "delisted_at": "2024-03-09 00:00:00.000000",
+      "symbol": "FARMBTC"
+    },
+    {
+      "delisted_at": "2024-04-04 00:00:00.000000",
+      "symbol": "DREPBTC"
+    },
+    {
+      "delisted_at": "2024-04-04 00:00:00.000000",
+      "symbol": "MOBBTC"
+    },
+    {
+      "delisted_at": "2024-04-27 00:00:00.000000",
+      "symbol": "HARDBTC"
+    },
+    {
+      "delisted_at": "2024-05-11 00:00:00.000000",
+      "symbol": "DEGOBTC"
+    },
+    {
+      "delisted_at": "2024-05-18 00:00:00.000000",
+      "symbol": "CHESSBTC"
+    },
+    {
+      "delisted_at": "2024-06-15 00:00:00.000000",
+      "symbol": "ALPACABTC"
+    },
+    {
+      "delisted_at": "2024-06-15 00:00:00.000000",
+      "symbol": "MDXBTC"
+    },
+    {
+      "delisted_at": "2024-06-18 00:00:00.000000",
+      "symbol": "WAVESBTC"
+    },
+    {
+      "delisted_at": "2024-06-22 00:00:00.000000",
+      "symbol": "BETABTC"
+    },
+    {
+      "delisted_at": "2024-07-02 00:00:00.000000",
+      "symbol": "AGIXBTC"
+    },
+    {
+      "delisted_at": "2024-07-02 00:00:00.000000",
+      "symbol": "OCEANBTC"
+    },
+    {
+      "delisted_at": "2024-07-07 00:00:00.000000",
+      "symbol": "AMBBTC"
+    },
+    {
+      "delisted_at": "2024-07-07 00:00:00.000000",
+      "symbol": "LINABTC"
+    },
+    {
+      "delisted_at": "2024-07-16 00:00:00.000000",
+      "symbol": "GALBTC"
+    },
+    {
+      "delisted_at": "2024-07-23 00:00:00.000000",
+      "symbol": "BONDBTC"
+    },
+    {
+      "delisted_at": "2024-07-23 00:00:00.000000",
+      "symbol": "DOCKBTC"
+    },
+    {
+      "delisted_at": "2024-07-23 00:00:00.000000",
+      "symbol": "RNDRBTC"
+    },
+    {
+      "delisted_at": "2024-07-27 00:00:00.000000",
+      "symbol": "VOXELBTC"
+    },
+    {
+      "delisted_at": "2024-08-03 00:00:00.000000",
+      "symbol": "ASTBTC"
+    },
+    {
+      "delisted_at": "2024-08-24 00:00:00.000000",
+      "symbol": "FIROBTC"
+    },
+    {
+      "delisted_at": "2024-08-27 00:00:00.000000",
+      "symbol": "CVPUSDT"
+    },
+    {
+      "delisted_at": "2024-08-27 00:00:00.000000",
+      "symbol": "EPXUSDT"
+    },
+    {
+      "delisted_at": "2024-08-27 00:00:00.000000",
+      "symbol": "FORBTC"
+    },
+    {
+      "delisted_at": "2024-08-27 00:00:00.000000",
+      "symbol": "LOOMBTC"
+    },
+    {
+      "delisted_at": "2024-08-31 00:00:00.000000",
+      "symbol": "ALCXBTC"
+    },
+    {
+      "delisted_at": "2024-09-11 00:00:00.000000",
+      "symbol": "MATICBTC"
+    },
+    {
+      "delisted_at": "2024-09-14 00:00:00.000000",
+      "symbol": "NTRNBTC"
+    },
+    {
+      "delisted_at": "2024-09-28 00:00:00.000000",
+      "symbol": "HOOKBTC"
+    },
+    {
+      "delisted_at": "2024-09-28 00:00:00.000000",
+      "symbol": "PDABTC"
+    },
+    {
+      "delisted_at": "2024-10-12 00:00:00.000000",
+      "symbol": "BALBTC"
+    },
+    {
+      "delisted_at": "2024-10-16 00:00:00.000000",
+      "symbol": "ORNBTC"
+    },
+    {
+      "delisted_at": "2024-10-31 00:00:00.000000",
+      "symbol": "KLAYBTC"
+    },
+    {
+      "delisted_at": "2024-11-07 00:00:00.000000",
+      "symbol": "KP3RUSDT"
+    },
+    {
+      "delisted_at": "2024-11-07 00:00:00.000000",
+      "symbol": "OOKIUSDT"
+    },
+    {
+      "delisted_at": "2024-11-07 00:00:00.000000",
+      "symbol": "UNFIBTC"
+    },
+    {
+      "delisted_at": "2024-11-09 00:00:00.000000",
+      "symbol": "COSBTC"
+    },
+    {
+      "delisted_at": "2024-11-09 00:00:00.000000",
+      "symbol": "FXSBTC"
+    },
+    {
+      "delisted_at": "2024-11-23 00:00:00.000000",
+      "symbol": "DARBTC"
+    },
+    {
+      "delisted_at": "2024-11-23 00:00:00.000000",
+      "symbol": "IRISBTC"
+    },
+    {
+      "delisted_at": "2024-11-23 00:00:00.000000",
+      "symbol": "UTKBTC"
+    },
+    {
+      "delisted_at": "2024-12-04 00:00:00.000000",
+      "symbol": "GFTUSDT"
+    },
+    {
+      "delisted_at": "2024-12-07 00:00:00.000000",
+      "symbol": "RDNTBTC"
+    },
+    {
+      "delisted_at": "2024-12-11 00:00:00.000000",
+      "symbol": "OAXBTC"
+    },
+    {
+      "delisted_at": "2024-12-11 00:00:00.000000",
+      "symbol": "RENBTC"
+    },
+    {
+      "delisted_at": "2024-12-26 00:00:00.000000",
+      "symbol": "BLZBTC"
+    },
+    {
+      "delisted_at": "2025-01-14 00:00:00.000000",
+      "symbol": "FTMBTC"
+    },
+    {
+      "delisted_at": "2025-01-18 00:00:00.000000",
+      "symbol": "BNXBTC"
+    },
+    {
+      "delisted_at": "2025-01-18 00:00:00.000000",
+      "symbol": "HIGHBTC"
+    },
+    {
+      "delisted_at": "2025-02-07 00:00:00.000000",
+      "symbol": "VITEBTC"
+    },
+    {
+      "delisted_at": "2025-02-11 00:00:00.000000",
+      "symbol": "LITBTC"
+    },
+    {
+      "delisted_at": "2025-02-25 00:00:00.000000",
+      "symbol": "CLVBTC"
+    },
+    {
+      "delisted_at": "2025-03-08 00:00:00.000000",
+      "symbol": "MDTBTC"
+    },
+    {
+      "delisted_at": "2025-03-08 00:00:00.000000",
+      "symbol": "MLNBTC"
+    },
+    {
+      "delisted_at": "2025-03-08 00:00:00.000000",
+      "symbol": "VIBBTC"
+    },
+    {
+      "delisted_at": "2025-03-08 00:00:00.000000",
+      "symbol": "VICBTC"
+    },
+    {
+      "delisted_at": "2025-03-11 00:00:00.000000",
+      "symbol": "ERNUSDT"
+    },
+    {
+      "delisted_at": "2025-03-15 00:00:00.000000",
+      "symbol": "IDEXBTC"
+    },
+    {
+      "delisted_at": "2025-03-22 00:00:00.000000",
+      "symbol": "MBOXBTC"
+    },
+    {
+      "delisted_at": "2025-03-29 00:00:00.000000",
+      "symbol": "BURGERUSDT"
+    },
+    {
+      "delisted_at": "2025-03-29 00:00:00.000000",
+      "symbol": "COMBOUSDT"
+    },
+    {
+      "delisted_at": "2025-03-29 00:00:00.000000",
+      "symbol": "PERPBTC"
+    },
+    {
+      "delisted_at": "2025-04-12 00:00:00.000000",
+      "symbol": "PONDBTC"
+    },
+    {
+      "delisted_at": "2025-04-16 00:00:00.000000",
+      "symbol": "VIDTBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "BADGERBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "CREAMUSDT"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "CTXCBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "ELFBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "NULSBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "PROSUSDT"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "SNTBTC"
+    },
+    {
+      "delisted_at": "2025-04-17 00:00:00.000000",
+      "symbol": "UFTUSDT"
+    },
+    {
+      "delisted_at": "2025-04-19 00:00:00.000000",
+      "symbol": "VANRYBTC"
+    },
+    {
+      "delisted_at": "2025-05-20 00:00:00.000000",
+      "symbol": "STPTBTC"
     },
     {
       "delisted_at": "2025-05-24 00:00:00.000000",
       "symbol": "ACABTC"
     },
     {
+      "delisted_at": "2025-05-24 00:00:00.000000",
+      "symbol": "TRUBTC"
+    },
+    {
+      "delisted_at": "2025-05-27 00:00:00.000000",
+      "symbol": "EOSBTC"
+    },
+    {
+      "delisted_at": "2025-07-05 00:00:00.000000",
+      "symbol": "BSWUSDT"
+    },
+    {
+      "delisted_at": "2025-07-05 00:00:00.000000",
+      "symbol": "FIOBTC"
+    },
+    {
+      "delisted_at": "2025-07-05 00:00:00.000000",
+      "symbol": "KMDBTC"
+    },
+    {
+      "delisted_at": "2025-07-05 00:00:00.000000",
+      "symbol": "LEVERUSDT"
+    },
+    {
+      "delisted_at": "2025-07-05 00:00:00.000000",
+      "symbol": "LTOBTC"
+    },
+    {
+      "delisted_at": "2025-07-29 00:00:00.000000",
+      "symbol": "LOKABTC"
+    },
+    {
+      "delisted_at": "2025-08-09 00:00:00.000000",
+      "symbol": "NKNBTC"
+    },
+    {
+      "delisted_at": "2025-09-16 00:00:00.000000",
+      "symbol": "MKRBTC"
+    },
+    {
+      "delisted_at": "2025-09-18 00:00:00.000000",
+      "symbol": "BAKEBTC"
+    },
+    {
+      "delisted_at": "2025-09-18 00:00:00.000000",
+      "symbol": "HIFIUSDT"
+    },
+    {
+      "delisted_at": "2025-09-18 00:00:00.000000",
+      "symbol": "SLFBTC"
+    },
+    {
+      "delisted_at": "2025-09-30 00:00:00.000000",
+      "symbol": "OMNIBTC"
+    },
+    {
+      "delisted_at": "2025-10-18 00:00:00.000000",
+      "symbol": "DATABTC"
+    },
+    {
+      "delisted_at": "2025-11-01 00:00:00.000000",
+      "symbol": "ATABTC"
+    },
+    {
+      "delisted_at": "2025-11-13 00:00:00.000000",
+      "symbol": "FLMBTC"
+    },
+    {
+      "delisted_at": "2025-11-13 00:00:00.000000",
+      "symbol": "KDABTC"
+    },
+    {
+      "delisted_at": "2025-12-18 00:00:00.000000",
+      "symbol": "FISBTC"
+    },
+    {
+      "delisted_at": "2025-12-18 00:00:00.000000",
+      "symbol": "REIUSDT"
+    },
+    {
+      "delisted_at": "2025-12-20 00:00:00.000000",
+      "symbol": "OMBTC"
+    },
+    {
+      "delisted_at": "2026-01-14 00:00:00.000000",
+      "symbol": "HFTBTC"
+    },
+    {
+      "delisted_at": "2026-01-14 00:00:00.000000",
+      "symbol": "SXPBTC"
+    },
+    {
+      "delisted_at": "2026-01-21 00:00:00.000000",
+      "symbol": "OXTBTC"
+    },
+    {
+      "delisted_at": "2026-01-24 00:00:00.000000",
+      "symbol": "PYRBTC"
+    },
+    {
+      "delisted_at": "2026-01-28 00:00:00.000000",
+      "symbol": "TONBTC"
+    },
+    {
+      "delisted_at": "2026-01-31 00:00:00.000000",
+      "symbol": "FORTHBTC"
+    },
+    {
+      "delisted_at": "2026-01-31 00:00:00.000000",
+      "symbol": "PHBBTC"
+    },
+    {
+      "delisted_at": "2026-02-04 00:00:00.000000",
+      "symbol": "NFPBTC"
+    },
+    {
+      "delisted_at": "2026-02-04 00:00:00.000000",
+      "symbol": "PIVXBTC"
+    },
+    {
+      "delisted_at": "2026-02-04 00:00:00.000000",
+      "symbol": "SYSBTC"
+    },
+    {
+      "delisted_at": "2026-02-11 00:00:00.000000",
+      "symbol": "ARDRBTC"
+    },
+    {
+      "delisted_at": "2026-02-11 00:00:00.000000",
+      "symbol": "ICXBTC"
+    },
+    {
+      "delisted_at": "2026-02-14 00:00:00.000000",
+      "symbol": "DFUSDT"
+    },
+    {
+      "delisted_at": "2026-02-14 00:00:00.000000",
+      "symbol": "GHSTUSDT"
+    },
+    {
+      "delisted_at": "2026-02-14 00:00:00.000000",
+      "symbol": "LRCBTC"
+    },
+    {
       "delisted_at": "2026-04-02 00:00:00.000000",
       "symbol": "A2ZUSDT"
+    },
+    {
+      "delisted_at": "2026-04-24 00:00:00.000000",
+      "symbol": "BIFIUSDT"
+    },
+    {
+      "delisted_at": "2026-04-24 00:00:00.000000",
+      "symbol": "WANBTC"
+    },
+    {
+      "delisted_at": "2026-06-20 00:00:00.000000",
+      "symbol": "DUSDT"
     },
     {
       "delisted_at": "2026-08-18 00:00:00.000000",
@@ -18,14 +1014,14 @@
     }
   ],
   "klines": {
-    "median_candles": 1237,
-    "p10_candles": 246,
-    "rows": 504597,
-    "symbols": 374,
-    "symbols_ge_1095_candles": 198,
-    "symbols_ge_400_candles": 300,
-    "symbols_with_gaps": 5,
-    "total_gaps": 5
+    "median_candles": 1209,
+    "p10_candles": 289,
+    "rows": 809018,
+    "symbols": 623,
+    "symbols_ge_1095_candles": 339,
+    "symbols_ge_400_candles": 517,
+    "symbols_with_gaps": 22,
+    "total_gaps": 24
   },
   "liquidity": {
     "active_stale_over_7d": 0,
@@ -44,18 +1040,18 @@
   },
   "provenance": {
     "database": {
-      "bytes": 106815488,
+      "bytes": 169406464,
       "path": "/data/dipradar.db",
-      "sha256": "174301be1218d98e"
+      "sha256": "877e0a4236378da3"
     },
-    "generated_at": "2026-09-15T12:52:34.984779+00:00",
+    "generated_at": "2026-09-15T13:40:01.793849+00:00",
     "git_commit": null,
     "latest_candle": "2026-09-15 00:00:00"
   },
   "universe": {
     "active": 479,
-    "coins_total": 483,
-    "delisted": 4,
+    "coins_total": 732,
+    "delisted": 253,
     "stable": 10,
     "with_coingecko_id": 469
   }

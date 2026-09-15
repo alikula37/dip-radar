@@ -52,6 +52,8 @@ PIT_LIQUIDITY_COLUMNS = ("market_cap_pit", "volume_pit")
 
 BTC_REGIME_COLUMNS = ("btc_return_30d", "btc_return_90d", "btc_above_sma200")
 
+ALT_REGIME_COLUMNS = ("alt_above_sma", "alt_trend", "breadth")
+
 
 def market_history_index(session) -> dict:
     """Per symbol: parallel lists of dates / market caps / volumes."""
@@ -124,6 +126,7 @@ def build_feature_rows(session, frequency: str, end=None, use_cache: bool = True
     rows = []
     for date in snapshot["dates"]:
         regime = btc_features(rates, rate_dates, date)
+        alt_regime = snapshot.get("regime", {}).get(date, {})
         for symbol, entry in snapshot["entries"][date].items():
             market_cap_pit, volume_pit = _pit_value(market.get(symbol), date)
             row = {
@@ -138,6 +141,8 @@ def build_feature_rows(session, frequency: str, end=None, use_cache: bool = True
             for column in FEATURE_COLUMNS:
                 row[column] = entry.get(column)
             row.update(regime)
+            for column in ALT_REGIME_COLUMNS:
+                row[column] = alt_regime.get(column)
             rows.append(row)
     return rows
 

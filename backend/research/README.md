@@ -42,6 +42,25 @@ snapshot universe keeps their history. CoinGecko's `market_chart` endpoint
 requires a free Demo API key (`COINGECKO_API_KEY`); without it the command
 reports per-coin failures and leaves the table untouched.
 
+### Altcoin dominance (OTHERS.D) finding
+
+The universe's own equal-weight alt/BTC index (computed point-in-time in
+`build_snapshot`) shows why BTC-denominated alt strategies bleed: the index
+spends most of 2022→2026 below its 6-anchor SMA. A **binary** trend/breadth
+switch to BTC was measured to *hurt* (whipsaw: it exits near bottoms and
+misses the rebounds), but **partial exposure** helps on both splits:
+
+| Preset | No filter | Alt-trend filter at 35% risk-off exposure |
+| --- | --- | --- |
+| Balanced (2022+) | +132% BTC, Sharpe 0.51, DD −52% | +220%, 0.58, −33% |
+| Balanced (2025+, OOS) | +2.5%, 0.24, −47% | +19.7%, 0.47, −22% |
+| Aggressive (2022+) | +170%, 0.51, −56% | +490%, 0.63, −44% |
+| Aggressive (2025+, OOS) | +54.9%, 0.70, −41% | +80.9%, 0.96, −20% |
+
+The simulator exposes `regime_filter=alt_trend|breadth`, `regime_exposure`
+and `regime_min_breadth`; the feature store carries `alt_above_sma`,
+`alt_trend` and `breadth` columns for future models.
+
 ## Interpreting the baseline
 
 Measured on the 2020–2026 dataset (see `baselines/value_score_baseline.json`
@@ -104,15 +123,17 @@ If it fails, the rule-based score stays — a negative result is still a result.
   (`feature_store.py`) plus purged/embargoed walk-forward folds (`cv.py`), with
   a leakage regression test proving anchor features never change when future
   candles arrive.
-- Phase 3 (first pass done, result in `baselines/model_report.json`): the
-  constrained rank model passes the IC gate (walk-forward IC +0.106 vs +0.069
-  baseline, paired delta CI [+0.003, +0.073], all four folds positive) but
-  **fails the strategy gate** — its top-3 proxy portfolio is no better than the
-  baseline (Sharpe −0.97 vs −0.76). Per the gates the learned score is not
-  shipped; the next step is a proper Strategy Lab A/B (`score_model=`), not a
-  promotion. Learned weights concentrate on `distance`, `dollar_volume_30d`
-  and `valuation_pct_1y`, while the rule-based score's heavy 3-year valuation
-  weight gets almost none.
+- Phase 3 after the survivorship fix (see `baselines/model_report.json` and
+  `score_artifacts/learned_v2.json`): recovering 253 delisted coins cut the
+  rule-based baseline IC from +0.069 to +0.056 while the learned model's IC
+  rose to +0.190 (delta CI [+0.072, +0.198]) and its top-3 proxy returned
+  **+31.0%** versus −66.7% for the baseline — yet the real simulator A/B on
+  2025+ (Balanced + alt-trend regime) still lost: rule **+19.7%** (Sharpe
+  0.47) vs learned_v2 **−40.6%** (−0.82). The strategy gate remains the
+  binding constraint; `learned_v2` stays a labelled experimental option, not
+  a promotion. Learned weights concentrate on `dollar_volume_30d`,
+  `distance` and `valuation_pct_1y` (liquidity acts as a survival proxy when
+  delisted coins are in the universe).
 - Phase 4 (shipped): the Strategy Lab exposes a `score_model` selector
   (`rule` default, `learned_v1` experimental). The A/B in the real simulator is
   decisive: with the Balanced preset the rule-based score returns +132.4% BTC

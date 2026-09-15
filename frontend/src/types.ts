@@ -105,6 +105,7 @@ export interface BacktestPick {
 export interface BacktestPeriod {
   date: string;
   picks: BacktestPick[];
+  risk_on?: boolean;
 }
 
 export interface BacktestTrade {
@@ -164,6 +165,9 @@ export interface BacktestResponse {
   trailing_stop_pct: number | null;
   take_profit_pct: number | null;
   score_model: string;
+  regime_filter: string | null;
+  regime_min_breadth: number;
+  regime_exposure: number;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -189,5 +193,8 @@ export interface BacktestForm {
   trailingStop: number | null;
   takeProfit: number | null;
   scoreModel: 'rule' | 'learned_v1';
+  regimeFilter: 'none' | 'alt_trend' | 'breadth';
+  regimeMinBreadth: number;
+  regimeExposure: number;
   optimize: boolean;
 }

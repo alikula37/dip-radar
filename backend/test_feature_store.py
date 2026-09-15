@@ -85,6 +85,8 @@ def test_feature_rows_join_point_in_time_liquidity_and_btc_regime(db):
     assert eth["days_since_ath"] >= 0
     assert eth["btc_return_30d"] is not None
     assert eth["btc_above_sma200"] is True
+    assert "alt_above_sma" in eth and "alt_trend" in eth
+    assert eth["breadth"] is not None
 
     bnb = by_key[("2023-03-01", "BNBBTC")]
     assert bnb["market_cap_pit"] is None  # no point-in-time ingestion for this coin
