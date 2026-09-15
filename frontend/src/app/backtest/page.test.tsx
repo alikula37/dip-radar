@@ -23,6 +23,7 @@ const response: BacktestResponse = {
   stop_loss_pct: null,
   trailing_stop_pct: 50,
   take_profit_pct: 100,
+  score_model: 'rule',
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -154,6 +155,28 @@ describe('BacktestPage', () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
         expect.stringMatching(/rotation=rebalance.*sell_score=55.*take_profit_pct=200/),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
+  });
+
+  it('can compare the experimental learned score model', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.change(screen.getByLabelText('Score model'), { target: { value: 'learned_v1' } });
+
+    expect(screen.getByText(/experimental score/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(/score_model=learned_v1/),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });

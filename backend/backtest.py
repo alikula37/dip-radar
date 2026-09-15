@@ -157,11 +157,27 @@ def _rate_at(rates: dict, rate_dates: list, when: datetime) -> Optional[float]:
     return rates[rate_dates[index]]
 
 
-def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool = True) -> dict:
+def build_snapshot(
+    db: DBSession,
+    frequency: str,
+    end: datetime,
+    use_cache: bool = True,
+    score_model: str = "rule",
+) -> dict:
     if frequency not in FREQUENCY_DAYS:
         raise BacktestError("rebalance must be weekly, monthly or quarterly")
 
-    key = (frequency, end.date().isoformat())
+    if score_model != "rule":
+        from score_models import ScoreModelError, load_model
+
+        try:
+            score_artifact = load_model(score_model)
+        except ScoreModelError as exc:
+            raise BacktestError(str(exc))
+    else:
+        score_artifact = None
+
+    key = (frequency, end.date().isoformat(), score_model)
     if use_cache and key in _SNAPSHOT_CACHE:
         return _SNAPSHOT_CACHE[key]
 
@@ -283,10 +299,17 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
 
         # First pass matches the dashboard universe so the historical scores
         # agree with /api/coins; coins below the default liquidity gates get
-        # a fallback score from a gate-free cross-section.
-        calculate_value_scores(snapshot_coins)
-        official_scores = {coin.symbol: coin.value_score for coin in snapshot_coins}
-        calculate_value_scores(snapshot_coins, min_cap=0, min_volume=0)
+        # a fallback score from a gate-free cross-section. A learned artifact
+        # scores the same universe with its frozen feature ranks instead.
+        if score_artifact is None:
+            calculate_value_scores(snapshot_coins)
+            official_scores = {coin.symbol: coin.value_score for coin in snapshot_coins}
+            calculate_value_scores(snapshot_coins, min_cap=0, min_volume=0)
+        else:
+            from score_models import apply_model_scores
+
+            apply_model_scores(snapshot_coins, score_artifact)
+            official_scores = {coin.symbol: coin.value_score for coin in snapshot_coins}
 
         entries = {}
         for snapshot_coin in snapshot_coins:

@@ -368,6 +368,7 @@ def run_backtest(
     stop_loss_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much below entry (checked daily)"),
     trailing_stop_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much from its peak since entry"),
     take_profit_pct: Optional[float] = Query(default=None, ge=0, le=10000, description="Sell when the price rises this much above entry"),
+    score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
     db: Session = Depends(get_db),
 ):
@@ -408,7 +409,7 @@ def run_backtest(
     }
 
     try:
-        snapshot = build_snapshot(db, rebalance, end_at)
+        snapshot = build_snapshot(db, rebalance, end_at, score_model=score_model)
         outcome = simulate(snapshot, start=start_at, end=end_at, **params)
     except BacktestError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -421,6 +422,7 @@ def run_backtest(
         "requested_start": start,
         "requested_end": end_at.date().isoformat(),
         "rebalance": rebalance,
+        "score_model": score_model,
         **params,
         **outcome,
         "optimization": optimization,

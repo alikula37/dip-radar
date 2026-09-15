@@ -134,27 +134,27 @@ def build_samples(rows: list, horizon: int = 1, min_universe: int = 30) -> list:
     return anchors
 
 
-def fit_nonnegative(features: list, targets: list, iterations: int = 60, l2: float = 0.05):
-    """Non-negative least squares via cyclic coordinate descent.
-
-    Each coordinate is solved in closed form against the partial residual, so
-    the fit is stable without tuning a learning rate; ``l2`` is a per-sample
-    ridge that shrinks unstable weights toward zero.
-    """
-    if not features:
-        return []
+def standardize(features: list):
+    """Column standardization shared by training and artifact export."""
     width = len(features[0])
     count = len(features)
-
     means = [sum(row[column] for row in features) / count for column in range(width)]
     scales = []
     for column in range(width):
         variance = sum((row[column] - means[column]) ** 2 for row in features) / max(1, count - 1)
         scales.append(math.sqrt(variance) or 1.0)
-
     standardized = [
         [(row[column] - means[column]) / scales[column] for column in range(width)] for row in features
     ]
+    return standardized, means, scales
+
+
+def fit_standardized(standardized: list, targets: list, iterations: int = 60, l2: float = 0.05):
+    """Non-negative least squares on already standardized columns."""
+    if not standardized:
+        return []
+    width = len(standardized[0])
+    count = len(standardized)
     target_mean = sum(targets) / count
     centered = [target - target_mean for target in targets]
 
@@ -176,6 +176,17 @@ def fit_nonnegative(features: list, targets: list, iterations: int = 60, l2: flo
                 for index in range(count):
                     predictions[index] += delta * standardized[index][column]
     return weights
+
+
+def fit_nonnegative(features: list, targets: list, iterations: int = 60, l2: float = 0.05):
+    """Non-negative least squares via cyclic coordinate descent.
+
+    Each coordinate is solved in closed form against the partial residual, so
+    the fit is stable without tuning a learning rate; ``l2`` is a per-sample
+    ridge that shrinks unstable weights toward zero.
+    """
+    standardized, _, _ = standardize(features)
+    return fit_standardized(standardized, targets, iterations, l2)
 
 
 def _rank_ic(scores: list, forward: list):

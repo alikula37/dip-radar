@@ -33,6 +33,7 @@ create a new file instead of overwriting one.
 | `feature_store.py` | Point-in-time feature rows per (rebalance anchor, symbol): score components, volatility, ATH drawdown, dollar volume, point-in-time market cap/volume, BTC regime. JSONL export. Current-only liquidity lives in explicit `cap_current`/`volume_current` columns. |
 | `cv.py` | Purged + embargoed expanding-window walk-forward folds for forward-return labels (`assert_no_overlap` guards every experiment). |
 | `model.py` | Constrained learned score: oriented rank features (signs fixed a priori) + non-negative least squares, evaluated on `cv.py` folds against the frozen baseline on IC *and* a top-3 strategy proxy. |
+| `export_model.py` | Trains up to a cutoff and freezes `score_artifacts/<version>.json` (weights, feature scaling, provenance, validation notes) for the Strategy Lab A/B. |
 
 Point-in-time liquidity is ingested by the application module
 `backend/market_history.py` (`python -m market_history`); coins that leave
@@ -112,5 +113,16 @@ If it fails, the rule-based score stays — a negative result is still a result.
   promotion. Learned weights concentrate on `distance`, `dollar_volume_30d`
   and `valuation_pct_1y`, while the rule-based score's heavy 3-year valuation
   weight gets almost none.
-- Phase 4: shadow scoring, model versioning, per-model comparison in the
-  Strategy Lab (`score_model=` parameter).
+- Phase 4 (shipped): the Strategy Lab exposes a `score_model` selector
+  (`rule` default, `learned_v1` experimental). The A/B in the real simulator is
+  decisive: with the Balanced preset the rule-based score returns +132.4% BTC
+  (Sharpe 0.51) vs **−82.0%** for the learned artifact over 2022→2026, and
+  +2.5% vs −38.4% out-of-sample (2025+) after the artifact's training cutoff.
+  The artifact stays selectable for research, labelled in the UI, and is
+  **not** promoted. Shadow scoring/versioning remains open.
+
+### Phase 3/4 outcome in one line
+
+The learned score improves cross-sectional IC but destroys strategy returns
+in the actual simulator, in-sample and out-of-sample — concrete evidence that
+the IC gate alone is not enough and that the strategy gate must stay.

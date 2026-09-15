@@ -29,6 +29,7 @@ const DEFAULT_FORM: BacktestForm = {
   stopLoss: null,
   trailingStop: null,
   takeProfit: null,
+  scoreModel: 'rule',
   optimize: false,
 };
 
@@ -48,6 +49,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       stopLoss: null,
       trailingStop: 75,
       takeProfit: 100,
+      scoreModel: 'rule',
     },
   },
   {
@@ -65,6 +67,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       stopLoss: null,
       trailingStop: null,
       takeProfit: null,
+      scoreModel: 'rule',
     },
   },
   {
@@ -82,6 +85,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       stopLoss: null,
       trailingStop: null,
       takeProfit: null,
+      scoreModel: 'rule',
     },
   },
 ];
@@ -119,6 +123,7 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   if (form.stopLoss !== null) query.set('stop_loss_pct', String(form.stopLoss));
   if (form.trailingStop !== null) query.set('trailing_stop_pct', String(form.trailingStop));
   if (form.takeProfit !== null) query.set('take_profit_pct', String(form.takeProfit));
+  query.set('score_model', form.scoreModel);
   if (form.end) query.set('end', form.end);
   if (form.optimize) query.set('optimize', 'true');
 
@@ -296,6 +301,12 @@ export default function BacktestPage() {
             {loading ? 'Running…' : 'Run backtest'}
           </Button>
 
+          {form.scoreModel !== 'rule' && (
+            <span className="text-[11px] text-[#facc15]" title="Research artifact; rule-based score remains the default">
+              Experimental score · trained through 2024-12-31 · did not pass the strategy gate
+            </span>
+          )}
+
           {result && !loading && (
             <span className="text-[11px] text-content-muted">
               {result.metrics.periods} rebalances · {result.start.slice(0, 10)} → {result.end.slice(0, 10)} ·{' '}
@@ -303,6 +314,7 @@ export default function BacktestPage() {
               {result.rotation === 'hold'
                 ? ` · hold until score < ${result.sell_score ?? result.min_score}`
                 : ' · reset to top N'}
+              {result.score_model !== 'rule' ? ` · ${result.score_model} score` : ' · rule-based score'}
             </span>
           )}
         </div>
@@ -400,6 +412,17 @@ export default function BacktestPage() {
               <option value="equal">Equal weight</option>
               <option value="score">Score weighted</option>
               <option value="market_cap">Market cap weighted</option>
+            </select>
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Score model
+            <select
+              value={form.scoreModel}
+              onChange={(event) => update('scoreModel', event.target.value as BacktestForm['scoreModel'])}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="rule">Rule-based (default)</option>
+              <option value="learned_v1">Learned v1 (experimental)</option>
             </select>
           </label>
           <label className="text-[11px] text-content-muted">
