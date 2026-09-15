@@ -20,12 +20,13 @@ reproducible and leakage-free; Optuna is optional (seeded random fallback).
 
 import json
 import logging
+import math
 import random
 from datetime import datetime
 from statistics import mean
 from typing import Optional
 
-from backtest import BacktestError, simulate
+from backtest import FREQUENCY_DAYS, BacktestError, simulate
 from research.cv import assert_no_overlap
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,15 @@ MAX_TRIALS = 1000
 DEFAULT_CV_CANDIDATES = 16
 DEFAULT_GAP_FRACTION = 0.5  # the holdout must retain half of the CV edge
 LABEL_HORIZON = 1  # anchors; the simulator's period return spans one anchor
+
+# How harsh the holdout gate is. The search always optimises the walk-forward
+# CV score, so these only decide how much of that edge the untouched holdout
+# must retain before a configuration may be shown.
+STRICTNESS = {
+    "strict": {"require_min_positive": True, "gap_fraction": 0.5},
+    "balanced": {"require_min_positive": False, "gap_fraction": 0.25},
+    "loose": {"require_min_positive": False, "gap_fraction": 0.0},
+}
 
 CATEGORICAL_SPACE = {
     "sell_score": [None, 20, 25, 30, 40, 50, 60],
@@ -161,12 +171,26 @@ def _evaluate(snapshot, params: dict, start: datetime, end: datetime) -> Optiona
         return None
 
 
-def _score(metrics: dict, objective: str, max_drawdown_limit: Optional[float]) -> float:
-    if metrics is None:
-        return float("-inf")
-    if max_drawdown_limit is not None and metrics["max_drawdown"] < -abs(max_drawdown_limit) / 100.0:
-        return float("-inf")
-    return _objective_value(metrics, objective)
+def passes_gate(cv, holdout_metrics, objective: str, strictness: str = "strict"):
+    """Decide whether a candidate may be shown to the user.
+
+    The search optimises the walk-forward CV score, so the holdout is only a
+    final sanity check; ``strictness`` controls how much of the CV edge it
+    must retain (and whether every fold has to be positive).
+    """
+    spec = STRICTNESS[strictness]
+    if cv is None or holdout_metrics is None:
+        return False, "missing validation data"
+    if cv["mean"] <= 0:
+        return False, "CV mean not positive"
+    if spec["require_min_positive"] and cv["min"] <= 0:
+        return False, "a walk-forward fold lost"
+    holdout_score = _objective_value(holdout_metrics, objective)
+    if holdout_score <= 0:
+        return False, "holdout not positive"
+    if holdout_score < spec["gap_fraction"] * cv["mean"]:
+        return False, "holdout keeps less than the required share of the CV edge"
+    return True, None
 
 
 def _split_window(dates: list, validation_fraction: float):
@@ -212,27 +236,136 @@ def _cv_folds(train_dates: list, folds_count: int = 3) -> list:
     return folds
 
 
-def _cv_metrics(snapshot, params: dict, train_dates: list, folds: list, objective: str) -> Optional[dict]:
-    """Mean/worst fold score for a candidate; folds never overlap the holdout."""
+def _parse_curve(curve: list) -> list:
+    return [
+        {
+            "date": datetime.fromisoformat(point["date"]) if isinstance(point["date"], str) else point["date"],
+            "equity": point["equity"],
+            "period_return": point["period_return"],
+        }
+        for point in curve
+    ]
+
+
+def _slice_metrics(curve: list, slice_start: datetime, slice_end: datetime, frequency: str) -> Optional[dict]:
+    """Metrics for a slice of a continuous equity curve.
+
+    Positions are carried across the slice boundary (no cold start), which is
+    how the strategy is actually traded — path-dependent policies cannot be
+    judged by restarting the book at every validation window.
+    """
+    parsed = _parse_curve(curve)
+    prefix = [point for point in parsed if point["date"] <= slice_start]
+    points = [point for point in parsed if slice_start < point["date"] <= slice_end]
+    if not points:
+        return None
+
+    equity_start = prefix[-1]["equity"] if prefix else 1.0
+    returns = [point["period_return"] for point in points]
+    equity = points[-1]["equity"]
+    total_return = equity / equity_start - 1.0 if equity_start else 0.0
+
+    periods = len(returns)
+    mean_return = sum(returns) / periods
+    if periods > 1:
+        variance = sum((value - mean_return) ** 2 for value in returns) / (periods - 1)
+        std_return = math.sqrt(variance)
+    else:
+        std_return = 0.0
+    periods_per_year = 365.0 / FREQUENCY_DAYS[frequency]
+    sharpe = (mean_return / std_return) * math.sqrt(periods_per_year) if std_return else 0.0
+    volatility = std_return * math.sqrt(periods_per_year)
+
+    peak = equity_start
+    max_drawdown = 0.0
+    for point in points:
+        peak = max(peak, point["equity"])
+        max_drawdown = min(max_drawdown, point["equity"] / peak - 1.0)
+
+    years = max((points[-1]["date"] - (prefix[-1]["date"] if prefix else points[0]["date"])).days / 365.0, 1 / 365.0)
+    cagr = equity ** (1.0 / years) - 1.0 if equity > 0 and equity_start > 0 else -1.0
+
+    return {
+        "total_return": round(total_return, 4),
+        "total_return_usd": None,
+        "benchmark_btc_usd_return": None,
+        "cagr": round(cagr, 4),
+        "volatility": round(volatility, 4),
+        "sharpe": round(sharpe, 3),
+        "max_drawdown": round(max_drawdown, 4),
+        "calmar": round(cagr / abs(max_drawdown), 3) if max_drawdown < 0 else None,
+        "win_rate": round(sum(1 for value in returns if value > 0) / periods, 4),
+        "avg_holdings": 0.0,
+        "avg_turnover": 0.0,
+        "periods": periods,
+    }
+
+
+def _cv_from_run(snapshot, params, dates, train_dates, folds, objective, max_drawdown_limit):
+    """Walk-forward CV of a continuously traded book.
+
+    One simulation runs from the window start to the last fold's test end and
+    each fold's P&L is sliced out of that curve, so positions entered before a
+    fold are carried into it (no cold start).
+    """
+    if not folds:
+        return None
+    run_end = train_dates[folds[-1]["test"][1] - 1]
+    curve = simulate(snapshot, start=dates[0], end=run_end, **params)["curve"]
+
     scores = []
     per_fold = []
     for fold in folds:
-        test_start = train_dates[fold["test"][0]]
-        test_end = train_dates[fold["test"][1] - 1]
-        metrics = _evaluate(snapshot, params, test_start, test_end)
+        slice_start = train_dates[fold["test"][0]]
+        slice_end = train_dates[fold["test"][1] - 1]
+        metrics = _slice_metrics(curve, slice_start, slice_end, snapshot["frequency"])
         if metrics is None:
             continue
+        if max_drawdown_limit is not None and metrics["max_drawdown"] < -abs(max_drawdown_limit) / 100.0:
+            return None
         scores.append(_objective_value(metrics, objective))
         per_fold.append(
             {
-                "test_start": test_start.isoformat(),
-                "test_end": test_end.isoformat(),
+                "test_start": slice_start.isoformat(),
+                "test_end": slice_end.isoformat(),
                 "metrics": metrics,
             }
         )
     if not scores:
         return None
     return {"mean": round(mean(scores), 4), "min": round(min(scores), 4), "per_fold": per_fold}
+
+
+def _finalist_metrics(snapshot, params, dates, train_dates, holdout_dates, folds, objective):
+    """Train / CV / holdout slices from one continuous run of the strategy."""
+    curve = simulate(snapshot, start=dates[0], end=dates[-1], **params)["curve"]
+    frequency = snapshot["frequency"]
+
+    train_metrics = _slice_metrics(curve, dates[0], train_dates[-1], frequency)
+    holdout_metrics = _slice_metrics(curve, holdout_dates[0], holdout_dates[-1], frequency)
+
+    cv_scores = []
+    cv_folds = []
+    for fold in folds:
+        slice_start = train_dates[fold["test"][0]]
+        slice_end = train_dates[fold["test"][1] - 1]
+        metrics = _slice_metrics(curve, slice_start, slice_end, frequency)
+        if metrics is None:
+            continue
+        cv_scores.append(_objective_value(metrics, objective))
+        cv_folds.append(
+            {
+                "test_start": slice_start.isoformat(),
+                "test_end": slice_end.isoformat(),
+                "metrics": metrics,
+            }
+        )
+    cv = (
+        {"mean": round(mean(cv_scores), 4), "min": round(min(cv_scores), 4), "per_fold": cv_folds}
+        if cv_scores
+        else None
+    )
+    return train_metrics, cv, holdout_metrics
 
 
 def optimize_strategy(
@@ -253,14 +386,16 @@ def optimize_strategy(
     cv_candidates: int = DEFAULT_CV_CANDIDATES,
     optimize_params=None,
     fixed_params=None,
-    gap_fraction: float = DEFAULT_GAP_FRACTION,
+    strictness: str = "strict",
     cv_folds: int = 3,
 ) -> dict:
     if objective not in OBJECTIVES:
         raise BacktestError(f"objective must be one of {', '.join(OBJECTIVES)}")
     trials = max(1, min(MAX_TRIALS, int(trials)))
     validation_fraction = min(0.5, max(0.1, validation_fraction))
-    gap_fraction = min(0.9, max(0.1, gap_fraction))
+    if strictness not in STRICTNESS:
+        raise BacktestError(f"strictness must be one of {', '.join(STRICTNESS)}")
+    gap_fraction = STRICTNESS[strictness]["gap_fraction"]
     optimize, pinned = validate_scope(
         optimize_params if optimize_params is not None else DEFAULT_SEARCH_PARAMS,
         fixed_params if fixed_params is not None else DEFAULT_FIXED_PARAMS,
@@ -286,13 +421,13 @@ def optimize_strategy(
     candidates = []
     seen = {}
 
-    def consider(params: dict, metrics: dict, score: float):
+    def consider(params: dict, cv: dict):
         full = {**pinned, **params}
         key = _params_key(full)
         if key in seen:
             return
         seen[key] = True
-        candidates.append({"params": full, "train": metrics, "score": score})
+        candidates.append({"params": full, "cv": cv})
 
     try:
         import optuna
@@ -306,58 +441,36 @@ def optimize_strategy(
 
         def objective_fn(trial):
             params = {name: _suggest_param(trial, name) for name in optimize}
-            metrics = _evaluate(snapshot, {**fixed, **params}, train_dates[0], train_dates[-1])
-            score = _score(metrics, objective, max_drawdown_limit)
-            if score == float("-inf"):
+            cv = _cv_from_run(
+                snapshot, {**fixed, **params}, dates, train_dates, folds, objective, max_drawdown_limit
+            )
+            if cv is None:
                 raise optuna.TrialPruned()
-            consider(params, metrics, score)
-            return score
+            consider(params, cv)
+            return cv["mean"]
 
         study.optimize(objective_fn, n_trials=trials, show_progress_bar=False, n_jobs=1)
     else:
         rng = random.Random(seed)
         for _ in range(trials):
             params = _sample(rng, optimize)
-            metrics = _evaluate(snapshot, {**fixed, **params}, train_dates[0], train_dates[-1])
-            score = _score(metrics, objective, max_drawdown_limit)
-            if score == float("-inf"):
+            cv = _cv_from_run(
+                snapshot, {**fixed, **params}, dates, train_dates, folds, objective, max_drawdown_limit
+            )
+            if cv is None:
                 continue
-            consider(params, metrics, score)
+            consider(params, cv)
 
-    candidates.sort(key=lambda item: item["score"], reverse=True)
-
-    shortlist = candidates[: max(top_k, min(cv_candidates, len(candidates)))]
-    with_cv = []
-    for candidate in shortlist:
-        cv = _cv_metrics(snapshot, {**fixed, **candidate["params"]}, train_dates, folds, objective)
-        with_cv.append({**candidate, "cv": cv})
-
+    # Rank by the walk-forward CV score itself — the search objective is
+    # generalisation, not the in-sample training metric.
     ranked = sorted(
-        with_cv,
-        key=lambda item: (
-            item["cv"]["mean"] if item["cv"] else float("-inf"),
-            item["cv"]["min"] if item["cv"] else float("-inf"),
-            item["score"],
-        ),
+        candidates,
+        key=lambda item: (item["cv"]["mean"], item["cv"]["min"]),
         reverse=True,
     )
 
-    # Validation gate: a configuration is only shown when the walk-forward CV
-    # AND the untouched holdout agree — otherwise the search found noise.
-    def _gate(cv, holdout_metrics):
-        if cv is None or holdout_metrics is None:
-            return False, "missing validation data"
-        holdout_score = _objective_value(holdout_metrics, objective)
-        if cv["mean"] <= 0:
-            return False, "CV mean not positive"
-        if cv["min"] <= 0:
-            return False, "a walk-forward fold lost"
-        if holdout_score <= 0:
-            return False, "holdout not positive"
-        if holdout_score < gap_fraction * cv["mean"]:
-            return False, "holdout keeps less than half of the CV edge"
-        return True, None
-
+    # Validation gate: the search already maximised the walk-forward CV score;
+    # the untouched holdout must now confirm it under the chosen strictness.
     best = []
     signatures = set()
     rejected = {"count": 0, "reasons": {}}
@@ -367,10 +480,19 @@ def optimize_strategy(
         if len(best) >= top_k or evaluated_for_validation >= max_holdout_checks:
             break
         evaluated_for_validation += 1
-        holdout_metrics = _evaluate(
-            snapshot, {**fixed, **candidate["params"]}, holdout_dates[0], holdout_dates[-1]
-        )
-        passed, reason = _gate(candidate["cv"], holdout_metrics)
+        try:
+            train_metrics, cv_metrics, holdout_metrics = _finalist_metrics(
+                snapshot,
+                {**fixed, **candidate["params"]},
+                dates,
+                train_dates,
+                holdout_dates,
+                folds,
+                objective,
+            )
+        except BacktestError:
+            continue
+        passed, reason = passes_gate(cv_metrics, holdout_metrics, objective, strictness)
         if not passed:
             rejected["count"] += 1
             rejected["reasons"][reason] = rejected["reasons"].get(reason, 0) + 1
@@ -379,20 +501,21 @@ def optimize_strategy(
         # Behavioural dedupe: different parameter combinations that produce
         # identical metrics are the same strategy to the user.
         signature = (
-            round(candidate["train"]["total_return"], 3),
-            round(candidate["train"]["sharpe"], 3),
-            round(candidate["cv"]["mean"], 3),
-            round(holdout_metrics["total_return"], 3),
+            cv_metrics["mean"] if cv_metrics else None,
+            cv_metrics["min"] if cv_metrics else None,
+            round(holdout_metrics["total_return"], 3) if holdout_metrics else None,
         )
         if signature in signatures:
             continue
         signatures.add(signature)
 
+        if train_metrics is None or holdout_metrics is None:
+            continue
         best.append(
             {
                 "params": candidate["params"],
-                "train_metrics": candidate["train"],
-                "cv_metrics": candidate["cv"],
+                "train_metrics": train_metrics,
+                "cv_metrics": cv_metrics,
                 "holdout_metrics": holdout_metrics,
             }
         )
@@ -418,11 +541,12 @@ def optimize_strategy(
             "horizon_anchors": LABEL_HORIZON,
             "embargo_anchors": 1,
             "folds_requested": max(1, min(6, int(cv_folds))),
-            "candidates_scored": len([item for item in with_cv if item["cv"]]),
+            "candidates_scored": len(candidates),
         },
         "best": best,
         "validated": len(best),
         "rejected": rejected,
+        "strictness": strictness,
         "gap_fraction": gap_fraction,
         "optimize_params": optimize,
         "fixed_params": pinned,

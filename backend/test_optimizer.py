@@ -1,12 +1,15 @@
 import json
 from datetime import datetime, timedelta
 
+import pytest
+
 from optimizer import (
     DEFAULT_FIXED_PARAMS,
     DEFAULT_SEARCH_PARAMS,
     PARAM_NAMES,
     _sample,
     optimize_strategy,
+    passes_gate,
     validate_scope,
 )
 
@@ -271,3 +274,54 @@ def test_cv_fold_count_is_clamped():
         cv_folds=99,
     )
     assert result["cv"]["folds_requested"] == 6
+
+
+def _metrics(sharpe):
+    return {"total_return": sharpe, "sharpe": sharpe, "max_drawdown": -0.2, "calmar": 1.0, "avg_holdings": 1, "avg_turnover": 0.1, "win_rate": 0.5, "periods": 5, "volatility": 0.3, "cagr": 0.1}
+
+
+def test_passes_gate_strictness_levels():
+    cv_positives = {"mean": 0.6, "min": 0.2, "per_fold": []}
+    cv_mixed = {"mean": 0.6, "min": -0.3, "per_fold": []}
+
+    # Every fold positive + holdout keeps half of the CV edge.
+    assert passes_gate(cv_positives, _metrics(0.4), "sharpe", "strict")[0] is True
+    # A losing fold is only allowed below strict.
+    assert passes_gate(cv_mixed, _metrics(0.4), "sharpe", "strict")[0] is False
+    assert passes_gate(cv_mixed, _metrics(0.4), "sharpe", "balanced")[0] is True
+    # The holdout must stay positive in every mode.
+    assert passes_gate(cv_positives, _metrics(-0.1), "sharpe", "loose")[0] is False
+    # Balanced still requires a quarter of the CV edge; loose does not.
+    assert passes_gate(cv_positives, _metrics(0.1), "sharpe", "balanced")[0] is False
+    assert passes_gate(cv_positives, _metrics(0.1), "sharpe", "loose")[0] is True
+
+
+def test_strictness_is_validated_and_echoed():
+    result = optimize_strategy(
+        _snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="sharpe",
+        trials=6,
+        seed=5,
+        strictness="loose",
+        top_k=2,
+    )
+    assert result["strictness"] == "loose"
+    assert result["gap_fraction"] == 0.0
+
+    with pytest.raises(Exception):
+        optimize_strategy(
+            _snapshot(),
+            start=START,
+            end=START + timedelta(days=30 * 11),
+            min_market_cap=0,
+            min_volume=0,
+            fee_pct=0.1,
+            fill_with_btc=True,
+            strictness="moon",
+        )
