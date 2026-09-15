@@ -195,6 +195,7 @@ async function requestOptimizer(
     maxDrawdownLimit: number | null;
     validationFraction: number;
     cvFolds: number;
+    strictness: string;
     optimizeParams: string[];
     fixedParams: Record<string, string | number | boolean | null>;
   },
@@ -216,6 +217,7 @@ async function requestOptimizer(
       max_drawdown_limit: options.maxDrawdownLimit,
       validation_fraction: options.validationFraction / 100,
       cv_folds: options.cvFolds,
+      strictness: options.strictness,
       optimize_params: options.optimizeParams,
       fixed_params: options.fixedParams,
     }),
@@ -304,6 +306,7 @@ export default function BacktestPage() {
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
   const [validationFraction, setValidationFraction] = useState(30);
   const [cvFolds, setCvFolds] = useState(3);
+  const [strictness, setStrictness] = useState<'strict' | 'balanced' | 'loose'>('strict');
 
   const runBacktest = useCallback(async (params: BacktestForm) => {
     setLoading(true);
@@ -330,6 +333,7 @@ export default function BacktestPage() {
         maxDrawdownLimit,
         validationFraction,
         cvFolds,
+        strictness,
         optimizeParams: searchParams,
         fixedParams: pinnedValues,
       });
@@ -339,7 +343,7 @@ export default function BacktestPage() {
     } finally {
       setOptimizing(false);
     }
-  }, [form, objective, trials, maxDrawdownLimit, validationFraction, cvFolds, searchParams, pinnedValues]);
+  }, [form, objective, trials, maxDrawdownLimit, validationFraction, cvFolds, strictness, searchParams, pinnedValues]);
 
   const applyCandidate = (candidate: OptimizerCandidate) => {
     const params = candidate.params;
@@ -822,6 +826,18 @@ export default function BacktestPage() {
                   />
                 </label>
                 <label className="text-[11px] text-content-muted">
+                  Strictness
+                  <select
+                    value={strictness}
+                    onChange={(event) => setStrictness(event.target.value as typeof strictness)}
+                    className="mt-1 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  >
+                    <option value="strict">Strict</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="loose">Loose</option>
+                  </select>
+                </label>
+                <label className="text-[11px] text-content-muted">
                   CV folds
                   <input
                     type="number"
@@ -983,6 +999,7 @@ export default function BacktestPage() {
                     {optimizeResult.train.start.slice(0, 10)} → {optimizeResult.train.end.slice(0, 10)} · holdout{' '}
                     {optimizeResult.holdout.start.slice(0, 10)} → {optimizeResult.holdout.end.slice(0, 10)}
                     {optimizeResult.max_drawdown_limit ? ` · max DD ≤ ${optimizeResult.max_drawdown_limit}%` : ''}
+                    {` · strictness ${optimizeResult.strictness}`}
                   </p>
                   <p className="mt-1 text-[11px] text-content-muted">
                     Validated {optimizeResult.validated} · rejected {optimizeResult.rejected.count}
@@ -995,6 +1012,9 @@ export default function BacktestPage() {
                   {optimizeResult.message && (
                     <p className="mt-3 rounded-xl border border-[#f87171]/40 bg-[#f87171]/10 px-3 py-2 text-xs text-[#f87171]">
                       {optimizeResult.message}
+                      {optimizeResult.strictness === 'strict'
+                        ? ' Try the Balanced or Loose strictness, a longer date range or different filters.'
+                        : ' Try a longer date range or different filters.'}
                     </p>
                   )}
                   {optimizeResult.best.length > 0 && (

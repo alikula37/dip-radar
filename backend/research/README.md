@@ -163,6 +163,29 @@ overfit numbers are never dressed up as recommendations. Measured: on the
 current data both the default and the $1B+ universes end with zero validated
 configs, which is itself the honest answer at this sample size.
 
+### Walk-forward reality check (why the gates reject almost everything)
+
+The optimiser now searches with the walk-forward CV score as its objective and
+evaluates a **continuous** run (positions carried across fold boundaries —
+path-dependent policies cannot be judged by cold-starting the book). Even so,
+nothing validates on the default 2022→2026 window, and slicing the shipped
+Balanced preset's own curve shows why:
+
+| Slice | Return | Sharpe |
+| --- | --- | --- |
+| Train 2022-01 → 2025-04 | +228.6% | 0.71 |
+| CV fold 2023-02 → 2023-10 | −25.2% | −2.22 |
+| CV fold 2023-11 → 2024-07 | −3.0% | 0.10 |
+| CV fold 2024-07 → 2025-04 | +20.4% | 0.83 |
+| Holdout 2025-04 → 2026-09 | −10.2% | −0.26 |
+
+The whole training gain comes from entries made in 2022; once the measurement
+starts in 2023 the same policy is flat-to-negative. The earlier "+19.7% OOS
+2025+" headline was itself start-date sensitive (2025-01 vs 2025-04 flips the
+sign). Conclusion: on this dataset the value-dip edge is vintage-concentrated,
+and the validation gates are telling the truth — keep the presets as
+reference, not as a promise, and test different universes/windows.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

@@ -218,6 +218,8 @@ export interface OptimizerResponse {
   min_volume: number;
   fee_pct: number;
   validation_fraction: number;
+  cv_folds: number;
+  strictness: string;
   train: { start: string; end: string };
   holdout: { start: string; end: string };
   cv: {
@@ -250,6 +252,7 @@ export interface OptimizerRequest {
   max_drawdown_limit: number | null;
   validation_fraction: number;
   cv_folds: number;
+  strictness: string;
   optimize_params: string[];
   fixed_params: Record<string, string | number | boolean | null>;
 }

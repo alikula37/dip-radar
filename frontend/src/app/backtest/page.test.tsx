@@ -220,6 +220,8 @@ describe('BacktestPage', () => {
       min_volume: 250_000,
       fee_pct: 0.1,
       validation_fraction: 0.3,
+      cv_folds: 3,
+      strictness: 'strict',
       train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
       holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
       cv: {
@@ -289,6 +291,7 @@ describe('BacktestPage', () => {
     expect(body.optimize_params).toContain('take_profit_pct');
     expect(body.fixed_params).not.toHaveProperty('take_profit_pct');
     expect(body.cv_folds).toBe(3);
+    expect(body.strictness).toBe('strict');
 
     // The auto-optimize panel renders before the results table, so its Apply is first.
     const applyButtons = screen.getAllByRole('button', { name: /apply/i });
@@ -316,6 +319,8 @@ describe('BacktestPage', () => {
       min_volume: 250_000,
       fee_pct: 0.1,
       validation_fraction: 0.3,
+      cv_folds: 3,
+      strictness: 'strict',
       train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
       holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
       cv: {
