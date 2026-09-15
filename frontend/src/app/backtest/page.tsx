@@ -7,7 +7,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import EquityChart from '@/components/EquityChart';
 import { Button, Hint, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
 import { formatBtcValue, formatPct } from '@/lib/colors';
-import type { BacktestForm, BacktestMetrics, BacktestResponse, OptimizerCandidate, OptimizerResponse } from '@/types';
+import type {
+  BacktestForm,
+  BacktestMetrics,
+  BacktestResponse,
+  OptimizerCandidate,
+  OptimizerResponse,
+  ScoreModelInfo,
+} from '@/types';
 
 type Rebalance = 'weekly' | 'monthly' | 'quarterly';
 type Weighting = 'equal' | 'score' | 'market_cap';
@@ -19,12 +26,13 @@ const DEFAULT_FORM: BacktestForm = {
   topN: 3,
   minScore: 50,
   minCap: 10_000_000,
+  maxCap: null,
   minVolume: 250_000,
   weighting: 'score',
   fillWithBtc: true,
   feePct: 0.1,
   rotation: 'hold',
-  sellScore: 25,
+  sellScore: 3,
   minTrend: -25,
   stopLoss: null,
   trailingStop: null,
@@ -59,7 +67,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       weighting: 'equal',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 40,
+      sellScore: 10,
       minTrend: 10,
       stopLoss: null,
       trailingStop: 75,
@@ -92,7 +100,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       weighting: 'score',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 25,
+      sellScore: 3,
       minTrend: -25,
       stopLoss: null,
       trailingStop: null,
@@ -125,7 +133,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       weighting: 'score',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 25,
+      sellScore: 3,
       minTrend: -25,
       stopLoss: null,
       trailingStop: null,
@@ -153,32 +161,34 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
     label: 'Optimized',
     values: {
       rebalance: 'weekly',
-      topN: 9,
-      minScore: 45,
-      weighting: 'market_cap',
+      topN: 5,
+      minScore: 20,
+      minCap: 50_000_000,
+      maxCap: 1_000_000_000,
+      weighting: 'score',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 20,
-      minTrend: -40,
-      stopLoss: 40,
-      trailingStop: 75,
-      takeProfit: 100,
+      sellScore: 3,
+      minTrend: null,
+      stopLoss: 30,
+      trailingStop: null,
+      takeProfit: null,
       scoreModel: 'rule',
       regimeFilter: 'breadth',
-      regimeExposure: 100,
-      equityTrendExposure: 35,
+      regimeExposure: 50,
+      equityTrendExposure: 0,
       profitLock: 25,
       shortN: 5,
-      shortMaxScore: 50,
+      shortMaxScore: 40,
       shortFundingApr: 10,
       shortExposure: 100,
       profitSweep: 30,
       maxHolding: 52,
       invertScore: true,
       icFilter: true,
-      icWindow: 4,
-      icThreshold: 0,
-      icExposure: 35,
+      icWindow: 2,
+      icThreshold: 0.1,
+      icExposure: 0,
     },
   },
 ];
@@ -189,7 +199,17 @@ const PARAM_SPECS: Record<
 > = {
   top_n: { label: 'Top N', kind: 'int' },
   min_score: { label: 'Min score', kind: 'int' },
-  sell_score: { label: 'Sell score', kind: 'categorical', choices: [null, 20, 25, 30, 40, 50, 60] },
+  sell_score: { label: 'Sell score', kind: 'categorical', choices: [null, 3, 5, 10, 20, 25, 40] },
+  min_market_cap: {
+    label: 'Min market cap',
+    kind: 'categorical',
+    choices: [0, 10_000_000, 50_000_000, 100_000_000, 500_000_000],
+  },
+  max_market_cap: {
+    label: 'Max market cap',
+    kind: 'categorical',
+    choices: [null, 100_000_000, 500_000_000, 1_000_000_000, 10_000_000_000],
+  },
   min_trend_30d: { label: 'Min 30d trend', kind: 'categorical', choices: [null, -60, -40, -25, 0] },
   weighting: { label: 'Weighting', kind: 'categorical', choices: ['equal', 'score', 'market_cap'] },
   rotation: { label: 'Exit rule', kind: 'categorical', choices: ['hold', 'rebalance'] },
@@ -225,6 +245,8 @@ const DEFAULT_SEARCH_PARAMS = [
 ];
 
 const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = {
+  min_market_cap: 10_000_000,
+  max_market_cap: null,
   trailing_stop_pct: null,
   take_profit_pct: null,
   stop_loss_pct: null,
@@ -307,6 +329,7 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
     query.set('regime_exposure', String(form.regimeExposure / 100));
     if (form.regimeFilter === 'breadth') query.set('regime_min_breadth', String(form.regimeMinBreadth / 100));
   }
+  if (form.maxCap !== null) query.set('max_market_cap', String(form.maxCap));
   if (form.end) query.set('end', form.end);
 
   const response = await fetch(`/api/backtest?${query.toString()}`, { cache: 'no-store' });
@@ -338,6 +361,7 @@ async function requestOptimizer(
       end: form.end || undefined,
       rebalance: form.rebalance,
       min_market_cap: form.minCap,
+      max_market_cap: form.maxCap,
       min_volume: form.minVolume,
       fee_pct: form.feePct,
       fill_with_btc: form.fillWithBtc,
@@ -428,6 +452,17 @@ export default function BacktestPage() {
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizeResult, setOptimizeResult] = useState<OptimizerResponse | null>(null);
   const [searchParams, setSearchParams] = useState<string[]>(DEFAULT_SEARCH_PARAMS);
+  const [scoreModels, setScoreModels] = useState<ScoreModelInfo[]>([]);
+  const loadScoreModels = useCallback(async () => {
+    if (scoreModels.length > 0) return;
+    try {
+      const response = await fetch('/api/score-models', { cache: 'no-store' });
+      const payload = response.ok ? await response.json() : null;
+      if (Array.isArray(payload)) setScoreModels(payload as ScoreModelInfo[]);
+    } catch {
+      // The panel is informational; ignore transport errors.
+    }
+  }, [scoreModels.length]);
   const [pinnedValues, setPinnedValues] = useState<Record<string, string | number | boolean | null>>({
     ...DEFAULT_PINNED_VALUES,
   });
@@ -490,6 +525,8 @@ export default function BacktestPage() {
       ...form,
       topN: number(params.top_n, form.topN),
       minScore: number(params.min_score, form.minScore),
+      minCap: number(params.min_market_cap, form.minCap),
+      maxCap: optional(params.max_market_cap),
       sellScore:
         params.sell_score === null || params.sell_score === undefined
           ? number(params.min_score, form.minScore)
@@ -531,6 +568,12 @@ export default function BacktestPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [autoOpen]);
+
+  useEffect(() => {
+    // Defer so the state is not set synchronously inside the effect.
+    const timer = window.setTimeout(() => void loadScoreModels(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadScoreModels]);
 
   useEffect(() => {
     // Defer so the loading state is not set synchronously inside the effect.
@@ -626,8 +669,11 @@ export default function BacktestPage() {
           </Button>
 
           {form.scoreModel !== 'rule' && (
-            <span className="text-[11px] text-[#facc15]" title="Research artifact; rule-based score remains the default">
-              Experimental score · trained through 2024-12-31 · did not pass the strategy gate
+            <span
+              className="text-[11px] text-[#facc15]"
+              title={scoreModels.find((model) => model.version === form.scoreModel) && 'Research artifact; the rule-based score stays the default until the shadow period completes.'}
+            >
+              Experimental score · trained through 2024-12-31 · IC 0.17 vs 0.06 rule · stronger in the 2025+ A/B
             </span>
           )}
 
@@ -701,7 +747,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Min Value Score
-            <Hint text="Only buy coins whose Value Score (0-100 cheapness rank) is at least this." />
+            <Hint text="Only buy coins whose Value Score is at least this. The score is a cross-sectional percentile: 50 = the median coin, 95 = the cheapest 5% right now." />
             <input
               type="number"
               min={0}
@@ -713,7 +759,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Market cap filter
-            <Hint text="Universe filter. The optimizer pins this floor; it never searches below it." />
+            <Hint text="Universe floor. The auto-optimizer can search this floor and the ceiling above as part of the strategy." />
             <select
               value={form.minCap}
               onChange={(event) => update('minCap', Number(event.target.value))}
@@ -724,6 +770,21 @@ export default function BacktestPage() {
                   {option.label}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Max market cap
+            <Hint text="Optional upper bound on today's market cap — pair it with the floor to trade a cap band (the auto-optimizer can search both)." />
+            <select
+              value={form.maxCap ?? ''}
+              onChange={(event) => update('maxCap', event.target.value === '' ? null : Number(event.target.value))}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="">No upper bound</option>
+              <option value={100_000_000}>≤ $100M market cap</option>
+              <option value={500_000_000}>≤ $500M market cap</option>
+              <option value={1_000_000_000}>≤ $1B market cap</option>
+              <option value={10_000_000_000}>≤ $10B market cap</option>
             </select>
           </label>
           <label className="text-[11px] text-content-muted">
@@ -756,17 +817,53 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Score model
-            <Hint text="Which score ranks the coins: the rule-based composite or an experimental learned artifact." />
+            <Hint text="Which score ranks the coins: the rule-based composite or a learned artifact. Open Feature importance to see what each model actually looks at." />
             <select
               value={form.scoreModel}
               onChange={(event) => update('scoreModel', event.target.value as BacktestForm['scoreModel'])}
               className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
             >
               <option value="rule">Rule-based (default)</option>
-              <option value="learned_v1">Learned v1 (experimental)</option>
-              <option value="learned_v2">Learned v2 (survivorship-fixed)</option>
-              <option value="learned_v3_regime">Learned v3 (regime-trained)</option>
+              {scoreModels
+                .filter((model) => model.version !== 'rule')
+                .map((model) => (
+                  <option key={model.version} value={model.version}>
+                    {model.version} (experimental)
+                  </option>
+                ))}
             </select>
+            <details className="mt-1.5">
+              <summary className="cursor-pointer text-[11px] text-content-muted transition-colors hover:text-content">
+                Feature importance
+              </summary>
+              {(() => {
+                const model = scoreModels.find((entry) => entry.version === form.scoreModel);
+                if (!model) {
+                  return <p className="mt-1 text-[11px] text-content-muted">Loading…</p>;
+                }
+                const peak = Math.max(...model.features.map((feature) => Math.abs(feature.weight)), 1e-9);
+                return (
+                  <div className="mt-2 space-y-1.5 rounded-lg border border-outline bg-surface-2 p-2.5">
+                    <p className="text-[11px] text-content-muted">{model.label}{model.trained_until ? ` · trained through ${model.trained_until}` : ''}</p>
+                    {model.features.map((feature) => (
+                      <div key={feature.name} className="text-[11px]">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-content">{feature.label}</span>
+                          <span className="text-content-muted">{feature.weight.toFixed(3)}</span>
+                        </div>
+                        <div className="mt-0.5 h-1.5 overflow-hidden rounded bg-surface-3">
+                          <div
+                            className={feature.direction > 0 ? 'h-full bg-emerald-400/70' : 'h-full bg-primary/70'}
+                            style={{ width: `${Math.max(2, (Math.abs(feature.weight) / peak) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-content-muted">{feature.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </details>
           </label>
           <label className="text-[11px] text-content-muted">
             Regime filter
@@ -1011,7 +1108,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Sell when score &lt;
-            <Hint text="Exit threshold for the hold rule; defaults to the buy threshold." />
+            <Hint text="Exit threshold for the hold rule (percentile score: 3 keeps positions until they are among the most expensive 3% — let winners run; 25 would sell as soon as the coin leaves the cheapest quarter)." />
             <input
               type="number"
               min={0}

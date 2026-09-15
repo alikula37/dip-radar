@@ -1,0 +1,345 @@
+{
+  "created_at": "2026-09-15T20:25:31.390125+00:00",
+  "feature_directions": {
+    "above_p75_3y": -1,
+    "abs_median_dist_3y": -1,
+    "band_iqr_width_3y": -1,
+    "band_p05_dist_3y": -1,
+    "band_p25_dist_3y": -1,
+    "band_p75_dist_3y": -1,
+    "band_p95_dist_3y": -1,
+    "band_span_width_3y": -1,
+    "basing_pct_90d": 1,
+    "below_p25_3y": 1,
+    "days_since_ath": 1,
+    "distance": -1,
+    "dollar_volume_30d": 1,
+    "drawdown_from_ath": -1,
+    "range_position": -1,
+    "top_band_share_90d": -1,
+    "trend_180d": 1,
+    "trend_365d": 1,
+    "trend_7d": 1,
+    "trend_90d": 1,
+    "valuation_pct_1y": -1,
+    "valuation_pct_3y": -1,
+    "valuation_pct_all": -1,
+    "volatility_90d": -1
+  },
+  "feature_scaling": {
+    "above_p75_3y": {
+      "mean": 0.6559297502868384,
+      "scale": 0.07185654518599283
+    },
+    "abs_median_dist_3y": {
+      "mean": 0.1778841746464224,
+      "scale": 0.1384030354665177
+    },
+    "band_iqr_width_3y": {
+      "mean": 0.45608976228773024,
+      "scale": 0.12985736201595005
+    },
+    "band_p05_dist_3y": {
+      "mean": 0.4070763640606627,
+      "scale": 0.2913646113004392
+    },
+    "band_p25_dist_3y": {
+      "mean": 0.659177216069016,
+      "scale": 0.2767885472688988
+    },
+    "band_p75_dist_3y": {
+      "mean": 0.9033219158101357,
+      "scale": 0.14216515816889216
+    },
+    "band_p95_dist_3y": {
+      "mean": 0.9874657265961498,
+      "scale": 0.06507531242578439
+    },
+    "band_span_width_3y": {
+      "mean": 0.36746367088643644,
+      "scale": 0.14271780023298167
+    },
+    "basing_pct_90d": {
+      "mean": 0.7611376408785085,
+      "scale": 0.261302981854954
+    },
+    "below_p25_3y": {
+      "mean": 0.48890055643060965,
+      "scale": 0.19960999738915564
+    },
+    "days_since_ath": {
+      "mean": 0.9750842424292773,
+      "scale": 0.09726953666957591
+    },
+    "distance": {
+      "mean": 0.0960613712695263,
+      "scale": 0.08215078685427557
+    },
+    "dollar_volume_30d": {
+      "mean": 0.6437927288991198,
+      "scale": 0.21094925660477884
+    },
+    "drawdown_from_ath": {
+      "mean": 0.7471282568415502,
+      "scale": 0.09246212166561005
+    },
+    "range_position": {
+      "mean": 0.5800629491656074,
+      "scale": 0.07831356191913849
+    },
+    "top_band_share_90d": {
+      "mean": 0.588789992582782,
+      "scale": 0.13766183331427684
+    },
+    "trend_180d": {
+      "mean": 0.2895425490245091,
+      "scale": 0.26755496632765463
+    },
+    "trend_365d": {
+      "mean": 0.231345128662401,
+      "scale": 0.2696331906267568
+    },
+    "trend_7d": {
+      "mean": 0.3630758417992581,
+      "scale": 0.19985072031102394
+    },
+    "trend_90d": {
+      "mean": 0.3087245432296594,
+      "scale": 0.24431131499904335
+    },
+    "valuation_pct_1y": {
+      "mean": 0.2520314023552135,
+      "scale": 0.09675551122435756
+    },
+    "valuation_pct_3y": {
+      "mean": 0.30378389490322827,
+      "scale": 0.07674628859855462
+    },
+    "valuation_pct_all": {
+      "mean": 0.3172418486942043,
+      "scale": 0.08275898558182002
+    },
+    "volatility_90d": {
+      "mean": 0.5620949348978899,
+      "scale": 0.10396819297724604
+    }
+  },
+  "features": [
+    {
+      "description": "Where today's close sits in the last 365 daily closes (0 = cheapest).",
+      "direction": -1,
+      "label": "1y price percentile",
+      "name": "valuation_pct_1y",
+      "weight": 0.018515667784133744
+    },
+    {
+      "description": "Where today's close sits in the last 3 years of daily closes.",
+      "direction": -1,
+      "label": "3y price percentile",
+      "name": "valuation_pct_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "Where today's close sits in every daily close on record.",
+      "direction": -1,
+      "label": "All-history percentile",
+      "name": "valuation_pct_all",
+      "weight": 0.0
+    },
+    {
+      "description": "How far the price is above the reference low of the dip window.",
+      "direction": -1,
+      "label": "Distance to event low",
+      "name": "distance",
+      "weight": 0.005627775926557741
+    },
+    {
+      "description": "Absolute distance from the 3-year median close; near-median is neutral.",
+      "direction": -1,
+      "label": "Gap to 3y median",
+      "name": "abs_median_dist_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "Share of the last 90 days spent in the cheapest quartile of the past year.",
+      "direction": 1,
+      "label": "Basing share (90d)",
+      "name": "basing_pct_90d",
+      "weight": 0.0
+    },
+    {
+      "description": "Position between the all-time low and high (0 = at the low).",
+      "direction": -1,
+      "label": "Range position",
+      "name": "range_position",
+      "weight": 0.0
+    },
+    {
+      "description": "One-week price change.",
+      "direction": 1,
+      "label": "7d trend",
+      "name": "trend_7d",
+      "weight": 0.0
+    },
+    {
+      "description": "Three-month price change.",
+      "direction": 1,
+      "label": "90d trend",
+      "name": "trend_90d",
+      "weight": 0.0
+    },
+    {
+      "description": "Six-month price change.",
+      "direction": 1,
+      "label": "180d trend",
+      "name": "trend_180d",
+      "weight": 0.00034438974025412814
+    },
+    {
+      "description": "One-year price change.",
+      "direction": 1,
+      "label": "1y trend",
+      "name": "trend_365d",
+      "weight": 0.0019065551321800634
+    },
+    {
+      "description": "Realized volatility over three months.",
+      "direction": -1,
+      "label": "90d volatility",
+      "name": "volatility_90d",
+      "weight": 0.0
+    },
+    {
+      "description": "Distance below the all-time high (BTC terms).",
+      "direction": -1,
+      "label": "Drawdown from ATH",
+      "name": "drawdown_from_ath",
+      "weight": 0.0
+    },
+    {
+      "description": "How long ago the all-time high was set.",
+      "direction": 1,
+      "label": "Days since ATH",
+      "name": "days_since_ath",
+      "weight": 0.0
+    },
+    {
+      "description": "Average daily traded value over the last 30 days.",
+      "direction": 1,
+      "label": "30d dollar volume",
+      "name": "dollar_volume_30d",
+      "weight": 0.023031477732509558
+    },
+    {
+      "description": "How far the price is above (or below) the bottom band edge of the 3-year distribution.",
+      "direction": -1,
+      "label": "Distance to 3y P05",
+      "name": "band_p05_dist_3y",
+      "weight": 0.010701527373219513
+    },
+    {
+      "description": "Distance to the lower quartile of the 3-year closes.",
+      "direction": -1,
+      "label": "Distance to 3y P25",
+      "name": "band_p25_dist_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "Distance to the upper quartile of the 3-year closes.",
+      "direction": -1,
+      "label": "Distance to 3y P75",
+      "name": "band_p75_dist_3y",
+      "weight": 0.0027483853868269215
+    },
+    {
+      "description": "Distance to the top band edge; negative means inside the thin band.",
+      "direction": -1,
+      "label": "Distance to 3y P95",
+      "name": "band_p95_dist_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "Width of the middle 50% band relative to the median (dispersion).",
+      "direction": -1,
+      "label": "3y IQR width",
+      "name": "band_iqr_width_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "Full thin-band width relative to the median (tail dispersion).",
+      "direction": -1,
+      "label": "3y P05-P95 width",
+      "name": "band_span_width_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "1 when the price sits above the upper quartile of the last 3 years.",
+      "direction": -1,
+      "label": "Above 3y P75",
+      "name": "above_p75_3y",
+      "weight": 0.0
+    },
+    {
+      "description": "1 when the price sits in the cheapest quartile of the last 3 years.",
+      "direction": 1,
+      "label": "Below 3y P25",
+      "name": "below_p25_3y",
+      "weight": 0.007945448575706709
+    },
+    {
+      "description": "Share of the last 90 days spent in the top quartile of the last 3 years.",
+      "direction": -1,
+      "label": "Top band share (90d)",
+      "name": "top_band_share_90d",
+      "weight": 0.0
+    }
+  ],
+  "git_commit": "6910aaa",
+  "trained_until": "2024-12-31",
+  "training": {
+    "anchors": 59,
+    "frequency": "monthly",
+    "horizon": 1,
+    "regime_only": false,
+    "samples": 15651
+  },
+  "validation": {
+    "baseline_ic": 0.06180838005494644,
+    "baseline_top3": -0.6483290643974083,
+    "ic_delta_ci95": [
+      0.06996097312216856,
+      0.1460637196030796
+    ],
+    "proxy_top3": 0.1790921457629726,
+    "report": "research/baselines/model_report.json",
+    "strategy_gate": "passed the IC gate and the proxy portfolio gate; the real simulator A/B is recorded in research/README.md",
+    "walk_forward_ic": 0.16971578571737447
+  },
+  "version": "learned_v4",
+  "weights": {
+    "above_p75_3y": 0.0,
+    "abs_median_dist_3y": 0.0,
+    "band_iqr_width_3y": 0.0,
+    "band_p05_dist_3y": 0.010701527373219513,
+    "band_p25_dist_3y": 0.0,
+    "band_p75_dist_3y": 0.0027483853868269215,
+    "band_p95_dist_3y": 0.0,
+    "band_span_width_3y": 0.0,
+    "basing_pct_90d": 0.0,
+    "below_p25_3y": 0.007945448575706709,
+    "days_since_ath": 0.0,
+    "distance": 0.005627775926557741,
+    "dollar_volume_30d": 0.023031477732509558,
+    "drawdown_from_ath": 0.0,
+    "range_position": 0.0,
+    "top_band_share_90d": 0.0,
+    "trend_180d": 0.00034438974025412814,
+    "trend_365d": 0.0019065551321800634,
+    "trend_7d": 0.0,
+    "trend_90d": 0.0,
+    "valuation_pct_1y": 0.018515667784133744,
+    "valuation_pct_3y": 0.0,
+    "valuation_pct_all": 0.0,
+    "volatility_90d": 0.0
+  }
+}

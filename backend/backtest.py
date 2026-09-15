@@ -39,10 +39,22 @@ STATS_FIELDS = (
     "range_position",
     "days_since_atl",
     "basing_pct_90d",
+    "trend_7d_pct",
     "trend_30d_pct",
     "trend_90d_pct",
+    "trend_180d_pct",
+    "trend_365d_pct",
     "above_sma200",
     "history_days",
+    "band_p05_dist_3y",
+    "band_p25_dist_3y",
+    "band_p75_dist_3y",
+    "band_p95_dist_3y",
+    "band_iqr_width_3y",
+    "band_span_width_3y",
+    "above_p75_3y",
+    "below_p25_3y",
+    "top_band_share_90d",
 )
 
 # Point-in-time extras computed from the trailing candles themselves
@@ -341,8 +353,20 @@ def build_snapshot(
                 "range_position": snapshot_coin.range_position,
                 "days_since_atl": snapshot_coin.days_since_atl,
                 "basing_pct_90d": snapshot_coin.basing_pct_90d,
+                "trend_7d": snapshot_coin.trend_7d_pct,
                 "trend_90d": snapshot_coin.trend_90d_pct,
+                "trend_180d": snapshot_coin.trend_180d_pct,
+                "trend_365d": snapshot_coin.trend_365d_pct,
                 "history_days": snapshot_coin.history_days,
+                "band_p05_dist_3y": snapshot_coin.band_p05_dist_3y,
+                "band_p25_dist_3y": snapshot_coin.band_p25_dist_3y,
+                "band_p75_dist_3y": snapshot_coin.band_p75_dist_3y,
+                "band_p95_dist_3y": snapshot_coin.band_p95_dist_3y,
+                "band_iqr_width_3y": snapshot_coin.band_iqr_width_3y,
+                "band_span_width_3y": snapshot_coin.band_span_width_3y,
+                "above_p75_3y": snapshot_coin.above_p75_3y,
+                "below_p25_3y": snapshot_coin.below_p25_3y,
+                "top_band_share_90d": snapshot_coin.top_band_share_90d,
                 "volatility_30d": snapshot_coin.volatility_30d,
                 "volatility_90d": snapshot_coin.volatility_90d,
                 "drawdown_from_ath": snapshot_coin.drawdown_from_ath,
@@ -496,6 +520,7 @@ def simulate(
     top_n: int = 5,
     min_score: float = 50.0,
     min_market_cap: float = 10_000_000.0,
+    max_market_cap: Optional[float] = None,
     min_volume: float = 250_000.0,
     weighting: str = "equal",
     fill_with_btc: bool = True,
@@ -608,6 +633,7 @@ def simulate(
             for symbol, entry in pool.items()
             if (entry["score"] <= score_floor if invert_score else entry["score"] >= score_floor)
             and (entry["cap"] or 0.0) >= min_market_cap
+            and (max_market_cap is None or (entry["cap"] or 0.0) <= max_market_cap)
             and (entry["volume"] or 0.0) >= min_volume
             and (
                 min_trend_30d is None
@@ -719,6 +745,7 @@ def simulate(
                 for symbol, entry in pool.items()
                 if symbol not in weights
                 and (entry["cap"] or 0.0) >= min_market_cap
+                and (max_market_cap is None or (entry["cap"] or 0.0) <= max_market_cap)
                 and (entry["volume"] or 0.0) >= min_volume
                 and (short_max_score is None or entry["score"] <= short_max_score)
             ]

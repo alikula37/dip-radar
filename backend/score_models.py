@@ -24,13 +24,68 @@ FEATURE_DIRECTIONS = {
     "abs_median_dist_3y": -1,
     "basing_pct_90d": +1,
     "range_position": -1,
+    "trend_7d": +1,
     "trend_90d": +1,
+    "trend_180d": +1,
+    "trend_365d": +1,
     "volatility_90d": -1,
     "drawdown_from_ath": -1,
     "days_since_ath": +1,
     "dollar_volume_30d": +1,
+    "band_p05_dist_3y": -1,
+    "band_p25_dist_3y": -1,
+    "band_p75_dist_3y": -1,
+    "band_p95_dist_3y": -1,
+    "band_iqr_width_3y": -1,
+    "band_span_width_3y": -1,
+    "above_p75_3y": -1,
+    "below_p25_3y": +1,
+    "top_band_share_90d": -1,
 }
 
+
+RULE_FEATURES = [
+    {"name": "valuation", "label": "Valuation blend", "weight": 0.30, "direction": -1,
+     "description": "Blend of the 1y / 3y / all-history price percentiles (cheaper = higher)."},
+    {"name": "distance", "label": "Distance to event low", "weight": 0.25, "direction": -1,
+     "description": "How far the price sits above the dip window's low in BTC terms."},
+    {"name": "median_gap", "label": "Gap to 3y median", "weight": 0.15, "direction": -1,
+     "description": "Closeness to the 3-year median close (near median = neutral)."},
+    {"name": "basing", "label": "Basing share (90d)", "weight": 0.15, "direction": 1,
+     "description": "Time spent in the cheapest quartile of the past year."},
+    {"name": "range", "label": "Range position", "weight": 0.15, "direction": -1,
+     "description": "Position between the all-time low and high (at the low = cheap)."},
+]
+
+FEATURE_INFO = {
+    name: {"label": label, "description": description}
+    for name, label, description in (
+        ("valuation_pct_1y", "1y price percentile", "Where today's close sits in the last 365 daily closes (0 = cheapest)."),
+        ("valuation_pct_3y", "3y price percentile", "Where today's close sits in the last 3 years of daily closes."),
+        ("valuation_pct_all", "All-history percentile", "Where today's close sits in every daily close on record."),
+        ("distance", "Distance to event low", "How far the price is above the reference low of the dip window."),
+        ("abs_median_dist_3y", "Gap to 3y median", "Absolute distance from the 3-year median close; near-median is neutral."),
+        ("basing_pct_90d", "Basing share (90d)", "Share of the last 90 days spent in the cheapest quartile of the past year."),
+        ("range_position", "Range position", "Position between the all-time low and high (0 = at the low)."),
+        ("trend_7d", "7d trend", "One-week price change."),
+        ("trend_90d", "90d trend", "Three-month price change."),
+        ("trend_180d", "180d trend", "Six-month price change."),
+        ("trend_365d", "1y trend", "One-year price change."),
+        ("volatility_90d", "90d volatility", "Realized volatility over three months."),
+        ("drawdown_from_ath", "Drawdown from ATH", "Distance below the all-time high (BTC terms)."),
+        ("days_since_ath", "Days since ATH", "How long ago the all-time high was set."),
+        ("dollar_volume_30d", "30d dollar volume", "Average daily traded value over the last 30 days."),
+        ("band_p05_dist_3y", "Distance to 3y P05", "How far the price is above (or below) the bottom band edge of the 3-year distribution."),
+        ("band_p25_dist_3y", "Distance to 3y P25", "Distance to the lower quartile of the 3-year closes."),
+        ("band_p75_dist_3y", "Distance to 3y P75", "Distance to the upper quartile of the 3-year closes."),
+        ("band_p95_dist_3y", "Distance to 3y P95", "Distance to the top band edge; negative means inside the thin band."),
+        ("band_iqr_width_3y", "3y IQR width", "Width of the middle 50% band relative to the median (dispersion)."),
+        ("band_span_width_3y", "3y P05-P95 width", "Full thin-band width relative to the median (tail dispersion)."),
+        ("above_p75_3y", "Above 3y P75", "1 when the price sits above the upper quartile of the last 3 years."),
+        ("below_p25_3y", "Below 3y P25", "1 when the price sits in the cheapest quartile of the last 3 years."),
+        ("top_band_share_90d", "Top band share (90d)", "Share of the last 90 days spent in the top quartile of the last 3 years."),
+    )
+}
 
 class ScoreModelError(ValueError):
     pass

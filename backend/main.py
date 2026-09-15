@@ -179,6 +179,53 @@ def _as_of_metrics(db: Session, cutoff: datetime, event_start: datetime) -> dict
     return metrics
 
 
+@app.get("/api/score-models", response_model=List[schemas.ScoreModelResponse])
+def get_score_models():
+    """Score models with their feature importances for the Strategy Lab panel."""
+    from score_models import FEATURE_INFO, RULE_FEATURES, available_models, load_model
+
+    models = [
+        schemas.ScoreModelResponse(
+            version="rule",
+            label="Rule-based value score",
+            experimental=False,
+            features=[
+                schemas.ScoreModelFeature(
+                    name=feature["name"],
+                    label=feature["label"],
+                    description=feature["description"],
+                    weight=feature["weight"],
+                    direction=feature["direction"],
+                )
+                for feature in RULE_FEATURES
+            ],
+        )
+    ]
+    for version in available_models():
+        artifact = load_model(version)
+        features = artifact.get("features") or [
+            {
+                "name": name,
+                "label": FEATURE_INFO.get(name, {}).get("label", name),
+                "description": FEATURE_INFO.get(name, {}).get("description", ""),
+                "weight": weight,
+                "direction": artifact.get("feature_directions", {}).get(name, 1),
+            }
+            for name, weight in artifact["weights"].items()
+        ]
+        models.append(
+            schemas.ScoreModelResponse(
+                version=version,
+                label=f"Learned score ({version})",
+                experimental=True,
+                trained_until=artifact.get("trained_until"),
+                validation=artifact.get("validation"),
+                features=[schemas.ScoreModelFeature(**feature) for feature in features],
+            )
+        )
+    return models
+
+
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
 def get_coins(
     low_from: Optional[str] = Query(default=None, description="Custom reference window start (YYYY-MM-DD)"),
@@ -358,6 +405,7 @@ def run_backtest(
     top_n: int = Query(default=5, ge=1, le=25),
     min_score: float = Query(default=50.0, ge=0, le=100),
     min_market_cap: float = Query(default=10_000_000.0, ge=0),
+    max_market_cap: Optional[float] = Query(default=None),
     min_volume: float = Query(default=250_000.0, ge=0),
     weighting: str = Query(default="equal", pattern="^(equal|score|market_cap)$"),
     fill_with_btc: bool = Query(default=True),
@@ -411,6 +459,7 @@ def run_backtest(
         "top_n": top_n,
         "min_score": min_score,
         "min_market_cap": min_market_cap,
+        "max_market_cap": max_market_cap,
         "min_volume": min_volume,
         "weighting": weighting,
         "fill_with_btc": fill_with_btc,
@@ -496,6 +545,7 @@ def optimize_backtest(payload: schemas.OptimizerRequest, db: Session = Depends(g
             start=start_at,
             end=end_at,
             min_market_cap=payload.min_market_cap,
+            max_market_cap=payload.max_market_cap,
             min_volume=payload.min_volume,
             fee_pct=payload.fee_pct,
             fill_with_btc=payload.fill_with_btc,
@@ -517,6 +567,7 @@ def optimize_backtest(payload: schemas.OptimizerRequest, db: Session = Depends(g
         "rebalance": payload.rebalance,
         "score_model": payload.score_model,
         "min_market_cap": payload.min_market_cap,
+        "max_market_cap": payload.max_market_cap,
         "min_volume": payload.min_volume,
         "fee_pct": payload.fee_pct,
         "validation_fraction": payload.validation_fraction,

@@ -105,7 +105,7 @@ describe('BacktestPage', () => {
   it('runs a backtest on mount and renders metrics, curve and picks', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
 
@@ -123,7 +123,7 @@ describe('BacktestPage', () => {
   });
 
   it('switches the chart to USD', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText('Win rate');
@@ -136,7 +136,7 @@ describe('BacktestPage', () => {
   it('applies the optimized preset found by the large search', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText('Win rate');
@@ -146,17 +146,61 @@ describe('BacktestPage', () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
         expect.stringMatching(
-          /top_n=9.*min_score=45.*weighting=market_cap.*rotation=hold.*sell_score=20.*min_trend_30d=-40.*stop_loss_pct=40.*trailing_stop_pct=75.*take_profit_pct=100.*equity_trend_exposure=0\.35.*profit_lock_pct=25.*short_n=5.*short_funding_apr=10.*short_exposure=1.*short_max_score=50.*profit_sweep_pct=30.*max_holding_periods=52.*invert_score=true.*ic_filter=true.*ic_window=4.*ic_threshold=0.*ic_exposure=0\.35.*score_model=rule.*regime_filter=breadth.*regime_exposure=1.*regime_min_breadth=0\.5/,
+          /top_n=5.*min_score=20.*min_market_cap=50000000.*weighting=score.*rotation=hold.*sell_score=3.*stop_loss_pct=30.*equity_trend_exposure=0.*profit_lock_pct=25.*short_n=5.*short_funding_apr=10.*short_exposure=1.*short_max_score=40.*profit_sweep_pct=30.*max_holding_periods=52.*invert_score=true.*ic_filter=true.*ic_window=2.*ic_threshold=0\.1.*ic_exposure=0.*score_model=rule.*regime_filter=breadth.*regime_exposure=0\.5.*regime_min_breadth=0\.5.*max_market_cap=1000000000/,
         ),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });
   });
 
+  it('reveals score model feature importance on demand', async () => {
+    const models = [
+      {
+        version: 'rule',
+        label: 'Rule-based value score',
+        experimental: false,
+        trained_until: null,
+        validation: null,
+        features: [
+          { name: 'valuation', label: 'Valuation blend', description: 'Blend of the price percentiles.', weight: 0.3, direction: -1 },
+        ],
+      },
+      {
+        version: 'learned_v4',
+        label: 'Learned score (learned_v4)',
+        experimental: true,
+        trained_until: '2024-12-31',
+        validation: { walk_forward_ic: 0.17 },
+        features: [
+          { name: 'band_p05_dist_3y', label: 'Distance to 3y P05', description: 'Dip distance in BTC terms.', weight: 0.011, direction: -1 },
+        ],
+      },
+    ];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/score-models')) {
+        return new Response(JSON.stringify(models), { status: 200 });
+      }
+      return new Response(JSON.stringify(response), { status: 200 });
+    });
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByText('Feature importance'));
+
+    expect(await screen.findByText('Valuation blend')).toBeTruthy();
+    expect(screen.getByText('Blend of the price percentiles.')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/score model/i), { target: { value: 'learned_v4' } });
+    expect(await screen.findByText('Distance to 3y P05')).toBeTruthy();
+    expect(screen.getAllByText(/trained through 2024-12-31/).length).toBeGreaterThan(0);
+  });
+
   it('sends the exit rule and sell threshold when they change', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText('Win rate');
@@ -177,7 +221,7 @@ describe('BacktestPage', () => {
   it('sends the regime filter, exposure and breadth threshold', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText('Win rate');
@@ -195,14 +239,23 @@ describe('BacktestPage', () => {
   });
 
   it('can compare the experimental learned score model', async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).includes('/api/score-models')) {
+        return new Response(
+          JSON.stringify([
+            { version: 'rule', label: 'Rule-based value score', experimental: false, trained_until: null, validation: null, features: [] },
+            { version: 'learned_v4', label: 'Learned score (learned_v4)', experimental: true, trained_until: '2024-12-31', validation: null, features: [] },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify(response), { status: 200 });
+    });
 
     render(<BacktestPage />);
     await screen.findByText('Win rate');
 
-    fireEvent.change(screen.getByLabelText(/score model/i), { target: { value: 'learned_v1' } });
+    fireEvent.change(screen.getByLabelText(/score model/i), { target: { value: 'learned_v4' } });
 
     expect(screen.getByText(/experimental score/i)).toBeTruthy();
 
@@ -210,14 +263,14 @@ describe('BacktestPage', () => {
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
-        expect.stringMatching(/score_model=learned_v1/),
+        expect.stringMatching(/score_model=learned_v4/),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });
   });
 
   it('expands the rebalance history on demand', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText(/showing 8 of 10/);
@@ -228,7 +281,7 @@ describe('BacktestPage', () => {
   });
 
   it('reveals the trade log with buy and sell prices when opened', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
     render(<BacktestPage />);
     await screen.findByText('Trade log (2)');

@@ -29,8 +29,11 @@ from research import common
 FEATURE_COLUMNS = (
     "score",
     "distance",
+    "trend_7d",
     "trend_30d",
     "trend_90d",
+    "trend_180d",
+    "trend_365d",
     "above_sma200",
     "valuation_pct_1y",
     "valuation_pct_3y",
@@ -46,6 +49,15 @@ FEATURE_COLUMNS = (
     "drawdown_from_ath",
     "days_since_ath",
     "dollar_volume_30d",
+    "band_p05_dist_3y",
+    "band_p25_dist_3y",
+    "band_p75_dist_3y",
+    "band_p95_dist_3y",
+    "band_iqr_width_3y",
+    "band_span_width_3y",
+    "above_p75_3y",
+    "below_p25_3y",
+    "top_band_share_90d",
 )
 
 PIT_LIQUIDITY_COLUMNS = ("market_cap_pit", "volume_pit")

@@ -47,7 +47,9 @@ STRICTNESS = {
 }
 
 CATEGORICAL_SPACE = {
-    "sell_score": [None, 20, 25, 30, 40, 50, 60],
+    "sell_score": [None, 3, 5, 10, 20, 25, 40],
+    "min_market_cap": [0, 10_000_000, 50_000_000, 100_000_000, 500_000_000],
+    "max_market_cap": [None, 100_000_000, 500_000_000, 1_000_000_000, 10_000_000_000],
     "equity_trend_exposure": [None, 0.0, 0.35, 0.5, 0.7],
     "profit_lock_pct": [None, 25, 50],
     "short_n": [0, 2, 3, 5],
@@ -90,6 +92,8 @@ DEFAULT_SEARCH_PARAMS = (
     "regime_exposure",
 )
 DEFAULT_FIXED_PARAMS = {
+    "min_market_cap": 10_000_000.0,
+    "max_market_cap": None,
     "trailing_stop_pct": None,
     "take_profit_pct": None,
     "stop_loss_pct": None,
@@ -452,6 +456,7 @@ def optimize_strategy(
     min_volume: float,
     fee_pct: float,
     fill_with_btc: bool,
+    max_market_cap: Optional[float] = None,
     objective: str = "sharpe",
     trials: int = 200,
     max_drawdown_limit: Optional[float] = None,
@@ -471,10 +476,13 @@ def optimize_strategy(
     if strictness not in STRICTNESS:
         raise BacktestError(f"strictness must be one of {', '.join(STRICTNESS)}")
     gap_fraction = STRICTNESS[strictness]["gap_fraction"]
-    optimize, pinned = validate_scope(
-        optimize_params if optimize_params is not None else DEFAULT_SEARCH_PARAMS,
-        fixed_params if fixed_params is not None else DEFAULT_FIXED_PARAMS,
-    )
+    pinned_input = dict(fixed_params) if fixed_params is not None else dict(DEFAULT_FIXED_PARAMS)
+    optimize = list(optimize_params) if optimize_params is not None else list(DEFAULT_SEARCH_PARAMS)
+    if "min_market_cap" not in optimize and "min_market_cap" not in pinned_input:
+        pinned_input["min_market_cap"] = min_market_cap
+    if "max_market_cap" not in optimize and "max_market_cap" not in pinned_input:
+        pinned_input["max_market_cap"] = max_market_cap
+    optimize, pinned = validate_scope(optimize, pinned_input)
 
     dates = [date for date in snapshot["dates"] if start <= date <= end]
     if len(dates) < 8:
@@ -486,6 +494,7 @@ def optimize_strategy(
 
     fixed = {
         "min_market_cap": min_market_cap,
+        "max_market_cap": max_market_cap,
         "min_volume": min_volume,
         "fee_pct": fee_pct,
         "fill_with_btc": fill_with_btc,
