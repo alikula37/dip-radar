@@ -74,17 +74,6 @@ const response: BacktestResponse = {
       days: 28,
     },
   ],
-  optimization: [
-    {
-      rotation: 'hold',
-      top_n: 3,
-      min_score: 40,
-      fill_with_btc: true,
-      total_return: 0.9,
-      sharpe: 1.5,
-      max_drawdown: -0.2,
-    },
-  ],
 };
 
 describe('BacktestPage', () => {
@@ -103,7 +92,6 @@ describe('BacktestPage', () => {
 
     expect(await screen.findByText('Win rate')).toBeTruthy();
     expect(screen.getByText(/total return \(btc\)/i)).toBeTruthy();
-    expect(screen.getByText('Best configurations (by Sharpe)')).toBeTruthy();
     expect(screen.getAllByText('ETH').length).toBeGreaterThan(0);
     expect(screen.getByText(/showing 8 of 10/)).toBeTruthy();
     expect(screen.getByRole('img', { name: /backtest equity curve in btc/i })).toBeTruthy();
@@ -122,24 +110,6 @@ describe('BacktestPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'USD' }));
 
     expect(screen.getByRole('img', { name: /backtest equity curve in usd/i })).toBeTruthy();
-  });
-
-  it('applies an optimized configuration and re-runs', async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
-
-    render(<BacktestPage />);
-    await screen.findByText('Best configurations (by Sharpe)');
-
-    fireEvent.click(screen.getByRole('button', { name: /apply/i }));
-
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenLastCalledWith(
-        expect.stringMatching(/top_n=3.*min_score=40/),
-        expect.objectContaining({ cache: 'no-store' }),
-      );
-    });
   });
 
   it('sends the exit rule and sell threshold when they change', async () => {
@@ -274,11 +244,16 @@ describe('BacktestPage', () => {
             stop_loss_pct: null,
           },
           train_metrics: response.metrics,
-          cv_metrics: { mean: 0.42, min: -0.1, per_fold: [] },
+          cv_metrics: { mean: 0.42, min: 0.1, per_fold: [] },
           holdout_metrics: response.metrics,
-          overfit_risk: false,
         },
       ],
+      validated: 1,
+      rejected: { count: 3, reasons: { 'holdout not positive': 3 } },
+      gap_fraction: 0.5,
+      optimize_params: ['top_n', 'min_score'],
+      fixed_params: { trailing_stop_pct: null, take_profit_pct: null, stop_loss_pct: null },
+      message: null,
     };
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
@@ -294,11 +269,24 @@ describe('BacktestPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
     expect(screen.getByRole('dialog', { name: 'Auto-optimize' })).toBeTruthy();
+
+    // Move a fixed parameter into the search scope with its "+" button.
+    fireEvent.click(screen.getByRole('button', { name: 'Optimize take_profit_pct' }));
+
     fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
 
     expect(await screen.findByText(/optuna-tpe · 42\/50/)).toBeTruthy();
     expect(screen.getByText('top 4')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeTruthy();
+
+    const optimizerCall = fetchSpy.mock.calls.find(([input]) => String(input).includes('/api/backtest/optimize')) as
+      | [string, RequestInit]
+      | undefined;
+    expect(optimizerCall).toBeTruthy();
+    expect(optimizerCall?.[1]?.method).toBe('POST');
+    const body = JSON.parse(String(optimizerCall?.[1]?.body));
+    expect(body.optimize_params).toContain('take_profit_pct');
+    expect(body.fixed_params).not.toHaveProperty('take_profit_pct');
 
     // The auto-optimize panel renders before the results table, so its Apply is first.
     const applyButtons = screen.getAllByRole('button', { name: /apply/i });

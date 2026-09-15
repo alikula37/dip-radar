@@ -758,36 +758,3 @@ def simulate(
         "holdings": holdings,
         "trades": trades,
     }
-
-
-def optimize(snapshot: dict, base: dict, limit: int = 5) -> list:
-    """Cheap grid search over rotation, top-N, threshold and BTC fill."""
-    results = []
-    for rotation in ("rebalance", "hold"):
-        for top_n in (3, 5, 10):
-            for min_score in (40, 50, 60, 70):
-                for fill_with_btc in (True, False):
-                    params = {
-                        **base,
-                        "rotation": rotation,
-                        "top_n": top_n,
-                        "min_score": min_score,
-                        "fill_with_btc": fill_with_btc,
-                    }
-                    try:
-                        outcome = simulate(snapshot, **params)
-                    except BacktestError:
-                        continue
-                    results.append(
-                        {
-                            "rotation": rotation,
-                            "top_n": top_n,
-                            "min_score": min_score,
-                            "fill_with_btc": fill_with_btc,
-                            "total_return": outcome["metrics"]["total_return"],
-                            "sharpe": outcome["metrics"]["sharpe"],
-                            "max_drawdown": outcome["metrics"]["max_drawdown"],
-                        }
-                    )
-    results.sort(key=lambda item: (item["sharpe"], item["total_return"]), reverse=True)
-    return results[:limit]

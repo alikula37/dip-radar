@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from backtest import BacktestError, build_snapshot, regime_warmup_start, simulate
-from backtest import optimize as optimize_grid
 from database import Base, engine, get_db
 from fetcher import EVENT_CUTOFF, run_sync_with_lock
 from locks import is_locked
@@ -373,7 +372,6 @@ def run_backtest(
     regime_min_breadth: float = Query(default=0.5, ge=0, le=1, description="Minimum share of coins above their 200d SMA for regime_filter=breadth"),
     regime_exposure: float = Query(default=0.0, ge=0, le=1, description="Exposure kept while risk-off (0 = move fully to BTC)"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
-    optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
     db: Session = Depends(get_db),
 ):
     """Replays the Value Score at historical rebalance dates and simulates the portfolio."""
@@ -427,10 +425,6 @@ def run_backtest(
     except BacktestError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    optimization = None
-    if optimize:
-        optimization = optimize_grid(snapshot, {"start": start_at, "end": end_at, **params})
-
     return {
         "requested_start": start,
         "requested_end": end_at.date().isoformat(),
@@ -438,35 +432,20 @@ def run_backtest(
         "score_model": score_model,
         **params,
         **outcome,
-        "optimization": optimization,
     }
 
 
-@app.get("/api/backtest/optimize", response_model=schemas.OptimizerResponse)
-def optimize_backtest(
-    start: str = Query(..., description="Optimization start date (YYYY-MM-DD)"),
-    end: Optional[str] = Query(default=None, description="End date, defaults to the latest candle"),
-    rebalance: str = Query(default="weekly", pattern="^(weekly|monthly|quarterly)$"),
-    min_market_cap: float = Query(default=10_000_000.0, ge=0, description="Universe constraint kept fixed during the search"),
-    min_volume: float = Query(default=250_000.0, ge=0, description="Universe constraint kept fixed during the search"),
-    fee_pct: float = Query(default=0.1, ge=0, le=5),
-    fill_with_btc: bool = Query(default=True),
-    score_model: str = Query(default="rule"),
-    objective: str = Query(default="sharpe", pattern="^(return|sharpe|calmar)$"),
-    trials: int = Query(default=200, ge=1, le=1000),
-    max_drawdown_limit: Optional[float] = Query(default=None, ge=0, le=95, description="Reject configs whose max drawdown is worse than this percent"),
-    validation_fraction: float = Query(default=0.3, ge=0.1, le=0.5, description="Trailing holdout share never optimized on"),
-    db: Session = Depends(get_db),
-):
-    """Search strategy parameters for the pinned universe and report a holdout."""
+@app.post("/api/backtest/optimize", response_model=schemas.OptimizerResponse)
+def optimize_backtest(payload: schemas.OptimizerRequest, db: Session = Depends(get_db)):
+    """Search strategy parameters with nested validation (search/CV/holdout)."""
     try:
-        start_at = datetime.strptime(start, "%Y-%m-%d")
+        start_at = datetime.strptime(payload.start, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=422, detail="start must be YYYY-MM-DD")
 
-    if end:
+    if payload.end:
         try:
-            end_at = datetime.strptime(end, "%Y-%m-%d")
+            end_at = datetime.strptime(payload.end, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=422, detail="end must be YYYY-MM-DD")
     else:
@@ -481,23 +460,25 @@ def optimize_backtest(
     try:
         snapshot = build_snapshot(
             db,
-            rebalance,
+            payload.rebalance,
             end_at,
-            score_model=score_model,
-            earliest=regime_warmup_start(start_at, rebalance),
+            score_model=payload.score_model,
+            earliest=regime_warmup_start(start_at, payload.rebalance),
         )
         result = optimize_strategy(
             snapshot,
             start=start_at,
             end=end_at,
-            min_market_cap=min_market_cap,
-            min_volume=min_volume,
-            fee_pct=fee_pct,
-            fill_with_btc=fill_with_btc,
-            objective=objective,
-            trials=trials,
-            max_drawdown_limit=max_drawdown_limit,
-            validation_fraction=validation_fraction,
+            min_market_cap=payload.min_market_cap,
+            min_volume=payload.min_volume,
+            fee_pct=payload.fee_pct,
+            fill_with_btc=payload.fill_with_btc,
+            objective=payload.objective,
+            trials=payload.trials,
+            max_drawdown_limit=payload.max_drawdown_limit,
+            validation_fraction=payload.validation_fraction,
+            optimize_params=payload.optimize_params,
+            fixed_params=payload.fixed_params,
             seed=7,
         )
     except BacktestError as exc:
@@ -505,12 +486,12 @@ def optimize_backtest(
 
     return {
         **result,
-        "rebalance": rebalance,
-        "score_model": score_model,
-        "min_market_cap": min_market_cap,
-        "min_volume": min_volume,
-        "fee_pct": fee_pct,
-        "validation_fraction": validation_fraction,
+        "rebalance": payload.rebalance,
+        "score_model": payload.score_model,
+        "min_market_cap": payload.min_market_cap,
+        "min_volume": payload.min_volume,
+        "fee_pct": payload.fee_pct,
+        "validation_fraction": payload.validation_fraction,
     }
 
 

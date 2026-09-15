@@ -476,10 +476,6 @@ def test_backtest_endpoint_replays_value_score_history():
     assert payload["holdings"][0]["picks"][0]["symbol"] == "ETHBTC"
     # BTC/USD went 30k -> 40k inside the window, so the benchmark is +33%.
     assert payload["metrics"]["benchmark_btc_usd_return"] == pytest.approx(1 / 3, abs=0.01)
-    assert payload["optimization"]
-    assert payload["optimization"][0]["sharpe"] >= payload["optimization"][-1]["sharpe"]
-    assert "rotation" in payload["optimization"][0]
-
     hold = client.get(
         "/api/backtest",
         params={
@@ -513,25 +509,31 @@ def test_backtest_endpoint_replays_value_score_history():
     assert client.get("/api/backtest", params={"start": "2023-01-01", "regime_filter": "moon"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "score_model": "nope"}).status_code == 422
 
-    optimized = client.get(
+    optimized = client.post(
         "/api/backtest/optimize",
-        params={
+        json={
             "start": "2023-01-01",
             "min_market_cap": 0,
             "min_volume": 0,
-            "trials": 4,
+            "trials": 6,
             "objective": "return",
         },
     )
     assert optimized.status_code == 200
     payload_optimized = optimized.json()
     assert payload_optimized["optimizer"] in ("optuna-tpe", "random")
-    assert payload_optimized["best"]
     assert payload_optimized["holdout"]["start"] >= payload_optimized["train"]["end"]
     assert payload_optimized["objective"] == "return"
+    assert payload_optimized["optimize_params"]
+    assert "message" in payload_optimized
+    assert payload_optimized["cv"]["folds"]
 
+    assert client.post("/api/backtest/optimize", json={"start": "2023-01-01", "objective": "moon"}).status_code == 422
     assert (
-        client.get("/api/backtest/optimize", params={"start": "2023-01-01", "objective": "moon"}).status_code
+        client.post(
+            "/api/backtest/optimize",
+            json={"start": "2023-01-01", "optimize_params": ["top_n"], "fixed_params": {}},
+        ).status_code
         == 422
     )
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422

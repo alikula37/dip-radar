@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from backtest import BacktestError, build_snapshot, optimize, regime_warmup_start, simulate
+from backtest import BacktestError, build_snapshot, regime_warmup_start, simulate
 from models import Coin, Kline
 
 START = datetime(2021, 1, 1)
@@ -189,25 +189,6 @@ def test_simulate_rejects_window_without_anchors(seeded_db):
             min_market_cap=0,
             min_volume=0,
         )
-
-
-def test_optimize_returns_ranked_configs(seeded_db):
-    snapshot = _snapshot(seeded_db)
-    results = optimize(
-        snapshot,
-        {
-            "min_market_cap": 0,
-            "min_volume": 0,
-            "weighting": "equal",
-            "fee_pct": 0.1,
-            **WINDOW,
-        },
-        limit=3,
-    )
-
-    assert len(results) == 3
-    assert results[0]["sharpe"] >= results[1]["sharpe"] >= results[2]["sharpe"]
-    assert all({"rotation", "top_n", "min_score", "fill_with_btc"} <= set(row) for row in results)
 
 
 def _manual_snapshot():

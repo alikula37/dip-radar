@@ -1,7 +1,14 @@
 import json
 from datetime import datetime, timedelta
 
-from optimizer import CATEGORICAL_SPACE, _sample, optimize_strategy
+from optimizer import (
+    DEFAULT_FIXED_PARAMS,
+    DEFAULT_SEARCH_PARAMS,
+    PARAM_NAMES,
+    _sample,
+    optimize_strategy,
+    validate_scope,
+)
 
 START = datetime(2022, 1, 1)
 
@@ -51,12 +58,35 @@ def _snapshot(anchors=12, symbols=6, cap=50_000_000.0, volume=1_000_000.0):
 def test_sample_is_deterministic_for_a_seed():
     import random
 
-    first = _sample(random.Random(3))
-    second = _sample(random.Random(3))
+    first = _sample(random.Random(3), DEFAULT_SEARCH_PARAMS)
+    second = _sample(random.Random(3), DEFAULT_SEARCH_PARAMS)
 
     assert first == second
     assert 2 <= first["top_n"] <= 10
-    assert set(CATEGORICAL_SPACE) <= set(first)
+    assert set(first) == set(DEFAULT_SEARCH_PARAMS)
+
+
+def test_scope_validation_requires_full_coverage():
+    optimize, pinned = validate_scope(
+        ["top_n", "min_score"],
+        {"sell_score": None, "min_trend_30d": None, "weighting": "score", "rotation": "hold",
+         "regime_filter": None, "regime_exposure": 1.0, "trailing_stop_pct": None,
+         "take_profit_pct": None, "stop_loss_pct": None},
+    )
+    assert optimize == ["top_n", "min_score"]
+    assert pinned["weighting"] == "score"
+
+    import pytest
+
+    with pytest.raises(Exception):
+        validate_scope(["top_n"], {})  # missing parameters
+    with pytest.raises(Exception):
+        validate_scope(["top_n", "moon"], {"min_score": 50})
+    with pytest.raises(Exception):
+        validate_scope(
+            ["top_n"],
+            {"top_n": 5, **{name: None for name in PARAM_NAMES if name not in ("top_n", "min_score")}},
+        )  # overlap + missing
 
 
 def test_optimizer_returns_ranked_candidates_with_a_holdout():
@@ -77,11 +107,13 @@ def test_optimizer_returns_ranked_candidates_with_a_holdout():
 
     assert result["optimizer"] in ("optuna-tpe", "random")
     assert result["evaluated"] > 0
-    assert 1 <= len(result["best"]) <= 3
+    assert len(result["best"]) <= 3
     for candidate in result["best"]:
         assert candidate["train_metrics"] is not None
-        assert set(candidate["params"]) == set(CATEGORICAL_SPACE) | {"top_n", "min_score"}
+        assert candidate["cv_metrics"]["mean"] > 0
+        assert set(candidate["params"]) == set(DEFAULT_SEARCH_PARAMS)
     assert result["train"]["end"] <= result["holdout"]["start"]
+    assert set(result["fixed_params"]) == set(DEFAULT_FIXED_PARAMS)
 
 
 def test_optimizer_respects_universe_constraints():
@@ -100,8 +132,9 @@ def test_optimizer_respects_universe_constraints():
     )
 
     assert result["evaluated"] > 0
-    for candidate in result["best"]:
-        assert candidate["train_metrics"]["avg_holdings"] == 0
+    assert result["best"] == []
+    assert result["validated"] == 0
+    assert result["message"]
 
 
 def _crashing_snapshot():
@@ -130,11 +163,10 @@ def test_optimizer_drawdown_limit_rejects_everything_when_impossible():
         top_k=3,
     )
 
-    # Every trading configuration is rejected; only a do-nothing config
-    # (risk-off with binary exposure) can keep a zero drawdown.
-    assert result["evaluated"] <= 1
-    for candidate in result["best"]:
-        assert candidate["train_metrics"]["max_drawdown"] >= -0.000001
+    # Nothing survives the drawdown + validation gates on a crash.
+    assert result["best"] == []
+    assert result["validated"] == 0
+    assert result["message"]
 
 
 def test_optimizer_is_reproducible_for_a_seed():
@@ -159,7 +191,7 @@ def test_optimizer_is_reproducible_for_a_seed():
     ]
 
 
-def test_optimizer_reports_purged_cv_and_flags_overfit():
+def test_optimizer_reports_purged_cv_and_rejects_overfits():
     result = optimize_strategy(
         _crashing_snapshot(),
         start=START,
@@ -180,10 +212,10 @@ def test_optimizer_reports_purged_cv_and_flags_overfit():
     holdout_start = result["holdout"]["start"]
     for fold in result["cv"]["folds"]:
         assert fold["test"][1] <= holdout_start  # CV never touches the holdout
-    assert result["best"]
-    for candidate in result["best"]:
-        assert "cv_metrics" in candidate
-        assert candidate["overfit_risk"] is True  # everything loses in a crash
+    assert result["best"] == []  # everything loses in a crash
+    assert result["validated"] == 0
+    assert result["rejected"]["count"] > 0
+    assert result["message"]
 
 
 def test_optimizer_returns_unique_configs():
