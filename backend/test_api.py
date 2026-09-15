@@ -108,10 +108,38 @@ def test_meta_reports_tracked_coins_and_sync_state():
     assert response.status_code == 200
     payload = response.json()
     assert payload["tracked_coins"] == 1
+    assert payload["delisted_coins"] == 0
     assert payload["sync_in_progress"] is False
     assert payload["last_updated"] == "2026-01-01T00:00:00+00:00"
     assert payload["sync_progress"]["phase"] == "klines"
     assert payload["sync_progress"]["processed"] == 10
+
+
+def test_delisted_coins_are_archived_from_the_live_board():
+    seed_coin("ETHBTC")
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="FTTBTC",
+            name="FTX Token",
+            is_pre_2021=True,
+            listed_checked=True,
+            market_cap=500.0,
+            current_price_btc=0.0001,
+            delisted_at=datetime(2022, 11, 15),
+        )
+    )
+    db.commit()
+    db.close()
+
+    response = client.get("/api/coins")
+
+    assert response.status_code == 200
+    assert [coin["symbol"] for coin in response.json()] == ["ETHBTC"]
+
+    meta = client.get("/api/meta").json()
+    assert meta["tracked_coins"] == 1
+    assert meta["delisted_coins"] == 1
 
 
 def test_refresh_schedules_background_sync(monkeypatch):

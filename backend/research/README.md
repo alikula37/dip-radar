@@ -29,6 +29,14 @@ create a new file instead of overwriting one.
 | `stats.py` | Rank/Spearman helpers, summaries, moving-block bootstrap CIs (no SciPy). |
 | `common.py` | Lazy DB session, database fingerprint, snapshot loading, forward-return pairs, IC/spread series. |
 | `baseline_ic.py` | Current Value Score baseline: cross-sectional IC of the score and its stored sub-signals, per-year breakdown, quintile spread, IC by forward horizon, bootstrap CIs. |
+| `data_quality.py` | Universe composition (active/delisted/stable), candle coverage and >3-day gaps, point-in-time market-history coverage, liquidity staleness. |
+
+Point-in-time liquidity is ingested by the application module
+`backend/market_history.py` (`python -m market_history`); coins that leave
+Binance are archived via `Coin.delisted_at` instead of deleted, so the
+snapshot universe keeps their history. CoinGecko's `market_chart` endpoint
+requires a free Demo API key (`COINGECKO_API_KEY`); without it the command
+reports per-coin failures and leaves the table untouched.
 
 ## Interpreting the baseline
 
@@ -83,7 +91,11 @@ If it fails, the rule-based score stays — a negative result is still a result.
 
 ## Roadmap
 
-- Phase 1: delisted-coin archive + historical market cap/supply ingestion.
+- Phase 1 (in progress): delisted-coin archive + point-in-time market
+  cap/volume ingestion are shipped (`market_history` module, `delisted_at`,
+  `data_quality` report). Remaining: extend the universe with coins that were
+  delisted *before* this pipeline existed, and keep the ingestion fresh from
+  the worker.
 - Phase 2: point-in-time feature store keyed by rebalance date.
 - Phase 3: purged/embargoed walk-forward CV + constrained models
   (monotonic ranks first, tiny GBM with monotonic constraints second).

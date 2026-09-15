@@ -31,9 +31,11 @@ class FakeSession:
     def __init__(self, responder):
         self.responder = responder
         self.calls = []
+        self.headers_seen = []
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, timeout=None, headers=None):
         self.calls.append((url, params))
+        self.headers_seen.append(headers or {})
         result = self.responder(url, params)
         if isinstance(result, Exception):
             raise result
@@ -584,6 +586,59 @@ def test_coingecko_markets_requests_per_page_250():
 
     assert captured["per_page"] == 250
     assert captured["ids"] == "ethereum"
+
+
+def test_coingecko_fetches_market_chart_history():
+    captured = {}
+
+    def responder(url, params):
+        captured["url"] = url
+        captured.update(params)
+        return FakeResponse(payload={"prices": [], "market_caps": [], "total_volumes": []})
+
+    client = fetcher.CoinGeckoClient(session=FakeSession(responder), sleep=lambda _: None)
+    payload = client.fetch_market_chart("ethereum")
+
+    assert "coins/ethereum/market_chart" in captured["url"]
+    assert captured["vs_currency"] == "usd"
+    assert captured["days"] == "max"
+    assert payload["prices"] == []
+
+
+def test_coingecko_sends_demo_api_key_header_when_configured():
+    session = FakeSession(lambda url, params: FakeResponse(payload=[]))
+
+    anonymous = fetcher.CoinGeckoClient(session=session, sleep=lambda _: None, api_key="")
+    anonymous.fetch_markets(["ethereum"])
+    keyed = fetcher.CoinGeckoClient(session=session, sleep=lambda _: None, api_key="CG-test")
+    keyed.fetch_markets(["ethereum"])
+
+    assert "x-cg-demo-api-key" not in session.headers_seen[0]
+    assert session.headers_seen[1]["x-cg-demo-api-key"] == "CG-test"
+
+
+def test_sync_coins_archives_delisted_symbols_and_restores_them(db):
+    db.add(Coin(symbol="OLDBTC", is_pre_2021=True, listed_checked=True))
+    db.commit()
+
+    fresh = FakeBinance(
+        symbols=[{"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"}],
+        first_klines={"ETHBTC": make_kline_row(to_millis(datetime(2017, 1, 1)), 1, 1, 1, 1)},
+    )
+    fetcher.sync_coins(db, fresh)
+
+    assert db.get(Coin, "OLDBTC").delisted_at is not None
+    assert db.get(Coin, "ETHBTC").delisted_at is None
+
+    restored = FakeBinance(
+        symbols=[
+            {"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"},
+            {"symbol": "OLDBTC", "base": "OLD", "quote": "BTC"},
+        ],
+    )
+    fetcher.sync_coins(db, restored)
+
+    assert db.get(Coin, "OLDBTC").delisted_at is None
 
 
 def test_run_all_syncs_updates_meta(db):
