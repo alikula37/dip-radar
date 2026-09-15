@@ -166,6 +166,35 @@ score-weighted momentum:
 The cap band uses today's market caps (look-ahead/survivorship caveat, already
 documented for liquidity filters), so the preset is aggressive by design.
 
+### The focused large-cap search and the Hedge preset
+
+Pinning the large-cap band ($500M–$10B), top-5 and the five-name short sleeve and
+searching everything else (sharpe / consistency / calmar objectives, 3,600 trials,
+funding 10%) produced a much better family than the first pass: long the cheapest
+large caps at a breadth-scaled exposure while shorting the five most expensive at
+full size, hold rule at sell < 5, IC filter flattening the book when the factor's
+rolling IC is weak, equity-trend brake and a 50% profit lock. The best validated
+candidate:
+
+| Window (cold start) | Return (BTC) | Sharpe | Max DD |
+| --- | --- | --- | --- |
+| 2022-2023 | +111% | 1.25 | −19% |
+| 2024 | +9% | 0.42 | −21% |
+| 2025+ | +55% | 1.81 | −12% |
+| Last 17 months (2025-04 →) | −1% | 0.07 | −21% |
+| Full 2022+ | **+971%** | **1.79** | −19% |
+
+Every calendar year and every rolling 1-year window in the cold-start run is
+positive, turnover is 0.14/week and funding costs 24.5% cumulatively. Two honest
+notes: (1) the **cold-start vs carried** distinction matters here — the optimizer
+validates the strategy as a continuous run (its holdout slice is +43% because the
+positions and internal state carry over from 2022), while applying the preset on a
+fresh date range restarts the book and gives the numbers above; (2) the same
+family short-only (long exposure zeroed by the regime switch) was validated by the
+calmar objective with a +13% holdout but a −40% full-period drawdown, showing how
+much of the edge lives in the short leg. The Hedge preset is the long+short variant.
+
+
 ## Shipping gates for a learned score
 
 A model replaces the rule-based score only if, on walk-forward evaluation, it:
