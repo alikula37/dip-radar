@@ -36,7 +36,7 @@ test('strategy lab can grid-search and apply a configuration', async ({ page }) 
   await page.goto('/backtest');
   await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole('button', { name: 'Optimize' }).click();
+  await page.getByRole('button', { name: 'Optimize', exact: true }).click();
   await page.getByRole('button', { name: 'Run backtest' }).click();
 
   await expect(page.getByText('Best configurations (by Sharpe)')).toBeVisible({ timeout: 60_000 });
@@ -44,4 +44,19 @@ test('strategy lab can grid-search and apply a configuration', async ({ page }) 
 
   await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/rebalances ·/)).toBeVisible();
+});
+
+test('auto-optimizer suggests configurations and validates on a holdout', async ({ page }) => {
+  await page.goto('/backtest');
+  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole('button', { name: /auto-optimize/i }).click();
+  await page.getByRole('button', { name: /find best parameters/i }).click();
+
+  await expect(page.getByText(/configs kept/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText(/train \d{4}-\d{2}-\d{2}/)).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 90_000 });
 });

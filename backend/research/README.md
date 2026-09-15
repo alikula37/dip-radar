@@ -146,3 +146,11 @@ Learned scores improve cross-sectional IC and proxy portfolios but destroy
 strategy returns in the actual simulator — in-sample, out-of-sample and after
 per-model threshold tuning. Concrete evidence that the IC gate alone is not
 enough and that the strategy gate must stay.
+
+Separation of concerns: *learning a score* failed the gates, while *black-box
+optimization over simulator outcomes* is the right tool for "find the best
+parameters for this pinned universe" — shipped as `GET /api/backtest/optimize`
+(Optuna TPE, seeded, with a trailing holdout the search never sees; see
+`backend/optimizer.py`). Measured example: 200 trials find a config with
+train Sharpe 0.85 whose holdout is −12%, which is why the UI shows both
+columns and why the validated presets stay the sane defaults.

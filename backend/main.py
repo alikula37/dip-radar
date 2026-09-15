@@ -21,6 +21,7 @@ from fetcher import EVENT_CUTOFF, run_sync_with_lock
 from locks import is_locked
 from metrics import calculate_bubble_sizes, calculate_coin_stats, calculate_distance_pct, calculate_value_scores
 from migrations import run_migrations
+from optimizer import optimize_strategy
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -432,6 +433,72 @@ def run_backtest(
         **params,
         **outcome,
         "optimization": optimization,
+    }
+
+
+@app.get("/api/backtest/optimize", response_model=schemas.OptimizerResponse)
+def optimize_backtest(
+    start: str = Query(..., description="Optimization start date (YYYY-MM-DD)"),
+    end: Optional[str] = Query(default=None, description="End date, defaults to the latest candle"),
+    rebalance: str = Query(default="weekly", pattern="^(weekly|monthly|quarterly)$"),
+    min_market_cap: float = Query(default=10_000_000.0, ge=0, description="Universe constraint kept fixed during the search"),
+    min_volume: float = Query(default=250_000.0, ge=0, description="Universe constraint kept fixed during the search"),
+    fee_pct: float = Query(default=0.1, ge=0, le=5),
+    fill_with_btc: bool = Query(default=True),
+    score_model: str = Query(default="rule"),
+    objective: str = Query(default="sharpe", pattern="^(return|sharpe|calmar)$"),
+    trials: int = Query(default=200, ge=1, le=1000),
+    max_drawdown_limit: Optional[float] = Query(default=None, ge=0, le=95, description="Reject configs whose max drawdown is worse than this percent"),
+    validation_fraction: float = Query(default=0.3, ge=0.1, le=0.5, description="Trailing holdout share never optimized on"),
+    db: Session = Depends(get_db),
+):
+    """Search strategy parameters for the pinned universe and report a holdout."""
+    try:
+        start_at = datetime.strptime(start, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start must be YYYY-MM-DD")
+
+    if end:
+        try:
+            end_at = datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="end must be YYYY-MM-DD")
+    else:
+        latest = db.query(func.max(models.Kline.timestamp)).scalar()
+        if latest is None:
+            raise HTTPException(status_code=404, detail="No price history yet")
+        end_at = latest
+
+    if end_at <= start_at:
+        raise HTTPException(status_code=422, detail="end must be after start")
+
+    try:
+        snapshot = build_snapshot(db, rebalance, end_at, score_model=score_model)
+        result = optimize_strategy(
+            snapshot,
+            start=start_at,
+            end=end_at,
+            min_market_cap=min_market_cap,
+            min_volume=min_volume,
+            fee_pct=fee_pct,
+            fill_with_btc=fill_with_btc,
+            objective=objective,
+            trials=trials,
+            max_drawdown_limit=max_drawdown_limit,
+            validation_fraction=validation_fraction,
+            seed=7,
+        )
+    except BacktestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return {
+        **result,
+        "rebalance": rebalance,
+        "score_model": score_model,
+        "min_market_cap": min_market_cap,
+        "min_volume": min_volume,
+        "fee_pct": fee_pct,
+        "validation_fraction": validation_fraction,
     }
 
 

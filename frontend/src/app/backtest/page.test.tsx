@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import BacktestPage from './page';
-import type { BacktestResponse } from '@/types';
+import type { BacktestResponse, OptimizerResponse } from '@/types';
 
 const response: BacktestResponse = {
   requested_start: '2022-01-01',
@@ -234,6 +234,72 @@ describe('BacktestPage', () => {
     expect(screen.getByText('0.075000 BTC')).toBeTruthy();
     expect(screen.getByText('take profit')).toBeTruthy();
     expect(screen.getByText('stop loss')).toBeTruthy();
+  });
+
+
+  it('runs the auto-optimizer and can apply a candidate', async () => {
+    const optimizerResponse: OptimizerResponse = {
+      optimizer: 'optuna-tpe',
+      objective: 'sharpe',
+      trials: 50,
+      evaluated: 42,
+      max_drawdown_limit: null,
+      rebalance: 'weekly',
+      score_model: 'rule',
+      min_market_cap: 10_000_000,
+      min_volume: 250_000,
+      fee_pct: 0.1,
+      validation_fraction: 0.3,
+      train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
+      holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
+      best: [
+        {
+          params: {
+            top_n: 4,
+            min_score: 45,
+            sell_score: 30,
+            min_trend_30d: -25,
+            weighting: 'score',
+            rotation: 'hold',
+            regime_filter: 'alt_trend',
+            regime_exposure: 0.35,
+            trailing_stop_pct: null,
+            take_profit_pct: null,
+            stop_loss_pct: null,
+          },
+          train_metrics: response.metrics,
+          holdout_metrics: response.metrics,
+        },
+      ],
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/backtest/optimize')) {
+        return Promise.resolve(new Response(JSON.stringify(optimizerResponse), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(response), { status: 200 }));
+    });
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
+
+    expect(await screen.findByText(/optuna-tpe · 42\/50/)).toBeTruthy();
+    expect(screen.getByText('top 4')).toBeTruthy();
+
+    // The auto-optimize panel renders before the results table, so its Apply is first.
+    const applyButtons = screen.getAllByRole('button', { name: /apply/i });
+    fireEvent.click(applyButtons[0]);
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(/top_n=4.*min_score=45/),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
   });
 
   it('shows backend validation errors with a retry', async () => {
