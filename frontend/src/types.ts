@@ -224,6 +224,7 @@ export interface OptimizerResponse {
     folds: { train: [string, string]; test: [string, string] }[];
     horizon_anchors: number;
     embargo_anchors: number;
+    folds_requested: number;
     candidates_scored: number;
   };
   best: OptimizerCandidate[];
@@ -248,6 +249,7 @@ export interface OptimizerRequest {
   trials: number;
   max_drawdown_limit: number | null;
   validation_fraction: number;
+  cv_folds: number;
   optimize_params: string[];
   fixed_params: Record<string, string | number | boolean | null>;
 }

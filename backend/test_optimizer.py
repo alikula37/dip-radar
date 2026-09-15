@@ -172,7 +172,7 @@ def test_optimizer_drawdown_limit_rejects_everything_when_impossible():
 def test_optimizer_is_reproducible_for_a_seed():
     kwargs = {
         "start": START,
-        "end": START + timedelta(days=30 * 7),
+        "end": START + timedelta(days=30 * 11),
         "min_market_cap": 0,
         "min_volume": 0,
         "fee_pct": 0.1,
@@ -235,3 +235,39 @@ def test_optimizer_returns_unique_configs():
 
     keys = [json.dumps(candidate["params"], sort_keys=True, default=str) for candidate in result["best"]]
     assert len(keys) == len(set(keys))
+
+
+def test_cv_fold_count_is_user_controlled():
+    two = optimize_strategy(
+        _snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="sharpe",
+        trials=6,
+        seed=3,
+        top_k=2,
+        cv_folds=2,
+    )
+    assert len(two["cv"]["folds"]) <= 2
+    assert two["cv"]["folds_requested"] == 2
+
+
+def test_cv_fold_count_is_clamped():
+    result = optimize_strategy(
+        _snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="sharpe",
+        trials=4,
+        seed=3,
+        cv_folds=99,
+    )
+    assert result["cv"]["folds_requested"] == 6
