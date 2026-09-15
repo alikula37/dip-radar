@@ -1,12 +1,12 @@
 'use client';
 
-import { Activity, Download, FlaskConical, Play, Sparkles } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, Download, FlaskConical, Play, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import EquityChart from '@/components/EquityChart';
 import { Button, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
-import { formatPct } from '@/lib/colors';
+import { formatBtcValue, formatPct } from '@/lib/colors';
 import type { BacktestForm, BacktestResponse } from '@/types';
 
 type Rebalance = 'weekly' | 'monthly' | 'quarterly';
@@ -27,8 +27,8 @@ const DEFAULT_FORM: BacktestForm = {
   sellScore: 25,
   minTrend: -25,
   stopLoss: null,
-  trailingStop: 50,
-  takeProfit: 100,
+  trailingStop: null,
+  takeProfit: null,
   optimize: false,
 };
 
@@ -38,15 +38,15 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
     label: 'Conservative',
     values: {
       rebalance: 'quarterly',
-      topN: 6,
-      minScore: 70,
+      topN: 3,
+      minScore: 60,
       weighting: 'equal',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 60,
-      minTrend: 0,
+      sellScore: 40,
+      minTrend: 10,
       stopLoss: null,
-      trailingStop: null,
+      trailingStop: 75,
       takeProfit: 100,
     },
   },
@@ -63,8 +63,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       sellScore: 25,
       minTrend: -25,
       stopLoss: null,
-      trailingStop: 50,
-      takeProfit: 100,
+      trailingStop: null,
+      takeProfit: null,
     },
   },
   {
@@ -80,8 +80,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       sellScore: 25,
       minTrend: -25,
       stopLoss: null,
-      trailingStop: 50,
-      takeProfit: 100,
+      trailingStop: null,
+      takeProfit: null,
     },
   },
 ];
@@ -156,12 +156,35 @@ function weightedReturn(picks: BacktestResponse['holdings'][number]['picks']): n
   return picks.reduce((total, pick) => total + pick.weight * pick.period_return, 0);
 }
 
+const EXIT_REASON_LABELS: Record<string, string> = {
+  take_profit: 'take profit',
+  trailing_stop: 'trailing stop',
+  stop_loss: 'stop loss',
+  score: 'score faded',
+  rebalance: 'rotated out',
+  missing: 'no data',
+  open: 'open',
+};
+
+const EXIT_REASON_CLASSES: Record<string, string> = {
+  take_profit: 'bg-[#4ade80]/15 text-[#4ade80]',
+  trailing_stop: 'bg-[#f87171]/15 text-[#f87171]',
+  stop_loss: 'bg-[#f87171]/15 text-[#f87171]',
+  score: 'bg-primary/15 text-primary',
+  rebalance: 'bg-surface-3 text-content-muted',
+  missing: 'bg-surface-3 text-content-muted',
+  open: 'bg-[#54d7ee]/15 text-[#54d7ee]',
+};
+
 export default function BacktestPage() {
   const [form, setForm] = useState<BacktestForm>(DEFAULT_FORM);
   const [result, setResult] = useState<BacktestResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'btc' | 'usd'>('btc');
+  const [showAllRebalances, setShowAllRebalances] = useState(false);
+  const [tradesOpen, setTradesOpen] = useState(false);
+  const [showAllTrades, setShowAllTrades] = useState(false);
 
   const runBacktest = useCallback(async (params: BacktestForm) => {
     setLoading(true);
@@ -169,6 +192,8 @@ export default function BacktestPage() {
     try {
       const payload = await requestBacktest(params);
       setResult(payload);
+      setShowAllRebalances(false);
+      setShowAllTrades(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Backtest failed.');
     } finally {
@@ -199,7 +224,23 @@ export default function BacktestPage() {
   )?.key;
 
   const metrics = result?.metrics;
-  const periods = result?.holdings.slice(-8).reverse() ?? [];
+  const allPeriods = useMemo(() => (result ? [...result.holdings].reverse() : []), [result]);
+  const periods = showAllRebalances ? allPeriods : allPeriods.slice(0, 8);
+  const allTrades = useMemo(() => (result ? [...result.trades].reverse() : []), [result]);
+  const visibleTrades = showAllTrades ? allTrades : allTrades.slice(0, 12);
+  const tradeStats = useMemo(() => {
+    const closed = allTrades.filter((trade) => trade.exit_reason !== 'open');
+    const returns = closed.map((trade) => trade.return_pct);
+    const wins = returns.filter((value) => value > 0).length;
+    return {
+      total: allTrades.length,
+      open: allTrades.length - closed.length,
+      winRate: closed.length > 0 ? wins / closed.length : 0,
+      avg: returns.length > 0 ? returns.reduce((sum, value) => sum + value, 0) / returns.length : 0,
+      best: returns.length > 0 ? Math.max(...returns) : 0,
+      worst: returns.length > 0 ? Math.min(...returns) : 0,
+    };
+  }, [allTrades]);
 
   return (
     <div className="mx-auto min-h-screen w-full max-w-[1200px] px-4 pb-12 pt-5 sm:px-6">
@@ -608,7 +649,12 @@ export default function BacktestPage() {
           )}
 
           <section className="mt-4 rounded-2xl border border-outline bg-surface p-4">
-            <h2 className="text-sm font-semibold text-content">Latest rebalances</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-content">Rebalances</h2>
+              <span className="text-[11px] text-content-muted">
+                showing {periods.length} of {allPeriods.length}
+              </span>
+            </div>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-xs">
                 <thead>
@@ -649,6 +695,124 @@ export default function BacktestPage() {
                 </tbody>
               </table>
             </div>
+            {allPeriods.length > 8 && (
+              <button
+                type="button"
+                onClick={() => setShowAllRebalances((current) => !current)}
+                className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                {showAllRebalances ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                {showAllRebalances ? 'Show latest 8 rebalances' : `Show all ${allPeriods.length} rebalances`}
+              </button>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-outline bg-surface">
+            <button
+              type="button"
+              aria-expanded={tradesOpen}
+              onClick={() => setTradesOpen((current) => !current)}
+              className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+            >
+              <div>
+                <h2 className="text-sm font-semibold text-content">Trade log ({tradeStats.total})</h2>
+                <p className="text-[11px] text-content-muted">
+                  Where every position was bought and sold · {tradeStats.open} still open
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-content-muted">
+                <span className="hidden sm:inline">
+                  Win rate{' '}
+                  <strong className={tradeStats.winRate >= 0.5 ? 'text-[#4ade80]' : 'text-content'}>
+                    {formatPct(tradeStats.winRate * 100)}
+                  </strong>{' '}
+                  · avg <strong className="text-content">{formatPct(tradeStats.avg * 100)}</strong> · best{' '}
+                  <strong className="text-[#4ade80]">{formatPct(tradeStats.best * 100)}</strong> · worst{' '}
+                  <strong className="text-[#f87171]">{formatPct(tradeStats.worst * 100)}</strong>
+                </span>
+                {tradesOpen ? (
+                  <ChevronUp size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
+              </div>
+            </button>
+
+            {tradesOpen && (
+              <div className="border-t border-outline px-4 pb-4 pt-3">
+                {allTrades.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-content-muted">
+                    No trades yet — the strategy stayed in BTC.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[760px] text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
+                            <th className="py-2 pr-3">Coin</th>
+                            <th className="py-2 pr-3">Bought</th>
+                            <th className="py-2 pr-3">Sold</th>
+                            <th className="py-2 pr-3">Result</th>
+                            <th className="py-2">Why</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleTrades.map((trade, index) => (
+                            <tr
+                              key={`${trade.symbol}-${trade.entry_date}-${index}`}
+                              className="border-b border-outline/50"
+                            >
+                              <td className="py-2 pr-3">
+                                <span className="font-mono text-content">{trade.symbol.replace(/(USDT|BTC)$/, '')}</span>
+                                <span className="ml-1.5 text-content-muted">score {trade.entry_score.toFixed(0)}</span>
+                              </td>
+                              <td className="py-2 pr-3 font-mono">
+                                <div>{trade.entry_date.slice(0, 10)}</div>
+                                <div className="text-content-muted">{formatBtcValue(trade.entry_price)} BTC</div>
+                              </td>
+                              <td className="py-2 pr-3 font-mono">
+                                <div>{trade.exit_date.slice(0, 10)}</div>
+                                <div className="text-content-muted">{formatBtcValue(trade.exit_price)} BTC</div>
+                              </td>
+                              <td
+                                className={cn(
+                                  'py-2 pr-3 font-mono',
+                                  trade.return_pct >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]',
+                                )}
+                              >
+                                {formatPct(trade.return_pct * 100)}
+                                <span className="ml-1 text-content-muted">{trade.days}d</span>
+                              </td>
+                              <td className="py-2">
+                                <span
+                                  className={cn(
+                                    'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                                    EXIT_REASON_CLASSES[trade.exit_reason] ?? 'bg-surface-3 text-content-muted',
+                                  )}
+                                >
+                                  {EXIT_REASON_LABELS[trade.exit_reason] ?? trade.exit_reason}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {allTrades.length > 12 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllTrades((current) => !current)}
+                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        {showAllTrades ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {showAllTrades ? 'Show latest 12 trades' : `Show all ${allTrades.length} trades`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </section>
 
           <p className="mt-4 text-[11px] leading-relaxed text-content-muted">

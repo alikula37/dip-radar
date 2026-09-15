@@ -389,3 +389,103 @@ def test_trend_filter_skips_free_falling_coins():
 
     assert _held_symbols(result) == ["BBBUSDT", "BBBUSDT"]
     assert result["curve"][1]["period_return"] == pytest.approx(0.0)
+
+
+def test_trade_log_records_buy_and_sell_prices_with_reasons():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="rebalance", **_ROTATION_WINDOW)
+    trades = result["trades"]
+
+    first = trades[0]
+    assert first["symbol"] == "AAAUSDT"
+    assert first["entry_date"].startswith("2023-01-01")
+    assert first["entry_price"] == pytest.approx(100.0)
+    assert first["exit_date"].startswith("2023-02-01")
+    assert first["exit_price"] == pytest.approx(110.0)
+    assert first["exit_reason"] == "rebalance"
+    assert first["return_pct"] == pytest.approx(0.10)
+    assert first["days"] == 31
+
+    open_trade = trades[-1]
+    assert open_trade["symbol"] == "BBBUSDT"
+    assert open_trade["exit_reason"] == "open"
+    assert open_trade["exit_date"].startswith("2023-04-01")
+
+
+def test_trade_log_marks_score_exits_in_hold_mode():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="hold", sell_score=40, **_ROTATION_WINDOW)
+    closed = [trade for trade in result["trades"] if trade["exit_reason"] == "score"]
+
+    assert closed[0]["symbol"] == "AAAUSDT"
+    assert closed[0]["exit_date"].startswith("2023-03-01")
+    assert closed[0]["exit_price"] == pytest.approx(120.0)
+
+
+def test_trade_log_marks_risk_exits():
+    snapshot = _stop_snapshot([100.0, 95.0, 74.0, 80.0, 90.0, 85.0])
+
+    result = simulate(snapshot, stop_loss_pct=25, **_STOP_WINDOW)
+    trade = result["trades"][-1]
+
+    assert trade["exit_reason"] == "stop_loss"
+    assert trade["exit_price"] == pytest.approx(74.0)
+    assert trade["entry_date"].startswith("2023-01-01")
+    assert trade["exit_date"].startswith("2023-01-03")
+    assert trade["return_pct"] == pytest.approx(-0.26)
+
+
+def test_stop_levels_follow_the_original_entry_across_periods():
+    dates = [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1)]
+    closes = []
+    for index in range(60):
+        if index == 0:
+            closes.append(100.0)
+        elif index <= 31:
+            closes.append(100.0 - (index / 31.0) * 20.0)
+        elif index == 32:
+            closes.append(74.0)
+        else:
+            closes.append(74.0 + ((index - 32) / 27.0) * 16.0)
+    timestamps = array("d", [(dates[0] + timedelta(days=index)).timestamp() for index in range(len(closes))])
+
+    def entry(price):
+        return {"score": 90.0, "distance": 0.0, "price": price, "cap": 1e9, "volume": 1e8, "trend_30d": 0.0}
+
+    snapshot = {
+        "frequency": "monthly",
+        "end": dates[-1],
+        "dates": dates,
+        "entries": {
+            dates[0]: {"AAAUSDT": entry(100.0)},
+            dates[1]: {"AAAUSDT": entry(80.0)},
+            dates[2]: {"AAAUSDT": entry(90.0)},
+        },
+        "rates": {},
+        "rate_dates": [],
+        "series": {"AAAUSDT": {"timestamps": timestamps, "closes": array("d", closes)}},
+    }
+
+    result = simulate(
+        snapshot,
+        stop_loss_pct=25,
+        start=dates[0],
+        end=dates[-1],
+        top_n=1,
+        min_score=50,
+        min_market_cap=0,
+        min_volume=0,
+        weighting="equal",
+        fill_with_btc=False,
+        fee_pct=0,
+        rotation="hold",
+    )
+
+    # The 25% stop sits at 75 from the original 100 entry, so the 74 close in
+    # the second period sells it even though that period opened at 80.
+    assert result["trades"][-1]["exit_reason"] == "stop_loss"
+    assert result["trades"][-1]["exit_price"] == pytest.approx(74.0)
+    assert result["trades"][-1]["return_pct"] == pytest.approx(-0.26)
+    assert result["holdings"][1]["picks"][0]["exited"] is True

@@ -294,22 +294,38 @@ def _first_exit(
     start_index: int,
     end_index: int,
     entry_price: float,
+    peak: float,
     stop_loss_pct: Optional[float],
     trailing_stop_pct: Optional[float],
     take_profit_pct: Optional[float],
-) -> Optional[float]:
-    """First daily close that triggers a stop-loss, trailing stop or take-profit."""
-    peak = entry_price
+):
+    """First daily close that triggers a risk exit, relative to the position's
+    own entry/peak: ``(trigger, peak)`` where trigger is (price, reason, index)."""
     for index in range(start_index, end_index):
         price = closes[index]
         peak = max(peak, price)
         if stop_loss_pct is not None and price <= entry_price * (1.0 - stop_loss_pct / 100.0):
-            return price
+            return (price, "stop_loss", index), peak
         if trailing_stop_pct is not None and price <= peak * (1.0 - trailing_stop_pct / 100.0):
-            return price
+            return (price, "trailing_stop", index), peak
         if take_profit_pct is not None and price >= entry_price * (1.0 + take_profit_pct / 100.0):
-            return price
-    return None
+            return (price, "take_profit", index), peak
+    return None, peak
+
+
+def _trade(position: dict, exit_date: datetime, exit_price: float, reason: str) -> dict:
+    entry_price = position["entry_price"]
+    return {
+        "symbol": position["symbol"],
+        "entry_date": position["entry_date"].isoformat(),
+        "entry_price": entry_price,
+        "entry_score": position["entry_score"],
+        "exit_date": exit_date.isoformat(),
+        "exit_price": exit_price,
+        "exit_reason": reason,
+        "return_pct": (exit_price / entry_price - 1.0) if entry_price else 0.0,
+        "days": (exit_date - position["entry_date"]).days,
+    }
 
 
 def simulate(
@@ -360,6 +376,8 @@ def simulate(
     equity = 1.0
     previous_weights: dict = {}
     blocked_symbols: set = set()
+    open_positions: dict = {}
+    trades = []
     curve = [{"date": dates[0], "equity": 1.0, "period_return": 0.0}]
     holdings = []
     period_returns = []
@@ -419,6 +437,41 @@ def simulate(
             scale = len(picks) / top_n
             weights = {symbol: weight * scale for symbol, weight in weights.items()}
 
+        # Positions dropped at this anchor are sold at the anchor price; the
+        # trade log keeps where each position was bought and sold.
+        for symbol in list(open_positions):
+            if symbol in weights:
+                entry = pool.get(symbol)
+                if entry is not None:
+                    open_positions[symbol]["last_price"] = entry["price"]
+                    open_positions[symbol]["peak"] = max(open_positions[symbol]["peak"], entry["price"])
+                continue
+            position = open_positions.pop(symbol)
+            entry = pool.get(symbol)
+            exit_price = entry["price"] if entry is not None else position["last_price"]
+            if rotation == "rebalance":
+                reason = "rebalance"
+            elif entry is None:
+                reason = "missing"
+            else:
+                reason = "score"
+            trades.append(_trade(position, date, exit_price, reason))
+
+        for symbol in weights:
+            if symbol in open_positions:
+                continue
+            entry = pool.get(symbol)
+            if entry is None:
+                continue
+            open_positions[symbol] = {
+                "symbol": symbol,
+                "entry_date": date,
+                "entry_price": entry["price"],
+                "entry_score": entry["score"],
+                "last_price": entry["price"],
+                "peak": entry["price"],
+            }
+
         day_timestamp = date.timestamp()
         next_timestamp = next_date.timestamp()
 
@@ -429,25 +482,33 @@ def simulate(
             weight = weights.get(symbol, 0.0)
             price_now = entry["price"]
             price_next = next_pool.get(symbol, {}).get("price", price_now)
-            exit_price = None
-            if daily_exits:
+            exit_trigger = None
+            position = open_positions.get(symbol)
+            if daily_exits and position is not None:
                 data = series.get(symbol)
                 if data is not None:
                     start_index = bisect.bisect_right(data["timestamps"], day_timestamp)
-                    end_index = bisect.bisect_left(data["timestamps"], next_timestamp)
-                    exit_price = _first_exit(
+                    end_index = bisect.bisect_right(data["timestamps"], next_timestamp)
+                    exit_trigger, peak = _first_exit(
                         data["timestamps"],
                         data["closes"],
                         start_index,
                         end_index,
-                        price_now,
+                        position["entry_price"],
+                        position["peak"],
                         stop_loss_pct,
                         trailing_stop_pct,
                         take_profit_pct,
                     )
-            if exit_price is not None:
+                    position["peak"] = max(position["peak"], peak)
+                    position["last_price"] = price_next
+            if exit_trigger is not None:
+                exit_price, exit_reason, exit_index = exit_trigger
                 coin_return = (exit_price / price_now - 1.0) if price_now else 0.0
                 stopped_symbols.add(symbol)
+                open_positions.pop(symbol, None)
+                exit_day = datetime.fromtimestamp(series[symbol]["timestamps"][exit_index])
+                trades.append(_trade(position, exit_day, exit_price, exit_reason))
             else:
                 coin_return = (price_next / price_now - 1.0) if price_now else 0.0
             period_return += weight * coin_return
@@ -457,7 +518,7 @@ def simulate(
                     "score": entry["score"],
                     "weight": weight,
                     "period_return": coin_return,
-                    "exited": exit_price is not None,
+                    "exited": exit_trigger is not None,
                 }
             )
 
@@ -474,6 +535,12 @@ def simulate(
         holdings.append({"date": date, "picks": pick_rows})
         previous_weights = weights
         blocked_symbols = stopped_symbols
+
+    last_pool = entries_by_date.get(dates[-1], {})
+    for symbol, position in open_positions.items():
+        entry = last_pool.get(symbol)
+        exit_price = entry["price"] if entry is not None else position["last_price"]
+        trades.append(_trade(position, dates[-1], exit_price, "open"))
 
     rate_start = _rate_at(rates, rate_dates, dates[0])
     rate_end = _rate_at(rates, rate_dates, dates[-1])
@@ -524,6 +591,7 @@ def simulate(
         "metrics": metrics,
         "curve": curve,
         "holdings": holdings,
+        "trades": trades,
     }
 
 
