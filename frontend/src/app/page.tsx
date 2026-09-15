@@ -5,6 +5,7 @@ import {
   Ban,
   Camera,
   Download,
+  FlaskConical,
   History,
   LayoutDashboard,
   LayoutGrid,
@@ -15,6 +16,7 @@ import {
   Star,
   X,
 } from 'lucide-react';
+import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import CoinModal from '@/components/CoinModal';
@@ -576,6 +578,13 @@ export default function Home() {
               Updated {formatDate(meta.last_updated)}
             </span>
           )}
+          <Link
+            href="/backtest"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
+          >
+            <FlaskConical size={15} />
+            Strategy Lab
+          </Link>
           <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : undefined} />
             {refreshing ? 'Syncing…' : 'Refresh data'}

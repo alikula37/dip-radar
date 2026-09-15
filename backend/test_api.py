@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
+from backtest import clear_snapshot_cache
 from database import Base, SessionLocal, engine
 from models import BtcRate, Coin, Kline, Meta, SyncLock
 from timeutils import utcnow_naive
@@ -16,8 +17,10 @@ def clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     main.rate_limiter.hits.clear()
+    clear_snapshot_cache()
     yield
     main.rate_limiter.hits.clear()
+    clear_snapshot_cache()
 
 
 def seed_coin(symbol="ETHBTC", is_pre_2021=True, market_cap=1000.0):
@@ -385,6 +388,71 @@ def test_health_endpoint():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_backtest_endpoint_replays_value_score_history():
+    db = SessionLocal()
+    db.add(
+        Coin(
+            symbol="ETHBTC",
+            name="Ethereum",
+            is_pre_2021=False,
+            listed_checked=True,
+            market_cap=50_000_000.0,
+            volume_24h=1_000_000.0,
+            current_price_btc=12.0,
+        )
+    )
+    start = datetime(2021, 1, 1)
+    for day in range(1100):
+        price = 100.0 - day * 0.08
+        db.add(
+            Kline(
+                symbol="ETHBTC",
+                timestamp=start + timedelta(days=day),
+                open=price,
+                high=price,
+                low=price,
+                close=price,
+                volume=1,
+            )
+        )
+    db.add_all(
+        [
+            BtcRate(timestamp=datetime(2023, 1, 1), high=1, low=1, close=30000.0),
+            BtcRate(timestamp=datetime(2024, 1, 1), high=1, low=1, close=40000.0),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    response = client.get(
+        "/api/backtest",
+        params={
+            "start": "2023-01-01",
+            "rebalance": "monthly",
+            "top_n": 1,
+            "min_score": 0,
+            "min_market_cap": 0,
+            "min_volume": 0,
+            "fee_pct": 0,
+            "optimize": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"]["periods"] >= 10
+    assert len(payload["curve"]) == payload["metrics"]["periods"] + 1
+    assert payload["start"] >= "2023-01-01"
+    assert payload["holdings"][0]["picks"][0]["symbol"] == "ETHBTC"
+    # BTC/USD went 30k -> 40k inside the window, so the benchmark is +33%.
+    assert payload["metrics"]["benchmark_btc_usd_return"] == pytest.approx(1 / 3, abs=0.01)
+    assert payload["optimization"]
+    assert payload["optimization"][0]["sharpe"] >= payload["optimization"][-1]["sharpe"]
+
+    assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422
+    assert client.get("/api/backtest", params={"start": "2023-01-01", "end": "2022-01-01"}).status_code == 422
 
 
 def test_api_key_required_when_configured(monkeypatch):
