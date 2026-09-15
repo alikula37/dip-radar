@@ -146,9 +146,11 @@ Three changes moved the score line forward:
 
 The optimizer's parameter space now includes the market-cap **floor and ceiling**
 (`min_market_cap` / `max_market_cap`), so universe selection is part of the
-search instead of a fixed form field. The retune (8,000+ trials across return and
-Sharpe objectives, funding pinned at 10%, nested CV→holdout gate) produced two
-families: mid-caps (<$500M) that compound the most but carry −81% drawdowns, and
+search instead of a fixed form field. The retune ran four searches under the
+percentile score — 5,400 trials total (1,500 return, 1,500 return with a 50%
+drawdown limit, 1,200 return and 1,200 Sharpe with top-5 pinned; 6,500 more ran
+under the previous scale) — with funding pinned at 10% and the nested CV→holdout
+gate. It produced two families: mid-caps (<$500M) that compound the most but carry −81% drawdowns, and
 large caps ($500M–$10B) with Sharpe 1.16–1.62 at −12%…−21% drawdowns but a flat
 holdout. The shipped **Optimized** preset blends them: the validated large-cap
 family switched to the hold rule (sell < 3) inside a $50M–$1B band, top-5
