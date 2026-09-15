@@ -26,7 +26,7 @@ from statistics import mean
 from typing import Optional
 
 from backtest import BacktestError, simulate
-from research.cv import assert_no_overlap, walk_forward_folds
+from research.cv import assert_no_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -178,15 +178,36 @@ def _split_window(dates: list, validation_fraction: float):
     return train_dates, holdout_dates
 
 
-def _cv_folds(train_dates: list) -> list:
-    """Purged + embargoed walk-forward folds inside the training region."""
-    folds = walk_forward_folds(
-        len(train_dates),
-        horizon=LABEL_HORIZON,
-        test_size=max(2, len(train_dates) // 4),
-        min_train=max(3, len(train_dates) // 3),
-        embargo=1,
-    )
+def _cv_folds(train_dates: list, folds_count: int = 3) -> list:
+    """Purged + embargoed walk-forward folds inside the training region.
+
+    ``folds_count`` is the user-facing knob: the validation tail is split into
+    that many contiguous test blocks (at least two anchors each), and each
+    block trains on everything before it with a purge + embargo gap.
+    """
+    n = len(train_dates)
+    folds_count = max(1, min(6, int(folds_count)))
+    min_train = max(3, n // 3)
+    tail_start = min_train + LABEL_HORIZON + 1
+    available = n - tail_start
+    if available < 2:
+        return []
+    folds_count = max(1, min(folds_count, available // 2))
+    test_size = available // folds_count
+
+    folds = []
+    test_start = tail_start
+    for index in range(folds_count):
+        test_end = n if index == folds_count - 1 else min(n, test_start + test_size)
+        folds.append(
+            {
+                "train": (0, test_start - LABEL_HORIZON - 1),
+                "test": (test_start, test_end),
+                "horizon": LABEL_HORIZON,
+                "embargo": 1,
+            }
+        )
+        test_start = test_end
     assert_no_overlap(folds, LABEL_HORIZON)
     return folds
 
@@ -233,6 +254,7 @@ def optimize_strategy(
     optimize_params=None,
     fixed_params=None,
     gap_fraction: float = DEFAULT_GAP_FRACTION,
+    cv_folds: int = 3,
 ) -> dict:
     if objective not in OBJECTIVES:
         raise BacktestError(f"objective must be one of {', '.join(OBJECTIVES)}")
@@ -248,7 +270,9 @@ def optimize_strategy(
     if len(dates) < 8:
         raise BacktestError("The selected window has too few rebalance dates for validation")
     train_dates, holdout_dates = _split_window(dates, validation_fraction)
-    folds = _cv_folds(train_dates)
+    folds = _cv_folds(train_dates, cv_folds)
+    if not folds:
+        raise BacktestError("Not enough anchors for walk-forward folds; widen the date range")
 
     fixed = {
         "min_market_cap": min_market_cap,
@@ -393,6 +417,7 @@ def optimize_strategy(
             ],
             "horizon_anchors": LABEL_HORIZON,
             "embargo_anchors": 1,
+            "folds_requested": max(1, min(6, int(cv_folds))),
             "candidates_scored": len([item for item in with_cv if item["cv"]]),
         },
         "best": best,

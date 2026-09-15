@@ -47,17 +47,18 @@ test('auto-optimizer opens a dialog, scopes parameters and validates candidates'
 
   const summary = dialog.getByText(/Validated \d+ · rejected \d+/);
   await expect(summary).toBeVisible({ timeout: 120_000 });
-  await expect(dialog.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeVisible();
-  await expect(dialog.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
 
   const summaryText = (await summary.textContent()) ?? '';
   const validated = Number(/Validated (\d+)/.exec(summaryText)?.[1] ?? '0');
   if (validated > 0) {
+    await expect(dialog.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeVisible();
+    await expect(dialog.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
     const applyButton = dialog.getByRole('button', { name: 'Apply' }).first();
     await expect(applyButton).toBeVisible({ timeout: 30_000 });
     await applyButton.click();
     await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
   } else {
     await expect(dialog.getByText(/No configuration passed validation/)).toBeVisible();
+    await expect(dialog.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toHaveCount(0);
   }
 });

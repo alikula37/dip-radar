@@ -477,6 +477,7 @@ def optimize_backtest(payload: schemas.OptimizerRequest, db: Session = Depends(g
             trials=payload.trials,
             max_drawdown_limit=payload.max_drawdown_limit,
             validation_fraction=payload.validation_fraction,
+            cv_folds=payload.cv_folds,
             optimize_params=payload.optimize_params,
             fixed_params=payload.fixed_params,
             seed=7,
@@ -492,6 +493,7 @@ def optimize_backtest(payload: schemas.OptimizerRequest, db: Session = Depends(g
         "min_volume": payload.min_volume,
         "fee_pct": payload.fee_pct,
         "validation_fraction": payload.validation_fraction,
+        "cv_folds": payload.cv_folds,
     }
 
 

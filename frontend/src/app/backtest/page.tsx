@@ -194,6 +194,7 @@ async function requestOptimizer(
     trials: number;
     maxDrawdownLimit: number | null;
     validationFraction: number;
+    cvFolds: number;
     optimizeParams: string[];
     fixedParams: Record<string, string | number | boolean | null>;
   },
@@ -214,6 +215,7 @@ async function requestOptimizer(
       trials: options.trials,
       max_drawdown_limit: options.maxDrawdownLimit,
       validation_fraction: options.validationFraction / 100,
+      cv_folds: options.cvFolds,
       optimize_params: options.optimizeParams,
       fixed_params: options.fixedParams,
     }),
@@ -301,6 +303,7 @@ export default function BacktestPage() {
   const [trials, setTrials] = useState(150);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
   const [validationFraction, setValidationFraction] = useState(30);
+  const [cvFolds, setCvFolds] = useState(3);
 
   const runBacktest = useCallback(async (params: BacktestForm) => {
     setLoading(true);
@@ -326,6 +329,7 @@ export default function BacktestPage() {
         trials,
         maxDrawdownLimit,
         validationFraction,
+        cvFolds,
         optimizeParams: searchParams,
         fixedParams: pinnedValues,
       });
@@ -335,7 +339,7 @@ export default function BacktestPage() {
     } finally {
       setOptimizing(false);
     }
-  }, [form, objective, trials, maxDrawdownLimit, validationFraction, searchParams, pinnedValues]);
+  }, [form, objective, trials, maxDrawdownLimit, validationFraction, cvFolds, searchParams, pinnedValues]);
 
   const applyCandidate = (candidate: OptimizerCandidate) => {
     const params = candidate.params;
@@ -818,6 +822,17 @@ export default function BacktestPage() {
                   />
                 </label>
                 <label className="text-[11px] text-content-muted">
+                  CV folds
+                  <input
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={cvFolds}
+                    onChange={(event) => setCvFolds(Math.min(6, Math.max(1, Number(event.target.value) || 3)))}
+                    className="mt-1 w-20 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="text-[11px] text-content-muted">
                   Holdout (%)
                   <input
                     type="number"
@@ -982,6 +997,7 @@ export default function BacktestPage() {
                       {optimizeResult.message}
                     </p>
                   )}
+                  {optimizeResult.best.length > 0 && (
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full min-w-[860px] text-left text-xs">
                       <thead>
@@ -1036,10 +1052,13 @@ export default function BacktestPage() {
                       </tbody>
                     </table>
                   </div>
+                  )}
+                  {optimizeResult.best.length > 0 && (
                   <p className="mt-2 text-[11px] text-content-muted">
                     The holdout column is the only untouched evidence. A positive CV that turns negative on the
                     holdout means the search overfit — stay with the presets in that case.
                   </p>
+                  )}
                 </>
               )}
             </div>

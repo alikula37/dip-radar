@@ -160,6 +160,7 @@ class OptimizerRequest(BaseModel):
     trials: int = 200
     max_drawdown_limit: Optional[float] = None
     validation_fraction: float = 0.3
+    cv_folds: int = 3
     optimize_params: Optional[List[str]] = None
     fixed_params: Optional[dict] = None
 
@@ -183,6 +184,7 @@ class OptimizerResponse(BaseModel):
     min_volume: float
     fee_pct: float
     validation_fraction: float
+    cv_folds: int = 3
     train: dict
     holdout: dict
     cv: dict

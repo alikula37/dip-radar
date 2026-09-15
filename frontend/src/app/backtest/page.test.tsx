@@ -226,6 +226,7 @@ describe('BacktestPage', () => {
         folds: [{ train: ['2022-01-01T00:00:00', '2024-01-01T00:00:00'], test: ['2024-02-01T00:00:00', '2024-12-01T00:00:00'] }],
         horizon_anchors: 1,
         embargo_anchors: 1,
+        folds_requested: 3,
         candidates_scored: 16,
       },
       best: [
@@ -287,6 +288,7 @@ describe('BacktestPage', () => {
     const body = JSON.parse(String(optimizerCall?.[1]?.body));
     expect(body.optimize_params).toContain('take_profit_pct');
     expect(body.fixed_params).not.toHaveProperty('take_profit_pct');
+    expect(body.cv_folds).toBe(3);
 
     // The auto-optimize panel renders before the results table, so its Apply is first.
     const applyButtons = screen.getAllByRole('button', { name: /apply/i });
@@ -299,6 +301,54 @@ describe('BacktestPage', () => {
       );
       expect(String(fetchSpy.mock.calls.at(-1)?.[0])).not.toContain('NaN');
     });
+  });
+
+  it('shows only the message when no candidate passes validation', async () => {
+    const emptyOptimizer: OptimizerResponse = {
+      optimizer: 'optuna-tpe',
+      objective: 'sharpe',
+      trials: 50,
+      evaluated: 42,
+      max_drawdown_limit: null,
+      rebalance: 'weekly',
+      score_model: 'rule',
+      min_market_cap: 10_000_000,
+      min_volume: 250_000,
+      fee_pct: 0.1,
+      validation_fraction: 0.3,
+      train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
+      holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
+      cv: {
+        folds: [{ train: ['2022-01-01T00:00:00', '2024-01-01T00:00:00'], test: ['2024-02-01T00:00:00', '2024-12-01T00:00:00'] }],
+        horizon_anchors: 1,
+        embargo_anchors: 1,
+        folds_requested: 3,
+        candidates_scored: 16,
+      },
+      validated: 0,
+      best: [],
+      rejected: { count: 16, reasons: { 'CV mean not positive': 16 } },
+      gap_fraction: 0.5,
+      optimize_params: ['top_n', 'min_score'],
+      fixed_params: { trailing_stop_pct: null },
+      message: 'No configuration passed validation on the untouched holdout.',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes('/api/backtest/optimize')) {
+        return Promise.resolve(new Response(JSON.stringify(emptyOptimizer), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(response), { status: 200 }));
+    });
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
+    fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
+
+    expect(await screen.findByText(/No configuration passed validation/)).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeNull();
   });
 
   it('shows backend validation errors with a retry', async () => {

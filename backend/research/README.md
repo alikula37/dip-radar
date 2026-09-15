@@ -153,8 +153,9 @@ parameters for this pinned universe" — shipped as `POST /api/backtest/optimize
 (see `backend/optimizer.py`). It runs a nested validation funnel: you add the
 parameters to search with **+** (the rest are pinned to editable values) and
 Optuna TPE searches on a training region → unique candidates are re-scored by
-purged + embargoed walk-forward CV inside that region → only finalists touch
-the trailing holdout. **Hard gates** decide what is shown: every CV fold must
+purged + embargoed walk-forward CV inside that region (the number of folds is
+a user-facing knob, `cv_folds`, 1-6) → only finalists touch the trailing
+holdout. **Hard gates** decide what is shown: every CV fold must
 be positive, the holdout must be positive and retain at least half of the CV
 edge (`gap_fraction`), otherwise the candidate is rejected. When nothing
 survives, the API/UI returns an explicit "stay with the presets" message —
