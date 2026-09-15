@@ -150,7 +150,17 @@ enough and that the strategy gate must stay.
 Separation of concerns: *learning a score* failed the gates, while *black-box
 optimization over simulator outcomes* is the right tool for "find the best
 parameters for this pinned universe" — shipped as `GET /api/backtest/optimize`
-(Optuna TPE, seeded, with a trailing holdout the search never sees; see
-`backend/optimizer.py`). Measured example: 200 trials find a config with
-train Sharpe 0.85 whose holdout is −12%, which is why the UI shows both
-columns and why the validated presets stay the sane defaults.
+(see `backend/optimizer.py`). It runs a nested validation funnel: Optuna TPE
+searches on a training region → unique candidates are re-scored by purged +
+embargoed walk-forward CV inside that region and **ranked by CV mean** (worst
+fold breaks ties) → only finalists touch the trailing holdout, and configs
+that lose there are flagged as overfit risk. Measured example: 200 trials
+find a config with train Sharpe 0.85 whose holdout is −12% — the UI shows
+train / CV / holdout side by side, which is why the validated presets stay
+the defaults.
+
+Operational note: the recovered delisted universe (623 symbols) made cold
+snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
+to four snapshots LRU). The next performance step is incremental stats
+(sorted trailing windows maintained across anchors instead of re-sorting the
+full prefix per anchor).

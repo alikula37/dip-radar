@@ -199,10 +199,24 @@ export interface BacktestForm {
   optimize: boolean;
 }
 
+export interface OptimizerFold {
+  test_start: string;
+  test_end: string;
+  metrics: BacktestMetrics;
+}
+
+export interface OptimizerCvMetrics {
+  mean: number;
+  min: number;
+  per_fold: OptimizerFold[];
+}
+
 export interface OptimizerCandidate {
   params: Record<string, string | number | boolean | null>;
   train_metrics: BacktestMetrics;
+  cv_metrics: OptimizerCvMetrics | null;
   holdout_metrics: BacktestMetrics | null;
+  overfit_risk: boolean;
 }
 
 export interface OptimizerResponse {
@@ -219,5 +233,11 @@ export interface OptimizerResponse {
   validation_fraction: number;
   train: { start: string; end: string };
   holdout: { start: string; end: string };
+  cv: {
+    folds: { train: [string, string]; test: [string, string] }[];
+    horizon_anchors: number;
+    embargo_anchors: number;
+    candidates_scored: number;
+  };
   best: OptimizerCandidate[];
 }

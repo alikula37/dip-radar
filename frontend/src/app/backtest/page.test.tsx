@@ -252,6 +252,12 @@ describe('BacktestPage', () => {
       validation_fraction: 0.3,
       train: { start: '2022-01-01T00:00:00', end: '2025-01-01T00:00:00' },
       holdout: { start: '2025-01-01T00:00:00', end: '2026-09-01T00:00:00' },
+      cv: {
+        folds: [{ train: ['2022-01-01T00:00:00', '2024-01-01T00:00:00'], test: ['2024-02-01T00:00:00', '2024-12-01T00:00:00'] }],
+        horizon_anchors: 1,
+        embargo_anchors: 1,
+        candidates_scored: 16,
+      },
       best: [
         {
           params: {
@@ -268,7 +274,9 @@ describe('BacktestPage', () => {
             stop_loss_pct: null,
           },
           train_metrics: response.metrics,
+          cv_metrics: { mean: 0.42, min: -0.1, per_fold: [] },
           holdout_metrics: response.metrics,
+          overfit_risk: false,
         },
       ],
     };
@@ -285,10 +293,12 @@ describe('BacktestPage', () => {
     await screen.findByText('Win rate');
 
     fireEvent.click(screen.getByRole('button', { name: /auto-optimize/i }));
+    expect(screen.getByRole('dialog', { name: 'Auto-optimize' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /find best parameters/i }));
 
     expect(await screen.findByText(/optuna-tpe · 42\/50/)).toBeTruthy();
     expect(screen.getByText('top 4')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeTruthy();
 
     // The auto-optimize panel renders before the results table, so its Apply is first.
     const applyButtons = screen.getAllByRole('button', { name: /apply/i });

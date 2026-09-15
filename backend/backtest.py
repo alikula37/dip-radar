@@ -158,12 +158,18 @@ def _rate_at(rates: dict, rate_dates: list, when: datetime) -> Optional[float]:
     return rates[rate_dates[index]]
 
 
+def regime_warmup_start(start: datetime, frequency: str) -> datetime:
+    """Earliest anchor a window needs so the dominance trend is already defined."""
+    return start - timedelta(days=(REGIME_SMA_ANCHORS + 2) * FREQUENCY_DAYS[frequency])
+
+
 def build_snapshot(
     db: DBSession,
     frequency: str,
     end: datetime,
     use_cache: bool = True,
     score_model: str = "rule",
+    earliest: Optional[datetime] = None,
 ) -> dict:
     if frequency not in FREQUENCY_DAYS:
         raise BacktestError("rebalance must be weekly, monthly or quarterly")
@@ -178,7 +184,7 @@ def build_snapshot(
     else:
         score_artifact = None
 
-    key = (frequency, end.date().isoformat(), score_model)
+    key = (frequency, end.date().isoformat(), score_model, earliest.date().isoformat() if earliest else None)
     if use_cache and key in _SNAPSHOT_CACHE:
         return _SNAPSHOT_CACHE[key]
 
@@ -205,6 +211,10 @@ def build_snapshot(
 
     first_date = min(entry[0][0] for entry in series.values() if entry[0])
     anchor_start = first_date + timedelta(days=WARMUP_CANDLES)
+    if earliest is not None:
+        # Skipping pre-window anchors keeps cold builds fast; the caller adds a
+        # warmup buffer so regime signals are still defined at the window start.
+        anchor_start = max(anchor_start, earliest)
     dates = _anchor_dates(anchor_start, end, frequency)
     if len(dates) < 2:
         raise BacktestError("Not enough history for this frequency")

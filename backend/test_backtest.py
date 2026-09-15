@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from backtest import BacktestError, build_snapshot, optimize, simulate
+from backtest import BacktestError, build_snapshot, optimize, regime_warmup_start, simulate
 from models import Coin, Kline
 
 START = datetime(2021, 1, 1)
@@ -591,3 +591,22 @@ def test_stop_levels_follow_the_original_entry_across_periods():
     assert result["trades"][-1]["exit_price"] == pytest.approx(74.0)
     assert result["trades"][-1]["return_pct"] == pytest.approx(-0.26)
     assert result["holdings"][1]["picks"][0]["exited"] is True
+
+
+def test_snapshot_earliest_limits_the_anchor_range(seeded_db):
+    end = START + timedelta(days=DAYS - 1)
+    full = build_snapshot(seeded_db, "monthly", end, use_cache=False)
+    cutoff = datetime(2023, 6, 1)
+    trimmed = build_snapshot(seeded_db, "monthly", end, use_cache=False, earliest=cutoff)
+
+    assert full["dates"][0] < cutoff
+    assert trimmed["dates"][0] >= cutoff
+    assert len(trimmed["dates"]) < len(full["dates"])
+    assert trimmed["entries"][trimmed["dates"][0]]  # scoring still works
+
+
+def test_regime_warmup_start_leaves_room_for_the_trend():
+    warmup = regime_warmup_start(datetime(2022, 1, 1), "monthly")
+
+    assert warmup < datetime(2022, 1, 1)
+    assert (datetime(2022, 1, 1) - warmup).days >= 30

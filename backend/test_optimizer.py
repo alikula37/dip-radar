@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 from optimizer import CATEGORICAL_SPACE, _sample, optimize_strategy
@@ -5,7 +6,7 @@ from optimizer import CATEGORICAL_SPACE, _sample, optimize_strategy
 START = datetime(2022, 1, 1)
 
 
-def _snapshot(anchors=8, symbols=6, cap=50_000_000.0, volume=1_000_000.0):
+def _snapshot(anchors=12, symbols=6, cap=50_000_000.0, volume=1_000_000.0):
     dates = [
         datetime(2022, 1, 1) + timedelta(days=30 * index)
         for index in range(anchors)
@@ -62,7 +63,7 @@ def test_optimizer_returns_ranked_candidates_with_a_holdout():
     result = optimize_strategy(
         _snapshot(),
         start=START,
-        end=START + timedelta(days=30 * 7),
+        end=START + timedelta(days=30 * 11),
         min_market_cap=0,
         min_volume=0,
         fee_pct=0.1,
@@ -87,7 +88,7 @@ def test_optimizer_respects_universe_constraints():
     result = optimize_strategy(
         _snapshot(),
         start=START,
-        end=START + timedelta(days=30 * 7),
+        end=START + timedelta(days=30 * 11),
         min_market_cap=0,
         min_volume=10_000_000_000.0,  # nothing passes the volume filter
         fee_pct=0.1,
@@ -117,7 +118,7 @@ def test_optimizer_drawdown_limit_rejects_everything_when_impossible():
     result = optimize_strategy(
         _crashing_snapshot(),
         start=START,
-        end=START + timedelta(days=30 * 7),
+        end=START + timedelta(days=30 * 11),
         min_market_cap=0,
         min_volume=0,
         fee_pct=0.1,
@@ -156,3 +157,49 @@ def test_optimizer_is_reproducible_for_a_seed():
     assert [candidate["params"] for candidate in first["best"]] == [
         candidate["params"] for candidate in second["best"]
     ]
+
+
+def test_optimizer_reports_purged_cv_and_flags_overfit():
+    result = optimize_strategy(
+        _crashing_snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="sharpe",
+        trials=8,
+        seed=4,
+        top_k=3,
+    )
+
+    assert result["cv"]["folds"]
+    assert result["cv"]["horizon_anchors"] == 1
+    assert result["cv"]["embargo_anchors"] == 1
+    holdout_start = result["holdout"]["start"]
+    for fold in result["cv"]["folds"]:
+        assert fold["test"][1] <= holdout_start  # CV never touches the holdout
+    assert result["best"]
+    for candidate in result["best"]:
+        assert "cv_metrics" in candidate
+        assert candidate["overfit_risk"] is True  # everything loses in a crash
+
+
+def test_optimizer_returns_unique_configs():
+    result = optimize_strategy(
+        _snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="sharpe",
+        trials=20,
+        seed=9,
+        top_k=4,
+    )
+
+    keys = [json.dumps(candidate["params"], sort_keys=True, default=str) for candidate in result["best"]]
+    assert len(keys) == len(set(keys))

@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ChevronDown, ChevronUp, Download, FlaskConical, Play, Sparkles } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, Download, FlaskConical, Play, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -305,6 +305,15 @@ export default function BacktestPage() {
   };
 
   useEffect(() => {
+    if (!autoOpen) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAutoOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [autoOpen]);
+
+  useEffect(() => {
     // Defer so the loading state is not set synchronously inside the effect.
     const timer = window.setTimeout(() => void runBacktest(DEFAULT_FORM), 0);
     return () => window.clearTimeout(timer);
@@ -394,6 +403,14 @@ export default function BacktestPage() {
             Optimize
           </button>
 
+          <Button
+            variant="outline"
+            onClick={() => setAutoOpen(true)}
+            title="Optuna TPE search selected by purged walk-forward CV and reported on an unseen holdout"
+          >
+            <Sparkles size={15} />
+            Auto-optimize
+          </Button>
           <Button variant="primary" onClick={() => void runBacktest(form)} disabled={loading}>
             <Play size={15} />
             {loading ? 'Running…' : 'Run backtest'}
@@ -679,150 +696,181 @@ export default function BacktestPage() {
         </div>
       </section>
 
-      <section className="mt-4 rounded-2xl border border-outline bg-surface">
-        <button
-          type="button"
-          aria-expanded={autoOpen}
-          onClick={() => setAutoOpen((current) => !current)}
-          className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+      {autoOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Auto-optimize"
+          className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:p-8"
+          onClick={() => setAutoOpen(false)}
         >
-          <div>
-            <h2 className="text-sm font-semibold text-content">Auto-optimize</h2>
-            <p className="text-[11px] text-content-muted">
-              Universe filters and dates above stay pinned; the optimizer searches the rest and validates on a holdout
-            </p>
-          </div>
-          {autoOpen ? <ChevronUp size={16} className="text-content-muted" /> : <ChevronDown size={16} className="text-content-muted" />}
-        </button>
-        {autoOpen && (
-          <div className="border-t border-outline px-4 pb-4 pt-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="text-[11px] text-content-muted">
-                Objective
-                <select
-                  value={objective}
-                  onChange={(event) => setObjective(event.target.value as typeof objective)}
-                  className="mt-1 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
-                >
-                  <option value="sharpe">Sharpe</option>
-                  <option value="return">Total return</option>
-                  <option value="calmar">Calmar</option>
-                </select>
-              </label>
-              <label className="text-[11px] text-content-muted">
-                Trials
-                <input
-                  type="number"
-                  min={10}
-                  max={1000}
-                  value={trials}
-                  onChange={(event) => setTrials(Math.min(1000, Math.max(10, Number(event.target.value) || 10)))}
-                  className="mt-1 w-24 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
-                />
-              </label>
-              <label className="text-[11px] text-content-muted">
-                Max drawdown limit (%, blank = off)
-                <input
-                  type="number"
-                  min={0}
-                  max={95}
-                  value={maxDrawdownLimit ?? ''}
-                  onChange={(event) => setMaxDrawdownLimit(event.target.value === '' ? null : Number(event.target.value))}
-                  className="mt-1 w-28 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
-                />
-              </label>
-              <label className="text-[11px] text-content-muted">
-                Holdout (%)
-                <input
-                  type="number"
-                  min={10}
-                  max={50}
-                  value={validationFraction}
-                  onChange={(event) => setValidationFraction(Math.min(50, Math.max(10, Number(event.target.value) || 30)))}
-                  className="mt-1 w-20 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
-                />
-              </label>
-              <Button variant="primary" onClick={() => void runOptimizer()} disabled={optimizing}>
-                <Sparkles size={15} />
-                {optimizing ? 'Searching…' : 'Find best parameters'}
-              </Button>
+          <div
+            className="w-full max-w-5xl rounded-2xl border border-outline bg-surface shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-outline px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-content">Auto-optimize</h2>
+                <p className="text-[11px] text-content-muted">
+                  Search on the training window → selected by purged + embargoed walk-forward CV → reported on a
+                  holdout the search never sees
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close auto-optimize"
+                onClick={() => setAutoOpen(false)}
+                className="rounded-full p-1 text-content-muted transition-colors hover:bg-surface-3 hover:text-content"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            {optimizeError && <p className="mt-3 text-xs text-[#f87171]">{optimizeError}</p>}
+            <div className="max-h-[75vh] overflow-y-auto px-4 py-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-[11px] text-content-muted">
+                  Objective
+                  <select
+                    value={objective}
+                    onChange={(event) => setObjective(event.target.value as typeof objective)}
+                    className="mt-1 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  >
+                    <option value="sharpe">Sharpe</option>
+                    <option value="return">Total return</option>
+                    <option value="calmar">Calmar</option>
+                  </select>
+                </label>
+                <label className="text-[11px] text-content-muted">
+                  Trials
+                  <input
+                    type="number"
+                    min={10}
+                    max={1000}
+                    value={trials}
+                    onChange={(event) => setTrials(Math.min(1000, Math.max(10, Number(event.target.value) || 10)))}
+                    className="mt-1 w-24 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="text-[11px] text-content-muted">
+                  Max drawdown limit (%, blank = off)
+                  <input
+                    type="number"
+                    min={0}
+                    max={95}
+                    value={maxDrawdownLimit ?? ''}
+                    onChange={(event) => setMaxDrawdownLimit(event.target.value === '' ? null : Number(event.target.value))}
+                    className="mt-1 w-28 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="text-[11px] text-content-muted">
+                  Holdout (%)
+                  <input
+                    type="number"
+                    min={10}
+                    max={50}
+                    value={validationFraction}
+                    onChange={(event) => setValidationFraction(Math.min(50, Math.max(10, Number(event.target.value) || 30)))}
+                    className="mt-1 w-20 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                  />
+                </label>
+                <Button variant="primary" onClick={() => void runOptimizer()} disabled={optimizing}>
+                  <Sparkles size={15} />
+                  {optimizing ? 'Searching…' : 'Find best parameters'}
+                </Button>
+              </div>
 
-            {optimizeResult && (
-              <>
-                <p className="mt-3 text-[11px] text-content-muted">
-                  {optimizeResult.optimizer} · {optimizeResult.evaluated}/{optimizeResult.trials} configs kept ·
-                  train {optimizeResult.train.start.slice(0, 10)} → {optimizeResult.train.end.slice(0, 10)} ·
-                  holdout {optimizeResult.holdout.start.slice(0, 10)} → {optimizeResult.holdout.end.slice(0, 10)}
-                  {optimizeResult.max_drawdown_limit ? ` · max DD ≤ ${optimizeResult.max_drawdown_limit}%` : ''}
-                </p>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
-                        <th className="py-2 pr-3">Config</th>
-                        <th className="py-2 pr-3">Train</th>
-                        <th className="py-2 pr-3">Holdout</th>
-                        <th className="py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {optimizeResult.best.map((candidate, index) => (
-                        <tr key={index} className="border-b border-outline/50 align-top">
-                          <td className="py-2 pr-3">
-                            <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">top {String(candidate.params.top_n)}</span>
-                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">score ≥ {String(candidate.params.min_score)}</span>
-                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
-                                sell {candidate.params.sell_score === null ? '= buy' : String(candidate.params.sell_score)}
-                              </span>
-                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">{String(candidate.params.rotation)}</span>
-                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
-                                {candidate.params.regime_filter === null
-                                  ? 'regime off'
-                                  : `${String(candidate.params.regime_filter)}@${Math.round(Number(candidate.params.regime_exposure) * 100)}%`}
-                              </span>
-                              {candidate.params.trailing_stop_pct !== null && (
-                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">trail {String(candidate.params.trailing_stop_pct)}%</span>
-                              )}
-                              {candidate.params.take_profit_pct !== null && (
-                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">tp {String(candidate.params.take_profit_pct)}%</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-2 pr-3 font-mono text-[11px] text-content-muted">{metricsText(candidate.train_metrics)}</td>
-                          <td className="py-2 pr-3 font-mono text-[11px] text-content">
-                            {candidate.holdout_metrics ? metricsText(candidate.holdout_metrics) : '—'}
-                          </td>
-                          <td className="py-2 text-right">
-                            <Button variant="ghost" className="px-2 py-1 text-[11px]" onClick={() => applyCandidate(candidate)}>
-                              Apply
-                            </Button>
-                          </td>
+              <p className="mt-2 text-[11px] text-content-muted">
+                Universe filters and dates from the form stay pinned. Candidates are ranked by CV mean (worst fold
+                breaks ties), not by the search score.
+              </p>
+
+              {optimizeError && <p className="mt-3 text-xs text-[#f87171]">{optimizeError}</p>}
+
+              {optimizeResult && (
+                <>
+                  <p className="mt-4 text-[11px] text-content-muted">
+                    {optimizeResult.optimizer} · {optimizeResult.evaluated}/{optimizeResult.trials} unique configs ·
+                    CV {optimizeResult.cv.folds.length} fold(s), purge horizon {optimizeResult.cv.horizon_anchors} /
+                    embargo {optimizeResult.cv.embargo_anchors} anchors · train{' '}
+                    {optimizeResult.train.start.slice(0, 10)} → {optimizeResult.train.end.slice(0, 10)} · holdout{' '}
+                    {optimizeResult.holdout.start.slice(0, 10)} → {optimizeResult.holdout.end.slice(0, 10)}
+                    {optimizeResult.max_drawdown_limit ? ` · max DD ≤ ${optimizeResult.max_drawdown_limit}%` : ''}
+                  </p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full min-w-[860px] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
+                          <th className="py-2 pr-3">Config</th>
+                          <th className="py-2 pr-3">Train</th>
+                          <th className="py-2 pr-3">CV (walk-forward)</th>
+                          <th className="py-2 pr-3">Holdout</th>
+                          <th className="py-2" />
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="mt-2 text-[11px] text-content-muted">
-                  In-sample optimization: the holdout column is the honest one. Searched: top-N 2-10, score 0-80,
-                  sell/trend/rotation/weighting/regime/stops on small grids.
-                </p>
-              </>
-            )}
+                      </thead>
+                      <tbody>
+                        {optimizeResult.best.map((candidate, index) => (
+                          <tr key={index} className="border-b border-outline/50 align-top">
+                            <td className="py-2 pr-3">
+                              <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">top {String(candidate.params.top_n)}</span>
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">score ≥ {String(candidate.params.min_score)}</span>
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
+                                  sell {candidate.params.sell_score === null ? '= buy' : String(candidate.params.sell_score)}
+                                </span>
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">{String(candidate.params.rotation)}</span>
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
+                                  {candidate.params.regime_filter === null
+                                    ? 'regime off'
+                                    : `${String(candidate.params.regime_filter)}@${Math.round(Number(candidate.params.regime_exposure) * 100)}%`}
+                                </span>
+                                {candidate.params.trailing_stop_pct !== null && (
+                                  <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">trail {String(candidate.params.trailing_stop_pct)}%</span>
+                                )}
+                                {candidate.params.take_profit_pct !== null && (
+                                  <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">tp {String(candidate.params.take_profit_pct)}%</span>
+                                )}
+                                {candidate.overfit_risk && (
+                                  <span className="rounded-full bg-[#f87171]/15 px-2 py-0.5 text-[#f87171]">overfit risk</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-[11px] text-content-muted">{metricsText(candidate.train_metrics)}</td>
+                            <td className="py-2 pr-3 font-mono text-[11px] text-content-muted">
+                              {candidate.cv_metrics
+                                ? `mean ${candidate.cv_metrics.mean.toFixed(2)} · min ${candidate.cv_metrics.min.toFixed(2)} (${candidate.cv_metrics.per_fold.length})`
+                                : '—'}
+                            </td>
+                            <td className="py-2 pr-3 font-mono text-[11px] text-content">
+                              {candidate.holdout_metrics ? metricsText(candidate.holdout_metrics) : '—'}
+                            </td>
+                            <td className="py-2 text-right">
+                              <Button variant="ghost" className="px-2 py-1 text-[11px]" onClick={() => applyCandidate(candidate)}>
+                                Apply
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-2 text-[11px] text-content-muted">
+                    The holdout column is the only untouched evidence. A positive CV that turns negative on the
+                    holdout means the search overfit — stay with the presets in that case.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+        </div>
+      )}
 
       {loading ? (
         <section className="mt-4">
           <div className="flex h-[420px] flex-col items-center justify-center gap-4 rounded-2xl border border-outline bg-surface">
             <RadarLoader size="lg" label="Replaying Value Score history…" />
             <p className="max-w-md text-center text-xs text-content-muted">
-              The first run rebuilds point-in-time scores for every rebalance date, which can take a few
-              seconds. Later runs reuse the snapshot.
+              The first run rebuilds point-in-time scores for every rebalance date — up to ~30 s on the
+              full universe. Later runs reuse the snapshot.
             </p>
           </div>
         </section>
