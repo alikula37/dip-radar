@@ -44,6 +44,40 @@ STATS_FIELDS = (
     "history_days",
 )
 
+# Point-in-time extras computed from the trailing candles themselves
+# (research feature store; not part of the score formula).
+EXTRA_FIELDS = (
+    "volatility_30d",
+    "volatility_90d",
+    "drawdown_from_ath",
+    "days_since_ath",
+    "dollar_volume_30d",
+)
+
+
+def _realized_volatility(closes: list, end_index: int, window: int) -> Optional[float]:
+    start = max(1, end_index - window + 1)
+    returns = []
+    for index in range(start, end_index + 1):
+        previous = closes[index - 1]
+        current = closes[index]
+        if previous > 0 and current > 0:
+            returns.append(math.log(current / previous))
+    if len(returns) < max(5, window // 3):
+        return None
+    mean = sum(returns) / len(returns)
+    variance = sum((value - mean) ** 2 for value in returns) / (len(returns) - 1)
+    return math.sqrt(variance)
+
+
+def _dollar_volume(volumes: list, closes: list, end_index: int, window: int = 30) -> Optional[float]:
+    """Average traded value in BTC terms over the trailing window."""
+    start = max(0, end_index - window + 1)
+    sample = [volumes[index] * closes[index] for index in range(start, end_index + 1)]
+    if not sample:
+        return None
+    return sum(sample) / len(sample)
+
 
 class BacktestError(ValueError):
     pass
@@ -52,7 +86,17 @@ class BacktestError(ValueError):
 class _SnapshotCoin:
     """Lightweight stand-in so calculate_value_scores can rank a cross-section."""
 
-    __slots__ = ("symbol", "is_stable", "market_cap", "volume_24h", "distance_pct_event", *STATS_FIELDS, "value_score", "value_parts")
+    __slots__ = (
+        "symbol",
+        "is_stable",
+        "market_cap",
+        "volume_24h",
+        "distance_pct_event",
+        *STATS_FIELDS,
+        *EXTRA_FIELDS,
+        "value_score",
+        "value_parts",
+    )
 
     def __init__(self, symbol: str, market_cap: Optional[float], volume_24h: Optional[float]):
         self.symbol = symbol
@@ -63,6 +107,8 @@ class _SnapshotCoin:
         self.value_score = None
         self.value_parts = None
         for field in STATS_FIELDS:
+            setattr(self, field, None)
+        for field in EXTRA_FIELDS:
             setattr(self, field, None)
 
 
@@ -129,19 +175,20 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
         raise BacktestError("No eligible coins for a backtest")
 
     rows = db.execute(
-        select(Kline.symbol, Kline.timestamp, Kline.close, Kline.low)
+        select(Kline.symbol, Kline.timestamp, Kline.close, Kline.low, Kline.volume)
         .where(Kline.symbol.in_(list(universe)), Kline.timestamp <= end)
         .order_by(Kline.symbol, Kline.timestamp)
     ).all()
     if not rows:
         raise BacktestError("No candle history for a backtest")
 
-    series = defaultdict(lambda: ([], [], []))
-    for symbol, timestamp, close, low in rows:
+    series = defaultdict(lambda: ([], [], [], []))
+    for symbol, timestamp, close, low, volume in rows:
         entry = series[symbol]
         entry[0].append(timestamp)
         entry[1].append(close)
         entry[2].append(low)
+        entry[3].append(volume or 0.0)
 
     first_date = min(entry[0][0] for entry in series.values() if entry[0])
     anchor_start = first_date + timedelta(days=WARMUP_CANDLES)
@@ -150,7 +197,7 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
         raise BacktestError("Not enough history for this frequency")
 
     prepared = {}
-    for symbol, (timestamps, closes, lows) in series.items():
+    for symbol, (timestamps, closes, lows, volumes) in series.items():
         if len(timestamps) < WARMUP_CANDLES:
             continue
         size = len(timestamps)
@@ -159,10 +206,12 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
         min_close = [0.0] * size
         max_close = [0.0] * size
         atl_index = [-1] * size
+        ath_index = [-1] * size
 
         running_all = math.inf
         running_event = math.inf
         running_arg = -1
+        running_arg_ath = -1
         running_min_close = math.inf
         running_max_close = -math.inf
         for index in range(size):
@@ -173,20 +222,25 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
                 running_arg = index
             if timestamps[index] >= datetime(2021, 1, 1) and low < running_event:
                 running_event = low
+            if close >= running_max_close:
+                running_max_close = close
+                running_arg_ath = index
             running_min_close = min(running_min_close, close)
-            running_max_close = max(running_max_close, close)
             all_min[index] = running_all
             event_min[index] = running_event if running_event < math.inf else running_all
             atl_index[index] = running_arg
+            ath_index[index] = running_arg_ath
             min_close[index] = running_min_close
             max_close[index] = running_max_close
 
         prepared[symbol] = {
             "timestamps": timestamps,
             "closes": closes,
+            "volumes": volumes,
             "all_min": all_min,
             "event_min": event_min,
             "atl_index": atl_index,
+            "ath_index": ath_index,
             "min_close": min_close,
             "max_close": max_close,
         }
@@ -217,6 +271,13 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
             event_low = data["event_min"][index] or data["all_min"][index]
             if event_low:
                 snapshot_coin.distance_pct_event = (price - event_low) / event_low * 100
+            high_close = data["max_close"][index]
+            snapshot_coin.volatility_30d = _realized_volatility(closes, index, 30)
+            snapshot_coin.volatility_90d = _realized_volatility(closes, index, 90)
+            snapshot_coin.drawdown_from_ath = (price / high_close - 1.0) if high_close else None
+            ath_at = data["ath_index"][index]
+            snapshot_coin.days_since_ath = (index - ath_at) if ath_at >= 0 else None
+            snapshot_coin.dollar_volume_30d = _dollar_volume(data["volumes"], closes, index)
             snapshot_coins.append(snapshot_coin)
             prices[symbol] = price
 
@@ -242,6 +303,21 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
                 "volume": snapshot_coin.volume_24h,
                 "trend_30d": snapshot_coin.trend_30d_pct,
                 "above_sma200": snapshot_coin.above_sma200,
+                "valuation_pct_1y": snapshot_coin.valuation_pct_1y,
+                "valuation_pct_3y": snapshot_coin.valuation_pct_3y,
+                "valuation_pct_all": snapshot_coin.valuation_pct_all,
+                "median_dist_1y": snapshot_coin.median_dist_1y,
+                "median_dist_3y": snapshot_coin.median_dist_3y,
+                "range_position": snapshot_coin.range_position,
+                "days_since_atl": snapshot_coin.days_since_atl,
+                "basing_pct_90d": snapshot_coin.basing_pct_90d,
+                "trend_90d": snapshot_coin.trend_90d_pct,
+                "history_days": snapshot_coin.history_days,
+                "volatility_30d": snapshot_coin.volatility_30d,
+                "volatility_90d": snapshot_coin.volatility_90d,
+                "drawdown_from_ath": snapshot_coin.drawdown_from_ath,
+                "days_since_ath": snapshot_coin.days_since_ath,
+                "dollar_volume_30d": snapshot_coin.dollar_volume_30d,
             }
         entries_by_date[date] = entries
         snapshot_dates.append(date)

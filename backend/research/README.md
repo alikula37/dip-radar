@@ -30,6 +30,8 @@ create a new file instead of overwriting one.
 | `common.py` | Lazy DB session, database fingerprint, snapshot loading, forward-return pairs, IC/spread series. |
 | `baseline_ic.py` | Current Value Score baseline: cross-sectional IC of the score and its stored sub-signals, per-year breakdown, quintile spread, IC by forward horizon, bootstrap CIs. |
 | `data_quality.py` | Universe composition (active/delisted/stable), candle coverage and >3-day gaps, point-in-time market-history coverage, liquidity staleness. |
+| `feature_store.py` | Point-in-time feature rows per (rebalance anchor, symbol): score components, volatility, ATH drawdown, dollar volume, point-in-time market cap/volume, BTC regime. JSONL export. Current-only liquidity lives in explicit `cap_current`/`volume_current` columns. |
+| `cv.py` | Purged + embargoed expanding-window walk-forward folds for forward-return labels (`assert_no_overlap` guards every experiment). |
 
 Point-in-time liquidity is ingested by the application module
 `backend/market_history.py` (`python -m market_history`); coins that leave
@@ -91,13 +93,18 @@ If it fails, the rule-based score stays — a negative result is still a result.
 
 ## Roadmap
 
-- Phase 1 (in progress): delisted-coin archive + point-in-time market
-  cap/volume ingestion are shipped (`market_history` module, `delisted_at`,
-  `data_quality` report). Remaining: extend the universe with coins that were
-  delisted *before* this pipeline existed, and keep the ingestion fresh from
-  the worker.
-- Phase 2: point-in-time feature store keyed by rebalance date.
-- Phase 3: purged/embargoed walk-forward CV + constrained models
-  (monotonic ranks first, tiny GBM with monotonic constraints second).
+- Phase 1 (shipped; still open: recovering coins delisted *before* the
+  archive existed, and refreshing `market_history` from the worker):
+  delisted-coin archive (`delisted_at`), point-in-time
+  market cap/volume ingestion (`market_history` module; needs a free
+  `COINGECKO_API_KEY`), and the `data_quality` report.
+- Phase 2 (this harness): point-in-time feature store keyed by rebalance date
+  (`feature_store.py`) plus purged/embargoed walk-forward folds (`cv.py`), with
+  a leakage regression test proving anchor features never change when future
+  candles arrive.
+- Phase 3 (next): train constrained models (monotonic ranks first, tiny GBM
+  with monotonic constraints second) on the feature store with `cv.py` folds,
+  and compare against the frozen baseline on IC, strategy Sharpe/drawdown and
+  turnover.
 - Phase 4: shadow scoring, model versioning, per-model comparison in the
   Strategy Lab (`score_model=` parameter).
