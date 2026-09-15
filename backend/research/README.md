@@ -32,6 +32,7 @@ create a new file instead of overwriting one.
 | `data_quality.py` | Universe composition (active/delisted/stable), candle coverage and >3-day gaps, point-in-time market-history coverage, liquidity staleness. |
 | `feature_store.py` | Point-in-time feature rows per (rebalance anchor, symbol): score components, volatility, ATH drawdown, dollar volume, point-in-time market cap/volume, BTC regime. JSONL export. Current-only liquidity lives in explicit `cap_current`/`volume_current` columns. |
 | `cv.py` | Purged + embargoed expanding-window walk-forward folds for forward-return labels (`assert_no_overlap` guards every experiment). |
+| `model.py` | Constrained learned score: oriented rank features (signs fixed a priori) + non-negative least squares, evaluated on `cv.py` folds against the frozen baseline on IC *and* a top-3 strategy proxy. |
 
 Point-in-time liquidity is ingested by the application module
 `backend/market_history.py` (`python -m market_history`); coins that leave
@@ -102,9 +103,14 @@ If it fails, the rule-based score stays — a negative result is still a result.
   (`feature_store.py`) plus purged/embargoed walk-forward folds (`cv.py`), with
   a leakage regression test proving anchor features never change when future
   candles arrive.
-- Phase 3 (next): train constrained models (monotonic ranks first, tiny GBM
-  with monotonic constraints second) on the feature store with `cv.py` folds,
-  and compare against the frozen baseline on IC, strategy Sharpe/drawdown and
-  turnover.
+- Phase 3 (first pass done, result in `baselines/model_report.json`): the
+  constrained rank model passes the IC gate (walk-forward IC +0.106 vs +0.069
+  baseline, paired delta CI [+0.003, +0.073], all four folds positive) but
+  **fails the strategy gate** — its top-3 proxy portfolio is no better than the
+  baseline (Sharpe −0.97 vs −0.76). Per the gates the learned score is not
+  shipped; the next step is a proper Strategy Lab A/B (`score_model=`), not a
+  promotion. Learned weights concentrate on `distance`, `dollar_volume_30d`
+  and `valuation_pct_1y`, while the rule-based score's heavy 3-year valuation
+  weight gets almost none.
 - Phase 4: shadow scoring, model versioning, per-model comparison in the
   Strategy Lab (`score_model=` parameter).

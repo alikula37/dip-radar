@@ -129,6 +129,7 @@ def build_feature_rows(session, frequency: str, end=None, use_cache: bool = True
             row = {
                 "date": date.date().isoformat(),
                 "symbol": symbol,
+                "price": entry["price"],
                 "cap_current": entry["cap"],
                 "volume_current": entry["volume"],
                 "market_cap_pit": market_cap_pit,

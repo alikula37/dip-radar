@@ -1,0 +1,185 @@
+{
+  "baseline_ic": {
+    "mean": 0.06875374713708438,
+    "n": 47,
+    "positive_share": 0.6382978723404256,
+    "std": 0.1315368055977,
+    "t": 3.5834224551322422
+  },
+  "baseline_spread": {
+    "mean": 0.02187044431278832,
+    "n": 47,
+    "positive_share": 0.5531914893617021,
+    "std": 0.08257216541369909,
+    "t": 1.8158202756894999
+  },
+  "folds": [
+    {
+      "mean_ic_delta": 0.01699762722518515,
+      "test": [
+        "2022-10-01",
+        "2023-09-01"
+      ],
+      "train": [
+        "2020-08-01",
+        "2022-07-01"
+      ],
+      "weights": {
+        "abs_median_dist_3y": 0.0032,
+        "basing_pct_90d": 0.0143,
+        "days_since_ath": 0.0,
+        "distance": 0.0052,
+        "dollar_volume_30d": 0.0076,
+        "drawdown_from_ath": 0.0,
+        "range_position": 0.0,
+        "trend_90d": 0.0,
+        "valuation_pct_1y": 0.003,
+        "valuation_pct_3y": 0.0,
+        "valuation_pct_all": 0.0009,
+        "volatility_90d": 0.0
+      }
+    },
+    {
+      "mean_ic_delta": 0.000941145691380881,
+      "test": [
+        "2023-10-01",
+        "2024-09-01"
+      ],
+      "train": [
+        "2020-08-01",
+        "2023-07-01"
+      ],
+      "weights": {
+        "abs_median_dist_3y": 0.005,
+        "basing_pct_90d": 0.0029,
+        "days_since_ath": 0.0026,
+        "distance": 0.0136,
+        "dollar_volume_30d": 0.0098,
+        "drawdown_from_ath": 0.0,
+        "range_position": 0.0,
+        "trend_90d": 0.0,
+        "valuation_pct_1y": 0.013,
+        "valuation_pct_3y": 0.0,
+        "valuation_pct_all": 0.0073,
+        "volatility_90d": 0.0
+      }
+    },
+    {
+      "mean_ic_delta": 0.09131823471976046,
+      "test": [
+        "2024-10-01",
+        "2025-09-01"
+      ],
+      "train": [
+        "2020-08-01",
+        "2024-07-01"
+      ],
+      "weights": {
+        "abs_median_dist_3y": 0.0015,
+        "basing_pct_90d": 0.0017,
+        "days_since_ath": 0.0036,
+        "distance": 0.016,
+        "dollar_volume_30d": 0.0107,
+        "drawdown_from_ath": 0.0,
+        "range_position": 0.0,
+        "trend_90d": 0.0,
+        "valuation_pct_1y": 0.0125,
+        "valuation_pct_3y": 0.0029,
+        "valuation_pct_all": 0.0,
+        "volatility_90d": 0.0
+      }
+    },
+    {
+      "mean_ic_delta": 0.03810312185236134,
+      "test": [
+        "2025-10-01",
+        "2026-08-01"
+      ],
+      "train": [
+        "2020-08-01",
+        "2025-07-01"
+      ],
+      "weights": {
+        "abs_median_dist_3y": 0.0,
+        "basing_pct_90d": 0.0008,
+        "days_since_ath": 0.0051,
+        "distance": 0.015,
+        "dollar_volume_30d": 0.0179,
+        "drawdown_from_ath": 0.0,
+        "range_position": 0.0,
+        "trend_90d": 0.0,
+        "valuation_pct_1y": 0.0106,
+        "valuation_pct_3y": 0.0,
+        "valuation_pct_all": 0.0,
+        "volatility_90d": 0.0
+      }
+    }
+  ],
+  "ic_delta": {
+    "ci95": [
+      0.0026460981512073352,
+      0.07289248368882878
+    ],
+    "mean": 0.036813158127912596,
+    "n": 47,
+    "positive_share": 0.6382978723404256,
+    "std": 0.11065465632452524,
+    "t": 2.280774305012039
+  },
+  "mean_weights": {
+    "abs_median_dist_3y": 0.002441773438002542,
+    "basing_pct_90d": 0.00493509046681413,
+    "days_since_ath": 0.002848681454623823,
+    "distance": 0.012442363654157384,
+    "dollar_volume_30d": 0.01151340094228541,
+    "drawdown_from_ath": 0.0,
+    "range_position": 0.0,
+    "trend_90d": 0.0,
+    "valuation_pct_1y": 0.009746319826688016,
+    "valuation_pct_3y": 0.0007286848074997571,
+    "valuation_pct_all": 0.002067356753314274,
+    "volatility_90d": 0.0
+  },
+  "model_ic": {
+    "mean": 0.10556690526499701,
+    "n": 47,
+    "positive_share": 0.8085106382978723,
+    "std": 0.11912477276975746,
+    "t": 6.075396602257472
+  },
+  "model_spread": {
+    "mean": 0.04368543097369668,
+    "n": 47,
+    "positive_share": 0.8085106382978723,
+    "std": 0.07351126815566861,
+    "t": 4.07409956785287
+  },
+  "provenance": {
+    "anchors": 73,
+    "embargo": 1,
+    "frequency": "monthly",
+    "git_commit": "4b79096",
+    "horizon": 1,
+    "start": "2020-01-01"
+  },
+  "strategy": {
+    "baseline_top3": {
+      "max_drawdown": -0.8664591970526205,
+      "periods": 47,
+      "sharpe": -0.7606553652473772,
+      "total_return": -0.838473105038413
+    },
+    "model_top3": {
+      "max_drawdown": -0.8443819007060773,
+      "periods": 47,
+      "sharpe": -0.970807552986245,
+      "total_return": -0.8395910306846045
+    },
+    "universe_mean": {
+      "max_drawdown": -0.8770353826584756,
+      "periods": 47,
+      "sharpe": -1.2348382138408613,
+      "total_return": -0.8770353826584756
+    }
+  }
+}
