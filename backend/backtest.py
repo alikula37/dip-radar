@@ -10,6 +10,7 @@ import bisect
 import logging
 import math
 import statistics
+from array import array
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
@@ -239,6 +240,8 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
                 "price": prices[snapshot_coin.symbol],
                 "cap": snapshot_coin.market_cap,
                 "volume": snapshot_coin.volume_24h,
+                "trend_30d": snapshot_coin.trend_30d_pct,
+                "above_sma200": snapshot_coin.above_sma200,
             }
         entries_by_date[date] = entries
         snapshot_dates.append(date)
@@ -253,6 +256,13 @@ def build_snapshot(db: DBSession, frequency: str, end: datetime, use_cache: bool
         "entries": entries_by_date,
         "rates": rates,
         "rate_dates": rate_dates,
+        "series": {
+            symbol: {
+                "timestamps": array("d", [timestamp.timestamp() for timestamp in data["timestamps"]]),
+                "closes": array("d", data["closes"]),
+            }
+            for symbol, data in prepared.items()
+        },
     }
 
     if use_cache:
@@ -278,6 +288,30 @@ def _weights_for(picks: list, weighting: str) -> dict:
     return {symbol: 1.0 / len(picks) for symbol, _ in picks}
 
 
+def _first_exit(
+    timestamps,
+    closes,
+    start_index: int,
+    end_index: int,
+    entry_price: float,
+    stop_loss_pct: Optional[float],
+    trailing_stop_pct: Optional[float],
+    take_profit_pct: Optional[float],
+) -> Optional[float]:
+    """First daily close that triggers a stop-loss, trailing stop or take-profit."""
+    peak = entry_price
+    for index in range(start_index, end_index):
+        price = closes[index]
+        peak = max(peak, price)
+        if stop_loss_pct is not None and price <= entry_price * (1.0 - stop_loss_pct / 100.0):
+            return price
+        if trailing_stop_pct is not None and price <= peak * (1.0 - trailing_stop_pct / 100.0):
+            return price
+        if take_profit_pct is not None and price >= entry_price * (1.0 + take_profit_pct / 100.0):
+            return price
+    return None
+
+
 def simulate(
     snapshot: dict,
     *,
@@ -292,6 +326,10 @@ def simulate(
     fee_pct: float = 0.1,
     rotation: str = "rebalance",
     sell_score: Optional[float] = None,
+    min_trend_30d: Optional[float] = None,
+    stop_loss_pct: Optional[float] = None,
+    trailing_stop_pct: Optional[float] = None,
+    take_profit_pct: Optional[float] = None,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -299,11 +337,16 @@ def simulate(
     every anchor. ``rotation="hold"`` buys as before but only sells a
     position once its score falls below ``sell_score`` (default: the buy
     threshold), so coins are held while they stay cheap and rotated out when
-    the cheapness is gone.
+    the cheapness is gone. The optional daily risk exits (stop-loss, trailing
+    stop, take-profit) sell a position mid-period; the proceeds sit in BTC
+    until the next anchor and the symbol is blocked for one rebalance.
     """
     if rotation not in ("rebalance", "hold"):
         raise BacktestError("rotation must be rebalance or hold")
     exit_score = min_score if sell_score is None else sell_score
+    daily_exits = any(
+        value is not None for value in (stop_loss_pct, trailing_stop_pct, take_profit_pct)
+    )
 
     dates = [date for date in snapshot["dates"] if start <= date <= end]
     if len(dates) < 2:
@@ -312,9 +355,11 @@ def simulate(
     entries_by_date = snapshot["entries"]
     rates = snapshot["rates"]
     rate_dates = snapshot["rate_dates"]
+    series = snapshot.get("series", {})
 
     equity = 1.0
     previous_weights: dict = {}
+    blocked_symbols: set = set()
     curve = [{"date": dates[0], "equity": 1.0, "period_return": 0.0}]
     holdings = []
     period_returns = []
@@ -332,6 +377,13 @@ def simulate(
             if entry["score"] >= min_score
             and (entry["cap"] or 0.0) >= min_market_cap
             and (entry["volume"] or 0.0) >= min_volume
+            and (
+                min_trend_30d is None
+                or (
+                    entry.get("trend_30d") is not None
+                    and entry["trend_30d"] >= min_trend_30d
+                )
+            )
         ]
         candidates.sort(
             key=lambda item: (
@@ -343,6 +395,8 @@ def simulate(
             picks = []
             held_symbols = set()
             for symbol in previous_weights:
+                if symbol in blocked_symbols:
+                    continue
                 entry = pool.get(symbol)
                 if entry is not None and entry["score"] >= exit_score:
                     picks.append((symbol, entry))
@@ -351,7 +405,7 @@ def simulate(
             for symbol, entry in candidates:
                 if free_slots <= 0:
                     break
-                if symbol in held_symbols:
+                if symbol in held_symbols or symbol in blocked_symbols:
                     continue
                 picks.append((symbol, entry))
                 held_symbols.add(symbol)
@@ -365,13 +419,37 @@ def simulate(
             scale = len(picks) / top_n
             weights = {symbol: weight * scale for symbol, weight in weights.items()}
 
+        day_timestamp = date.timestamp()
+        next_timestamp = next_date.timestamp()
+
         period_return = 0.0
         pick_rows = []
+        stopped_symbols = set()
         for symbol, entry in picks:
             weight = weights.get(symbol, 0.0)
             price_now = entry["price"]
             price_next = next_pool.get(symbol, {}).get("price", price_now)
-            coin_return = (price_next / price_now - 1.0) if price_now else 0.0
+            exit_price = None
+            if daily_exits:
+                data = series.get(symbol)
+                if data is not None:
+                    start_index = bisect.bisect_right(data["timestamps"], day_timestamp)
+                    end_index = bisect.bisect_left(data["timestamps"], next_timestamp)
+                    exit_price = _first_exit(
+                        data["timestamps"],
+                        data["closes"],
+                        start_index,
+                        end_index,
+                        price_now,
+                        stop_loss_pct,
+                        trailing_stop_pct,
+                        take_profit_pct,
+                    )
+            if exit_price is not None:
+                coin_return = (exit_price / price_now - 1.0) if price_now else 0.0
+                stopped_symbols.add(symbol)
+            else:
+                coin_return = (price_next / price_now - 1.0) if price_now else 0.0
             period_return += weight * coin_return
             pick_rows.append(
                 {
@@ -379,6 +457,7 @@ def simulate(
                     "score": entry["score"],
                     "weight": weight,
                     "period_return": coin_return,
+                    "exited": exit_price is not None,
                 }
             )
 
@@ -394,6 +473,7 @@ def simulate(
         curve.append({"date": next_date, "equity": equity, "period_return": period_return})
         holdings.append({"date": date, "picks": pick_rows})
         previous_weights = weights
+        blocked_symbols = stopped_symbols
 
     rate_start = _rate_at(rates, rate_dates, dates[0])
     rate_end = _rate_at(rates, rate_dates, dates[-1])

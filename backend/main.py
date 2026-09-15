@@ -363,6 +363,10 @@ def run_backtest(
     fee_pct: float = Query(default=0.1, ge=0, le=5),
     rotation: str = Query(default="rebalance", pattern="^(rebalance|hold)$", description="rebalance = reset to top-N each period, hold = keep until the score drops"),
     sell_score: Optional[float] = Query(default=None, ge=0, le=100, description="Exit threshold for rotation=hold (default: min_score)"),
+    min_trend_30d: Optional[float] = Query(default=None, ge=-100, le=100, description="Only buy coins whose 30d trend is at least this (avoids free-falls)"),
+    stop_loss_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much below entry (checked daily)"),
+    trailing_stop_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Sell when the price drops this much from its peak since entry"),
+    take_profit_pct: Optional[float] = Query(default=None, ge=0, le=10000, description="Sell when the price rises this much above entry"),
     optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
     db: Session = Depends(get_db),
 ):
@@ -396,6 +400,10 @@ def run_backtest(
         "fee_pct": fee_pct,
         "rotation": rotation,
         "sell_score": sell_score,
+        "min_trend_30d": min_trend_30d,
+        "stop_loss_pct": stop_loss_pct,
+        "trailing_stop_pct": trailing_stop_pct,
+        "take_profit_pct": take_profit_pct,
     }
 
     try:

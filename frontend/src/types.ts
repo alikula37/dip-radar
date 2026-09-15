@@ -98,6 +98,7 @@ export interface BacktestPick {
   score: number;
   weight: number;
   period_return: number;
+  exited?: boolean;
 }
 
 export interface BacktestPeriod {
@@ -145,6 +146,10 @@ export interface BacktestResponse {
   fee_pct: number;
   rotation: string;
   sell_score: number | null;
+  min_trend_30d: number | null;
+  stop_loss_pct: number | null;
+  trailing_stop_pct: number | null;
+  take_profit_pct: number | null;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -164,5 +169,9 @@ export interface BacktestForm {
   feePct: number;
   rotation: 'rebalance' | 'hold';
   sellScore: number;
+  minTrend: number | null;
+  stopLoss: number | null;
+  trailingStop: number | null;
+  takeProfit: number | null;
   optimize: boolean;
 }

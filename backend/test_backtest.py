@@ -1,3 +1,4 @@
+from array import array
 from datetime import datetime, timedelta
 
 import pytest
@@ -264,3 +265,127 @@ def test_hold_rotation_defaults_to_the_buy_threshold():
 def test_simulate_rejects_unknown_rotation():
     with pytest.raises(BacktestError):
         simulate(_manual_snapshot(), rotation="daily", **_ROTATION_WINDOW)
+
+
+def _stop_snapshot(closes: list):
+    """Two monthly anchors with daily closes for AAA between them."""
+    anchor = datetime(2023, 1, 1)
+    next_anchor = datetime(2023, 2, 1)
+    timestamps = array("d", [(anchor + timedelta(days=index)).timestamp() for index in range(len(closes))])
+
+    def entry(score, price):
+        return {"score": score, "distance": 0.0, "price": price, "cap": 1e9, "volume": 1e8, "trend_30d": 0.0}
+
+    entries = {
+        anchor: {"AAAUSDT": entry(90, closes[0])},
+        next_anchor: {"AAAUSDT": entry(90, closes[-1])},
+    }
+    return {
+        "frequency": "monthly",
+        "end": next_anchor,
+        "dates": [anchor, next_anchor],
+        "entries": entries,
+        "rates": {},
+        "rate_dates": [],
+        "series": {"AAAUSDT": {"timestamps": timestamps, "closes": array("d", closes)}},
+    }
+
+
+_STOP_WINDOW = {
+    "start": datetime(2023, 1, 1),
+    "end": datetime(2023, 2, 1),
+    "top_n": 1,
+    "min_score": 50,
+    "min_market_cap": 0,
+    "min_volume": 0,
+    "weighting": "equal",
+    "fill_with_btc": False,
+    "fee_pct": 0,
+    "rotation": "hold",
+}
+
+
+def test_stop_loss_sells_mid_period_at_the_trigger_price():
+    closes = [100.0, 95.0, 74.0, 80.0, 90.0, 85.0]
+    snapshot = _stop_snapshot(closes)
+
+    result = simulate(snapshot, stop_loss_pct=25, **_STOP_WINDOW)
+
+    assert result["holdings"][0]["picks"][0]["exited"] is True
+    assert result["holdings"][0]["picks"][0]["period_return"] == pytest.approx(74.0 / 100.0 - 1.0)
+    assert result["curve"][1]["period_return"] == pytest.approx(74.0 / 100.0 - 1.0)
+
+
+def test_trailing_stop_sells_after_a_peak_fades():
+    closes = [100.0, 130.0, 120.0, 111.0, 90.0, 80.0]
+    snapshot = _stop_snapshot(closes)
+
+    result = simulate(snapshot, trailing_stop_pct=15, **_STOP_WINDOW)
+
+    # Peak 130 -> floor 110.5; 111 stays above it, 90 triggers the exit.
+    assert result["holdings"][0]["picks"][0]["period_return"] == pytest.approx(90.0 / 100.0 - 1.0)
+
+
+def test_take_profit_sells_into_strength():
+    closes = [100.0, 120.0, 141.0, 150.0, 160.0]
+    snapshot = _stop_snapshot(closes)
+
+    result = simulate(snapshot, take_profit_pct=40, **_STOP_WINDOW)
+
+    assert result["holdings"][0]["picks"][0]["period_return"] == pytest.approx(141.0 / 100.0 - 1.0)
+
+
+def test_exits_stay_disabled_without_stop_parameters():
+    closes = [100.0, 50.0, 140.0, 60.0]
+    snapshot = _stop_snapshot(closes)
+
+    result = simulate(snapshot, **_STOP_WINDOW)
+
+    assert result["holdings"][0]["picks"][0]["exited"] is False
+    assert result["holdings"][0]["picks"][0]["period_return"] == pytest.approx(closes[-1] / 100.0 - 1.0)
+
+
+def test_trend_filter_skips_free_falling_coins():
+    dates = [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1)]
+
+    def entry(score, price, trend):
+        return {
+            "score": score,
+            "distance": 0.0,
+            "price": price,
+            "cap": 1e9,
+            "volume": 1e8,
+            "trend_30d": trend,
+        }
+
+    entries = {
+        dates[0]: {"AAAUSDT": entry(90, 100.0, -55.0), "BBBUSDT": entry(60, 100.0, 5.0)},
+        dates[1]: {"AAAUSDT": entry(90, 90.0, -60.0), "BBBUSDT": entry(60, 100.0, 5.0)},
+        dates[2]: {"AAAUSDT": entry(90, 80.0, -60.0), "BBBUSDT": entry(60, 100.0, 5.0)},
+    }
+    snapshot = {
+        "frequency": "monthly",
+        "end": dates[-1],
+        "dates": dates,
+        "entries": entries,
+        "rates": {},
+        "rate_dates": [],
+    }
+
+    result = simulate(
+        snapshot,
+        min_trend_30d=-25,
+        start=dates[0],
+        end=dates[-1],
+        top_n=1,
+        min_score=50,
+        min_market_cap=0,
+        min_volume=0,
+        weighting="equal",
+        fill_with_btc=False,
+        fee_pct=0,
+        rotation="hold",
+    )
+
+    assert _held_symbols(result) == ["BBBUSDT", "BBBUSDT"]
+    assert result["curve"][1]["period_return"] == pytest.approx(0.0)
