@@ -153,6 +153,26 @@ describe('BacktestPage', () => {
     });
   });
 
+  it('applies the hedge preset (large-cap value spread, short-heavy)', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hedge' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(
+          /top_n=5.*min_score=20.*min_market_cap=500000000.*weighting=market_cap.*rotation=hold.*sell_score=5.*min_trend_30d=-25.*stop_loss_pct=30.*trailing_stop_pct=50.*equity_trend_exposure=0\.35.*profit_lock_pct=50.*short_n=5.*short_funding_apr=10.*short_exposure=1.*short_max_score=40.*ic_filter=true.*ic_window=12.*ic_threshold=0\.05.*ic_exposure=0.*score_model=rule.*regime_filter=breadth.*regime_exposure=0\.25.*regime_min_breadth=0\.5.*max_market_cap=10000000000/,
+        ),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
+  });
+
   it('reveals score model feature importance on demand', async () => {
     const models = [
       {
