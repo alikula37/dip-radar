@@ -10,7 +10,22 @@ from timeutils import utcnow_naive
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOCK_NAME = "sync"
-DEFAULT_TTL_MINUTES = 180
+DEFAULT_TTL_MINUTES = 60
+
+
+def renew_lock(db: Session, name: str = DEFAULT_LOCK_NAME, ttl_minutes: int = DEFAULT_TTL_MINUTES) -> bool:
+    """Slide the owner's expiry forward; keeps a dead process from blocking for hours.
+
+    The whole point of the shorter TTL is that a killed sync (container
+    rebuild, OOM, ...) stops blocking new syncs quickly, while a live sync
+    keeps the lock because every progress write renews it.
+    """
+    lock = db.get(SyncLock, name)
+    if lock is None:
+        return False
+    lock.expires_at = utcnow_naive() + timedelta(minutes=ttl_minutes)
+    db.commit()
+    return True
 
 
 def try_acquire_lock(db: Session, name: str = DEFAULT_LOCK_NAME, ttl_minutes: int = DEFAULT_TTL_MINUTES) -> bool:

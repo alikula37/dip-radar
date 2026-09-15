@@ -15,7 +15,7 @@ from urllib3.util.retry import Retry
 
 from alerts import check_alerts
 from database import SessionLocal
-from locks import release_lock, try_acquire_lock
+from locks import release_lock, renew_lock, try_acquire_lock
 from metrics import calculate_coin_stats, calculate_distance_pct
 from models import BtcRate, Coin, Kline, Meta
 from timeutils import from_millis, to_millis, utcnow, utcnow_naive
@@ -881,6 +881,7 @@ def write_sync_progress(db: DBSession, phase: str, processed: int, total: int) -
         "updated_at": utcnow().isoformat(),
     }
     set_meta(db, "sync_progress", json.dumps(payload))
+    renew_lock(db)
 
 
 def verify_prices(db: DBSession, client: CoinGeckoClient) -> int:
@@ -957,8 +958,42 @@ def run_all_syncs(
         session_factory=SessionLocal if SYNC_FETCH_WORKERS > 1 else None,
     )
     verify_prices(db, cg_client)
+    _refresh_market_history(db, cg_client)
     write_sync_progress(db, "done", 1, 1)
     set_meta(db, "last_updated", utcnow().isoformat())
+
+
+MARKET_HISTORY_REFRESH_DAYS = 7
+
+
+def _refresh_market_history(db: DBSession, cg_client: CoinGeckoClient) -> None:
+    """Refresh point-in-time market data weekly when a CoinGecko key is set.
+
+    CoinGecko's ``market_chart`` endpoint requires an API key; without one the
+    refresh is skipped so a sync never fails over missing history data.
+    """
+    if not COINGECKO_API_KEY:
+        return
+
+    last = db.query(Meta).filter(Meta.key == "market_history_refreshed_at").first()
+    if last and last.value:
+        try:
+            refreshed_at = datetime.fromisoformat(last.value)
+        except ValueError:
+            refreshed_at = None
+        if refreshed_at and (utcnow_naive() - refreshed_at).days < MARKET_HISTORY_REFRESH_DAYS:
+            return
+
+    from market_history import sync_market_history
+
+    summary = sync_market_history(db, cg_client, delay=0)
+    set_meta(db, "market_history_refreshed_at", utcnow().isoformat())
+    logger.info(
+        "Market history refresh: %s coins, %s new days, %s failed.",
+        summary["coins"],
+        summary["inserted"],
+        len(summary["failed"]),
+    )
 
 
 def run_sync_with_lock() -> bool:
