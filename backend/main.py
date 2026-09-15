@@ -380,6 +380,10 @@ def run_backtest(
     profit_sweep_pct: float = Query(default=0.0, ge=0, le=100, description="Share of a position's BTC profit harvested back to BTC each rebalance"),
     max_holding_periods: Optional[int] = Query(default=None, ge=1, le=500, description="Force positions back to BTC after this many rebalances"),
     invert_score: bool = Query(default=False, description="Flip the factor: long the most expensive coins and short the cheapest (momentum side)"),
+    ic_filter: bool = Query(default=False, description="Measure the score's own rolling information coefficient and shrink exposure when it is weak"),
+    ic_window: int = Query(default=6, ge=2, le=52, description="Anchors in the rolling IC window"),
+    ic_threshold: float = Query(default=0.0, ge=-1, le=1, description="Rolling IC below this means risk-off"),
+    ic_exposure: float = Query(default=0.35, ge=0, le=1, description="Exposure kept while the factor IC is weak"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     db: Session = Depends(get_db),
 ):
@@ -429,6 +433,10 @@ def run_backtest(
         "profit_sweep_pct": profit_sweep_pct,
         "max_holding_periods": max_holding_periods,
         "invert_score": invert_score,
+        "ic_filter": ic_filter,
+        "ic_window": ic_window,
+        "ic_threshold": ic_threshold,
+        "ic_exposure": ic_exposure,
     }
 
     try:

@@ -107,6 +107,7 @@ export interface BacktestPeriod {
   date: string;
   picks: BacktestPick[];
   risk_on?: boolean;
+  ic?: number | null;
 }
 
 export interface BacktestTrade {
@@ -136,6 +137,7 @@ export interface BacktestMetrics {
   avg_short_notional: number;
   avg_long_notional: number;
   funding_cost: number;
+  positive_ic_share: number | null;
   positive_years: number;
   positive_rolling_share: number;
   time_in_drawdown: number;
@@ -175,6 +177,10 @@ export interface BacktestResponse {
   profit_sweep_pct: number;
   max_holding_periods: number | null;
   invert_score: boolean;
+  ic_filter: boolean;
+  ic_window: number;
+  ic_threshold: number;
+  ic_exposure: number;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -211,6 +217,10 @@ export interface BacktestForm {
   profitSweep: number;
   maxHolding: number | null;
   invertScore: boolean;
+  icFilter: boolean;
+  icWindow: number;
+  icThreshold: number;
+  icExposure: number;
 }
 
 export interface OptimizerFold {

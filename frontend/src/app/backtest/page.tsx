@@ -42,6 +42,10 @@ const DEFAULT_FORM: BacktestForm = {
   profitSweep: 50,
   maxHolding: null,
   invertScore: false,
+  icFilter: false,
+  icWindow: 6,
+  icThreshold: 0,
+  icExposure: 35,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -72,6 +76,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       profitSweep: 0,
       maxHolding: null,
       invertScore: false,
+      icFilter: false,
+      icWindow: 6,
+      icThreshold: 0,
+      icExposure: 35,
     },
   },
   {
@@ -101,6 +109,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       profitSweep: 50,
       maxHolding: null,
       invertScore: false,
+      icFilter: false,
+      icWindow: 6,
+      icThreshold: 0,
+      icExposure: 35,
     },
   },
   {
@@ -130,6 +142,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       profitSweep: 30,
       maxHolding: null,
       invertScore: false,
+      icFilter: false,
+      icWindow: 6,
+      icThreshold: 0,
+      icExposure: 35,
     },
   },
 ];
@@ -158,6 +174,10 @@ const PARAM_SPECS: Record<
   profit_sweep_pct: { label: 'Profit sweep', kind: 'categorical', choices: [0, 30, 50, 70] },
   max_holding_periods: { label: 'Max holding', kind: 'categorical', choices: [null, 26, 52, 104] },
   invert_score: { label: 'Factor side', kind: 'categorical', choices: [false, true] },
+  ic_filter: { label: 'Factor-IC filter', kind: 'categorical', choices: [false, true] },
+  ic_exposure: { label: 'IC risk-off exposure', kind: 'categorical', choices: [0, 0.35, 0.7] },
+  ic_window: { label: 'IC window', kind: 'categorical', choices: [2, 4, 6, 12] },
+  ic_threshold: { label: 'IC threshold', kind: 'categorical', choices: [0, 0.05, 0.1] },
 };
 
 const DEFAULT_SEARCH_PARAMS = [
@@ -184,6 +204,10 @@ const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = 
   profit_sweep_pct: 0,
   max_holding_periods: null,
   invert_score: false,
+  ic_filter: false,
+  ic_exposure: 0.35,
+  ic_window: 6,
+  ic_threshold: 0,
 };
 
 function paramLabel(value: string | number | boolean | null): string {
@@ -238,6 +262,12 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   if (form.profitSweep > 0) query.set('profit_sweep_pct', String(form.profitSweep));
   if (form.maxHolding !== null) query.set('max_holding_periods', String(form.maxHolding));
   if (form.invertScore) query.set('invert_score', 'true');
+  if (form.icFilter) {
+    query.set('ic_filter', 'true');
+    query.set('ic_window', String(form.icWindow));
+    query.set('ic_threshold', String(form.icThreshold));
+    query.set('ic_exposure', String(form.icExposure / 100));
+  }
   query.set('score_model', form.scoreModel);
   if (form.regimeFilter !== 'none') {
     query.set('regime_filter', form.regimeFilter);
@@ -451,6 +481,10 @@ export default function BacktestPage() {
       profitSweep: number(params.profit_sweep_pct, form.profitSweep),
       maxHolding: optional(params.max_holding_periods),
       invertScore: params.invert_score === true,
+      icFilter: params.ic_filter === true,
+      icWindow: number(params.ic_window, form.icWindow),
+      icThreshold: number(params.ic_threshold, form.icThreshold),
+      icExposure: Math.round(number(params.ic_exposure, form.icExposure / 100) * 100),
     };
     setForm(next);
     void runBacktest(next);
@@ -854,6 +888,54 @@ export default function BacktestPage() {
               <option value="momentum">Momentum (long expensive / short cheap)</option>
             </select>
           </label>
+          <label className="text-[11px] text-content-muted">
+            Factor-IC filter
+            <Hint text="Measures how well the score predicted the last few cross-sectional returns; when its rolling IC is below the threshold, exposure shrinks and the rest sits in BTC." />
+            <select
+              value={form.icFilter ? 'on' : 'off'}
+              onChange={(event) => update('icFilter', event.target.value === 'on')}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="off">Off</option>
+              <option value="on">On</option>
+            </select>
+          </label>
+          {form.icFilter && (
+            <>
+              <label className="text-[11px] text-content-muted">
+                IC window (anchors)
+                <input
+                  type="number"
+                  min={2}
+                  max={52}
+                  value={form.icWindow}
+                  onChange={(event) => update('icWindow', Math.min(52, Math.max(2, Number(event.target.value) || 6)))}
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                IC threshold
+                <input
+                  type="number"
+                  step={0.05}
+                  value={form.icThreshold}
+                  onChange={(event) => update('icThreshold', Number(event.target.value) || 0)}
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                IC risk-off exposure (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.icExposure}
+                  onChange={(event) => update('icExposure', Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+            </>
+          )}
           {form.regimeFilter === 'breadth' && (
             <label className="text-[11px] text-content-muted">
               Min breadth (%)

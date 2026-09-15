@@ -700,3 +700,58 @@ def test_invert_score_flips_the_factor_direction():
     momentum_picks = [pick["symbol"] for pick in momentum["holdings"][0]["picks"] if pick["direction"] == "long"]
     assert value_picks == ["AAAUSDT"]  # score 90 (cheapest)
     assert momentum_picks == ["BBBUSDT"]  # score 30 (most expensive, mirrored gate)
+
+
+def _anti_ic_snapshot(anchors=10, coins=10):
+    """High scores predict *worse* returns: a negative information coefficient."""
+    dates = [datetime(2023, 1, 1) + timedelta(days=30 * index) for index in range(anchors)]
+    entries = {}
+    for anchor_index, date in enumerate(dates):
+        pool = {}
+        for coin_index in range(coins):
+            score = 90.0 - coin_index * 9.0
+            price = 100.0 * (1 + (coin_index - 4.5) * 0.02 * anchor_index)
+            pool[f"COIN{coin_index}"] = {
+                "score": score,
+                "distance": 0.0,
+                "price": price,
+                "cap": 1e9,
+                "volume": 1e8,
+                "trend_30d": 0.0,
+            }
+        entries[date] = pool
+    return {
+        "frequency": "monthly",
+        "end": dates[-1],
+        "dates": dates,
+        "entries": entries,
+        "rates": {},
+        "rate_dates": [],
+        "series": {},
+    }
+
+
+def test_ic_filter_shrinks_the_factor_when_its_ic_turns_negative():
+    snapshot = _anti_ic_snapshot()
+    window = {
+        "start": datetime(2023, 1, 1),
+        "end": datetime(2023, 10, 1),
+        "top_n": 3,
+        "min_score": 0,
+        "min_market_cap": 0,
+        "min_volume": 0,
+        "weighting": "equal",
+        "fill_with_btc": True,
+        "fee_pct": 0,
+        "rotation": "rebalance",
+    }
+
+    plain = simulate(snapshot, **window)
+    filtered = simulate(snapshot, ic_filter=True, ic_exposure=0.0, **window)
+
+    assert filtered["metrics"]["positive_ic_share"] == 0.0
+    assert filtered["metrics"]["avg_long_notional"] < plain["metrics"]["avg_long_notional"]
+    # Once the rolling IC is negative the book sits in BTC, so the losses shrink.
+    assert filtered["metrics"]["total_return"] > plain["metrics"]["total_return"]
+    ics = [period.get("ic") for period in filtered["holdings"]]
+    assert any(value is not None and value < 0 for value in ics)

@@ -36,6 +36,10 @@ const response: BacktestResponse = {
   profit_sweep_pct: 0,
   max_holding_periods: null,
   invert_score: false,
+  ic_filter: false,
+  ic_window: 6,
+  ic_threshold: 0,
+  ic_exposure: 0.35,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -51,6 +55,7 @@ const response: BacktestResponse = {
     avg_short_notional: 0,
     avg_long_notional: 1,
     funding_cost: 0,
+    positive_ic_share: 0.55,
     positive_years: 0.6,
     positive_rolling_share: 0.55,
     time_in_drawdown: 0.7,

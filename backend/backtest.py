@@ -455,6 +455,24 @@ def _first_exit(
     return None, peak
 
 
+def _forward_ic(previous_pool: dict, current_pool: dict):
+    """Cross-sectional rank correlation of the score with the realized return.
+
+    Computed at an anchor from data already in the past, so it can drive a
+    causal factor-timing rule.
+    """
+    from research.stats import spearman
+
+    pairs = [
+        (entry["score"], current_pool[symbol]["price"] / entry["price"] - 1.0)
+        for symbol, entry in previous_pool.items()
+        if symbol in current_pool and entry["price"]
+    ]
+    if len(pairs) < 8:
+        return None
+    return spearman([pair[0] for pair in pairs], [pair[1] for pair in pairs])
+
+
 def _trade(position: dict, exit_date: datetime, exit_price: float, reason: str) -> dict:
     entry_price = position["entry_price"]
     return {
@@ -500,6 +518,10 @@ def simulate(
     profit_sweep_pct: float = 0.0,
     max_holding_periods: Optional[int] = None,
     invert_score: bool = False,
+    ic_filter: bool = False,
+    ic_window: int = 6,
+    ic_threshold: float = 0.0,
+    ic_exposure: float = 0.35,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -540,6 +562,8 @@ def simulate(
     period_returns = []
     turnovers = []
 
+    ic_history = []
+    ic_values = []
     equity_history = []
     lock_base = 1.0
     funding_costs = []
@@ -554,6 +578,17 @@ def simulate(
         period_days = max((next_date - date).days, 1)
         pool = entries_by_date.get(date, {})
         next_pool = entries_by_date.get(next_date, {})
+
+        ic_now = None
+        if ic_filter and index > 0:
+            ic_now = _forward_ic(entries_by_date[dates[index - 1]], pool)
+            if ic_now is not None:
+                ic_history.append(ic_now)
+                ic_values.append(ic_now)
+        rolling_ic = (
+            statistics.mean(ic_history[-max(2, ic_window):]) if len(ic_history) >= 3 else None
+        )
+        ic_risk_on = rolling_ic is None or rolling_ic > ic_threshold
 
         risk_on = True
         if regime_filter:
@@ -653,7 +688,6 @@ def simulate(
                 position = open_positions.get(symbol)
                 if position is not None:
                     weights[symbol] *= position.get("sweep", 1.0)
-            long_notionals.append(sum(weight for weight in weights.values() if weight > 0))
 
         if not risk_on and regime_exposure > 0:
             exposure = max(0.0, min(1.0, regime_exposure))
@@ -694,6 +728,13 @@ def simulate(
             short_scale = max(0.0, min(1.0, short_exposure)) / short_n
             for symbol, _entry in short_picks:
                 weights[symbol] = -short_scale
+
+        # Factor-IC timing: while the score's own recent information
+        # coefficient is below the threshold the whole factor bet (long and
+        # short) shrinks and the rest sits in BTC.
+        if ic_filter and not ic_risk_on and weights:
+            exposure = max(0.0, min(1.0, ic_exposure))
+            weights = {symbol: weight * exposure for symbol, weight in weights.items()}
 
         # Positions dropped at this anchor are sold at the anchor price; the
         # trade log keeps where each position was bought and sold.
@@ -736,6 +777,8 @@ def simulate(
                 "sweep": 1.0,
                 "periods_held": 0,
             }
+
+        long_notionals.append(sum(weight for weight in weights.values() if weight > 0))
 
         day_timestamp = date.timestamp()
         next_timestamp = next_date.timestamp()
@@ -822,7 +865,7 @@ def simulate(
         period_returns.append(period_return)
         turnovers.append(turnover)
         curve.append({"date": next_date, "equity": equity, "period_return": period_return})
-        holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on})
+        holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on, "ic": rolling_ic})
         previous_weights = weights
         previous_shorts = set(short_symbols)
         blocked_symbols = stopped_symbols | time_exits
@@ -915,6 +958,9 @@ def simulate(
         "avg_short_notional": round(statistics.mean(short_notionals), 4) if short_notionals else 0.0,
         "avg_long_notional": round(statistics.mean(long_notionals), 4) if long_notionals else 0.0,
         "funding_cost": round(sum(funding_costs), 4) if funding_costs else 0.0,
+        "positive_ic_share": (
+            round(sum(1 for value in ic_values if value > 0) / len(ic_values), 4) if ic_values else None
+        ),
         "positive_years": round(positive_years, 4),
         "positive_rolling_share": round(positive_rolling_share, 4),
         "time_in_drawdown": round(time_in_drawdown, 4),

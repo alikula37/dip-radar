@@ -119,6 +119,7 @@ class BacktestPeriod(BaseModel):
     date: datetime
     picks: List[BacktestPick]
     risk_on: bool = True
+    ic: Optional[float] = None
 
 
 class BacktestTrade(BaseModel):
@@ -148,6 +149,7 @@ class BacktestMetrics(BaseModel):
     avg_short_notional: float = 0.0
     avg_long_notional: float = 0.0
     funding_cost: float = 0.0
+    positive_ic_share: Optional[float] = None
     positive_years: float = 0.0
     positive_rolling_share: float = 0.0
     time_in_drawdown: float = 0.0
@@ -240,6 +242,10 @@ class BacktestResponse(BaseModel):
     profit_sweep_pct: float = 0.0
     max_holding_periods: Optional[int] = None
     invert_score: bool = False
+    ic_filter: bool = False
+    ic_window: int = 6
+    ic_threshold: float = 0.0
+    ic_exposure: float = 0.35
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]
