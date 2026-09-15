@@ -240,6 +240,8 @@ export interface OptimizerCandidate {
   train_metrics: BacktestMetrics;
   cv_metrics: OptimizerCvMetrics | null;
   holdout_metrics: BacktestMetrics | null;
+  passed: boolean;
+  reason: string | null;
 }
 
 export interface OptimizerResponse {
@@ -266,7 +268,6 @@ export interface OptimizerResponse {
     candidates_scored: number;
   };
   best: OptimizerCandidate[];
-  closest: (OptimizerCandidate & { reason: string }) | null;
   validated: number;
   rejected: { count: number; reasons: Record<string, number> };
   gap_fraction: number;

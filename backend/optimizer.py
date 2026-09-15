@@ -547,13 +547,21 @@ def optimize_strategy(
     # Validation gate: the search already maximised the walk-forward CV score;
     # the untouched holdout must now confirm it under the chosen strictness.
     best = []
-    closest = None
     signatures = set()
     rejected = {"count": 0, "reasons": {}}
     evaluated_for_validation = 0
+    # When nothing validates, look deeper so the flagged list still spans
+    # genuinely different behaviours instead of a single flat do-nothing row.
     max_holdout_checks = max(20, top_k * 4)
     for candidate in ranked:
-        if len(best) >= top_k or evaluated_for_validation >= max_holdout_checks:
+        if evaluated_for_validation >= 20 and not any(item["passed"] for item in best):
+            # Nothing validated; the top of the CV ranking is dominated by flat
+            # do-nothing configs. Keep searching a wider slice of the ranking so
+            # the flagged list still spans genuinely different behaviours.
+            max_holdout_checks = max(max_holdout_checks, 60)
+        if evaluated_for_validation >= max_holdout_checks:
+            break
+        if len(best) >= top_k and sum(1 for item in best if item["passed"]) >= top_k:
             break
         evaluated_for_validation += 1
         try:
@@ -568,43 +576,45 @@ def optimize_strategy(
             )
         except BacktestError:
             continue
+        if train_metrics is None or holdout_metrics is None:
+            continue
         passed, reason = passes_gate(cv_metrics, holdout_metrics, objective, strictness)
         if not passed:
             rejected["count"] += 1
             rejected["reasons"][reason] = rejected["reasons"].get(reason, 0) + 1
-            if closest is None:
-                closest = {
-                    "params": candidate["params"],
-                    "train_metrics": train_metrics,
-                    "cv_metrics": cv_metrics,
-                    "holdout_metrics": holdout_metrics,
-                    "reason": reason,
-                }
-            continue
 
         # Behavioural dedupe: different parameter combinations that produce
         # identical metrics are the same strategy to the user.
         signature = (
             cv_metrics["mean"] if cv_metrics else None,
             cv_metrics["min"] if cv_metrics else None,
-            round(holdout_metrics["total_return"], 3) if holdout_metrics else None,
+            round(holdout_metrics["total_return"], 3),
         )
         if signature in signatures:
             continue
         signatures.add(signature)
 
-        if train_metrics is None or holdout_metrics is None:
-            continue
         best.append(
             {
                 "params": candidate["params"],
                 "train_metrics": train_metrics,
                 "cv_metrics": cv_metrics,
                 "holdout_metrics": holdout_metrics,
+                "passed": passed,
+                "reason": reason,
             }
         )
 
-    best.sort(key=lambda item: (item["cv_metrics"]["min"], item["cv_metrics"]["mean"]), reverse=True)
+    # Validated configurations first, then by the walk-forward CV score.
+    best.sort(
+        key=lambda item: (
+            0 if item["passed"] else 1,
+            -(item["cv_metrics"]["mean"] if item["cv_metrics"] else float("-inf")),
+        )
+    )
+    best = best[:top_k]
+
+
 
     return {
         "optimizer": optimizer_name,
@@ -628,8 +638,7 @@ def optimize_strategy(
             "candidates_scored": len(candidates),
         },
         "best": best,
-        "closest": closest,
-        "validated": len(best),
+        "validated": sum(1 for item in best if item["passed"]),
         "rejected": rejected,
         "strictness": strictness,
         "gap_fraction": gap_fraction,
@@ -637,8 +646,8 @@ def optimize_strategy(
         "fixed_params": pinned,
         "message": (
             None
-            if best
-            else "No configuration passed validation on the untouched holdout. "
-            "Stay with the shipped presets or widen the date range."
+            if any(item["passed"] for item in best)
+            else "No configuration passed validation with the current strictness — the best attempts are shown "
+            "with overfit warnings. Loosen the strictness, widen the date range or relax the filters."
         ),
     }
