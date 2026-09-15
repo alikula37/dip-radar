@@ -11,7 +11,13 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
   await expect(chart).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Total return (BTC)')).toBeVisible();
   await expect(page.getByText('Max drawdown')).toBeVisible();
-  await expect(page.getByText('Latest rebalances')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rebalances' })).toBeVisible();
+
+  await page.getByRole('button', { name: /show all .* rebalances/i }).click();
+  await expect(page.getByRole('button', { name: /show latest 8 rebalances/i })).toBeVisible();
+
+  await page.getByRole('button', { name: /trade log/i }).click();
+  await expect(page.getByText(/Bought|No trades yet/)).toBeVisible({ timeout: 10_000 });
 
   await chart.hover({ position: { x: 320, y: 120 } });
   await expect(page.getByText(/Strategy ×/)).toBeVisible();

@@ -42,10 +42,32 @@ const response: BacktestResponse = {
     { date: '2022-07-01T00:00:00', equity: 1.4, period_return: 0.4, equity_usd: 1.2, benchmark_usd: 0.9 },
     { date: '2023-01-01T00:00:00', equity: 1.5, period_return: 0.07, equity_usd: 1.7, benchmark_usd: 1.4 },
   ],
-  holdings: [
+  holdings: Array.from({ length: 10 }, (_, index) => ({
+    date: `2022-${String(index + 1).padStart(2, '0')}-01T00:00:00`,
+    picks: [{ symbol: 'ETHBTC', score: 90 - index, weight: 0.5, period_return: 0.1 }],
+  })),
+  trades: [
     {
-      date: '2022-01-01T00:00:00',
-      picks: [{ symbol: 'ETHBTC', score: 90, weight: 0.5, period_return: 0.1 }],
+      symbol: 'ETHBTC',
+      entry_date: '2022-01-01T00:00:00',
+      entry_price: 0.05,
+      entry_score: 90,
+      exit_date: '2022-02-01T00:00:00',
+      exit_price: 0.075,
+      exit_reason: 'take_profit',
+      return_pct: 0.5,
+      days: 31,
+    },
+    {
+      symbol: 'BNBBTC',
+      entry_date: '2022-02-01T00:00:00',
+      entry_price: 0.01,
+      entry_score: 72,
+      exit_date: '2022-03-01T00:00:00',
+      exit_price: 0.009,
+      exit_reason: 'stop_loss',
+      return_pct: -0.1,
+      days: 28,
     },
   ],
   optimization: [
@@ -78,7 +100,8 @@ describe('BacktestPage', () => {
     expect(await screen.findByText('Win rate')).toBeTruthy();
     expect(screen.getByText(/total return \(btc\)/i)).toBeTruthy();
     expect(screen.getByText('Best configurations (by Sharpe)')).toBeTruthy();
-    expect(screen.getByText('ETH')).toBeTruthy();
+    expect(screen.getAllByText('ETH').length).toBeGreaterThan(0);
+    expect(screen.getByText(/showing 8 of 10/)).toBeTruthy();
     expect(screen.getByRole('img', { name: /backtest equity curve in btc/i })).toBeTruthy();
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining('/api/backtest?'),
@@ -134,6 +157,37 @@ describe('BacktestPage', () => {
         expect.objectContaining({ cache: 'no-store' }),
       );
     });
+  });
+
+  it('expands the rebalance history on demand', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText(/showing 8 of 10/);
+
+    fireEvent.click(screen.getByRole('button', { name: /show all 10 rebalances/i }));
+
+    expect(await screen.findByText(/showing 10 of 10/)).toBeTruthy();
+  });
+
+  it('reveals the trade log with buy and sell prices when opened', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Trade log (2)');
+
+    const toggle = screen.getByRole('button', { name: /trade log \(2\)/i });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(await screen.findByText('Bought')).toBeTruthy();
+    expect(screen.getByText('Sold')).toBeTruthy();
+    expect(screen.getByText('0.050000 BTC')).toBeTruthy();
+    expect(screen.getByText('0.075000 BTC')).toBeTruthy();
+    expect(screen.getByText('take profit')).toBeTruthy();
+    expect(screen.getByText('stop loss')).toBeTruthy();
   });
 
   it('shows backend validation errors with a retry', async () => {

@@ -118,6 +118,18 @@ class BacktestPeriod(BaseModel):
     picks: List[BacktestPick]
 
 
+class BacktestTrade(BaseModel):
+    symbol: str
+    entry_date: str
+    entry_price: float
+    entry_score: float
+    exit_date: str
+    exit_price: float
+    exit_reason: str
+    return_pct: float
+    days: int
+
+
 class BacktestMetrics(BaseModel):
     total_return: float
     total_return_usd: Optional[float] = None
@@ -165,4 +177,5 @@ class BacktestResponse(BaseModel):
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]
+    trades: List[BacktestTrade]
     optimization: Optional[List[BacktestOptimizeRow]] = None

@@ -106,6 +106,18 @@ export interface BacktestPeriod {
   picks: BacktestPick[];
 }
 
+export interface BacktestTrade {
+  symbol: string;
+  entry_date: string;
+  entry_price: number;
+  entry_score: number;
+  exit_date: string;
+  exit_price: number;
+  exit_reason: 'take_profit' | 'trailing_stop' | 'stop_loss' | 'score' | 'rebalance' | 'missing' | 'open' | string;
+  return_pct: number;
+  days: number;
+}
+
 export interface BacktestMetrics {
   total_return: number;
   total_return_usd: number | null;
@@ -153,6 +165,7 @@ export interface BacktestResponse {
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
+  trades: BacktestTrade[];
   optimization: BacktestOptimizeRow[] | null;
 }
 
