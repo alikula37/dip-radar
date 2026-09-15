@@ -361,6 +361,8 @@ def run_backtest(
     weighting: str = Query(default="equal", pattern="^(equal|score|market_cap)$"),
     fill_with_btc: bool = Query(default=True),
     fee_pct: float = Query(default=0.1, ge=0, le=5),
+    rotation: str = Query(default="rebalance", pattern="^(rebalance|hold)$", description="rebalance = reset to top-N each period, hold = keep until the score drops"),
+    sell_score: Optional[float] = Query(default=None, ge=0, le=100, description="Exit threshold for rotation=hold (default: min_score)"),
     optimize: bool = Query(default=False, description="Also grid-search top-N / threshold / fill"),
     db: Session = Depends(get_db),
 ):
@@ -392,6 +394,8 @@ def run_backtest(
         "weighting": weighting,
         "fill_with_btc": fill_with_btc,
         "fee_pct": fee_pct,
+        "rotation": rotation,
+        "sell_score": sell_score,
     }
 
     try:

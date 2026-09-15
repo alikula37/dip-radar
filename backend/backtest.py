@@ -290,7 +290,21 @@ def simulate(
     weighting: str = "equal",
     fill_with_btc: bool = True,
     fee_pct: float = 0.1,
+    rotation: str = "rebalance",
+    sell_score: Optional[float] = None,
 ) -> dict:
+    """Walk the rebalance anchors and compound the portfolio.
+
+    ``rotation="rebalance"`` resets the book to the top-N cheapest coins at
+    every anchor. ``rotation="hold"`` buys as before but only sells a
+    position once its score falls below ``sell_score`` (default: the buy
+    threshold), so coins are held while they stay cheap and rotated out when
+    the cheapness is gone.
+    """
+    if rotation not in ("rebalance", "hold"):
+        raise BacktestError("rotation must be rebalance or hold")
+    exit_score = min_score if sell_score is None else sell_score
+
     dates = [date for date in snapshot["dates"] if start <= date <= end]
     if len(dates) < 2:
         raise BacktestError("The selected window has fewer than two rebalance dates")
@@ -325,7 +339,27 @@ def simulate(
                 item[1]["distance"] if item[1]["distance"] is not None else math.inf,
             )
         )
-        picks = candidates[:top_n]
+        if rotation == "hold" and previous_weights:
+            picks = []
+            held_symbols = set()
+            for symbol in previous_weights:
+                entry = pool.get(symbol)
+                if entry is not None and entry["score"] >= exit_score:
+                    picks.append((symbol, entry))
+                    held_symbols.add(symbol)
+            free_slots = top_n - len(picks)
+            for symbol, entry in candidates:
+                if free_slots <= 0:
+                    break
+                if symbol in held_symbols:
+                    continue
+                picks.append((symbol, entry))
+                held_symbols.add(symbol)
+                free_slots -= 1
+            picks.sort(key=lambda item: -item[1]["score"])
+        else:
+            picks = candidates[:top_n]
+
         weights = _weights_for(picks, weighting)
         if fill_with_btc and picks:
             scale = len(picks) / top_n
@@ -414,25 +448,33 @@ def simulate(
 
 
 def optimize(snapshot: dict, base: dict, limit: int = 5) -> list:
-    """Cheap grid search over top-N and score threshold (sim is pure math)."""
+    """Cheap grid search over rotation, top-N, threshold and BTC fill."""
     results = []
-    for top_n in (3, 5, 10):
-        for min_score in (40, 50, 60, 70):
-            for fill_with_btc in (True, False):
-                params = {**base, "top_n": top_n, "min_score": min_score, "fill_with_btc": fill_with_btc}
-                try:
-                    outcome = simulate(snapshot, **params)
-                except BacktestError:
-                    continue
-                results.append(
-                    {
+    for rotation in ("rebalance", "hold"):
+        for top_n in (3, 5, 10):
+            for min_score in (40, 50, 60, 70):
+                for fill_with_btc in (True, False):
+                    params = {
+                        **base,
+                        "rotation": rotation,
                         "top_n": top_n,
                         "min_score": min_score,
                         "fill_with_btc": fill_with_btc,
-                        "total_return": outcome["metrics"]["total_return"],
-                        "sharpe": outcome["metrics"]["sharpe"],
-                        "max_drawdown": outcome["metrics"]["max_drawdown"],
                     }
-                )
+                    try:
+                        outcome = simulate(snapshot, **params)
+                    except BacktestError:
+                        continue
+                    results.append(
+                        {
+                            "rotation": rotation,
+                            "top_n": top_n,
+                            "min_score": min_score,
+                            "fill_with_btc": fill_with_btc,
+                            "total_return": outcome["metrics"]["total_return"],
+                            "sharpe": outcome["metrics"]["sharpe"],
+                            "max_drawdown": outcome["metrics"]["max_drawdown"],
+                        }
+                    )
     results.sort(key=lambda item: (item["sharpe"], item["total_return"]), reverse=True)
     return results[:limit]

@@ -18,6 +18,12 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
 
   await page.getByRole('button', { name: 'USD' }).click();
   await expect(page.getByRole('img', { name: /in usd/i })).toBeVisible();
+
+  await page.getByLabel('Exit rule').selectOption('rebalance');
+  await page.getByLabel(/sell when score/i).fill('55');
+  await page.getByRole('button', { name: 'Run backtest' }).click();
+  await expect(chart).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/reset to top N/)).toBeVisible();
 });
 
 test('strategy lab can grid-search and apply a configuration', async ({ page }) => {

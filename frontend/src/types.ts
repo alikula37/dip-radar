@@ -121,6 +121,7 @@ export interface BacktestMetrics {
 }
 
 export interface BacktestOptimizeRow {
+  rotation: string;
   top_n: number;
   min_score: number;
   fill_with_btc: boolean;
@@ -142,6 +143,8 @@ export interface BacktestResponse {
   weighting: string;
   fill_with_btc: boolean;
   fee_pct: number;
+  rotation: string;
+  sell_score: number | null;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -159,5 +162,7 @@ export interface BacktestForm {
   weighting: 'equal' | 'score' | 'market_cap';
   fillWithBtc: boolean;
   feePct: number;
+  rotation: 'rebalance' | 'hold';
+  sellScore: number;
   optimize: boolean;
 }
