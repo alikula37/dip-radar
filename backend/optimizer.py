@@ -263,11 +263,12 @@ def optimize_strategy(
     seen = {}
 
     def consider(params: dict, metrics: dict, score: float):
-        key = _params_key(params)
+        full = {**pinned, **params}
+        key = _params_key(full)
         if key in seen:
             return
         seen[key] = True
-        candidates.append({"params": params, "train": metrics, "score": score})
+        candidates.append({"params": full, "train": metrics, "score": score})
 
     try:
         import optuna

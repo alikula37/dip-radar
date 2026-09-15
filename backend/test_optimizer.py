@@ -111,7 +111,7 @@ def test_optimizer_returns_ranked_candidates_with_a_holdout():
     for candidate in result["best"]:
         assert candidate["train_metrics"] is not None
         assert candidate["cv_metrics"]["mean"] > 0
-        assert set(candidate["params"]) == set(DEFAULT_SEARCH_PARAMS)
+        assert set(candidate["params"]) == set(PARAM_NAMES)
     assert result["train"]["end"] <= result["holdout"]["start"]
     assert set(result["fixed_params"]) == set(DEFAULT_FIXED_PARAMS)
 

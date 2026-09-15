@@ -241,7 +241,7 @@ describe('BacktestPage', () => {
             regime_exposure: 0.35,
             trailing_stop_pct: null,
             take_profit_pct: null,
-            stop_loss_pct: null,
+            // stop_loss_pct deliberately omitted: the Apply mapping must not emit NaN
           },
           train_metrics: response.metrics,
           cv_metrics: { mean: 0.42, min: 0.1, per_fold: [] },
@@ -297,6 +297,7 @@ describe('BacktestPage', () => {
         expect.stringMatching(/top_n=4.*min_score=45/),
         expect.objectContaining({ cache: 'no-store' }),
       );
+      expect(String(fetchSpy.mock.calls.at(-1)?.[0])).not.toContain('NaN');
     });
   });
 

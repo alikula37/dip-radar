@@ -339,20 +339,31 @@ export default function BacktestPage() {
 
   const applyCandidate = (candidate: OptimizerCandidate) => {
     const params = candidate.params;
-    const number = (value: unknown, fallback: number) => (value === null || value === undefined ? fallback : Number(value));
+    const number = (value: unknown, fallback: number) => {
+      const parsed = Number(value);
+      return value === null || value === undefined || Number.isNaN(parsed) ? fallback : parsed;
+    };
+    const optional = (value: unknown): number | null => {
+      if (value === null || value === undefined) return null;
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
     const next: BacktestForm = {
       ...form,
       topN: number(params.top_n, form.topN),
       minScore: number(params.min_score, form.minScore),
-      sellScore: params.sell_score === null ? number(params.min_score, form.minScore) : number(params.sell_score, form.sellScore),
-      minTrend: params.min_trend_30d === null ? null : Number(params.min_trend_30d),
+      sellScore:
+        params.sell_score === null || params.sell_score === undefined
+          ? number(params.min_score, form.minScore)
+          : number(params.sell_score, form.sellScore),
+      minTrend: optional(params.min_trend_30d),
       weighting: (params.weighting ?? form.weighting) as BacktestForm['weighting'],
       rotation: (params.rotation ?? form.rotation) as BacktestForm['rotation'],
       regimeFilter: (params.regime_filter ?? 'none') as BacktestForm['regimeFilter'],
-      regimeExposure: Math.round(Number(params.regime_exposure ?? 0) * 100),
-      trailingStop: params.trailing_stop_pct === null ? null : Number(params.trailing_stop_pct),
-      takeProfit: params.take_profit_pct === null ? null : Number(params.take_profit_pct),
-      stopLoss: params.stop_loss_pct === null ? null : Number(params.stop_loss_pct),
+      regimeExposure: Math.round(number(params.regime_exposure, form.regimeExposure / 100) * 100),
+      trailingStop: optional(params.trailing_stop_pct),
+      takeProfit: optional(params.take_profit_pct),
+      stopLoss: optional(params.stop_loss_pct),
     };
     setForm(next);
     void runBacktest(next);
