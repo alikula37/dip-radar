@@ -32,21 +32,7 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
   await expect(page.getByText(/reset to top N/)).toBeVisible();
 });
 
-test('strategy lab can grid-search and apply a configuration', async ({ page }) => {
-  await page.goto('/backtest');
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
-
-  await page.getByRole('button', { name: 'Optimize', exact: true }).click();
-  await page.getByRole('button', { name: 'Run backtest' }).click();
-
-  await expect(page.getByText('Best configurations (by Sharpe)')).toBeVisible({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Apply' }).first().click();
-
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/rebalances ·/)).toBeVisible();
-});
-
-test('auto-optimizer opens a dialog and validates with CV and a holdout', async ({ page }) => {
+test('auto-optimizer opens a dialog, scopes parameters and validates candidates', async ({ page }) => {
   await page.goto('/backtest');
   await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
 
@@ -54,12 +40,24 @@ test('auto-optimizer opens a dialog and validates with CV and a holdout', async 
   const dialog = page.getByRole('dialog', { name: 'Auto-optimize' });
   await expect(dialog).toBeVisible();
 
+  // Add a fixed parameter to the search scope with its "+" button.
+  await dialog.getByRole('button', { name: 'Optimize trailing_stop_pct' }).click();
+
   await dialog.getByRole('button', { name: /find best parameters/i }).click();
 
-  await expect(dialog.getByText(/unique configs/)).toBeVisible({ timeout: 90_000 });
+  const summary = dialog.getByText(/Validated \d+ · rejected \d+/);
+  await expect(summary).toBeVisible({ timeout: 120_000 });
   await expect(dialog.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeVisible();
   await expect(dialog.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
 
-  await dialog.getByRole('button', { name: 'Apply' }).first().click();
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 90_000 });
+  const summaryText = (await summary.textContent()) ?? '';
+  const validated = Number(/Validated (\d+)/.exec(summaryText)?.[1] ?? '0');
+  if (validated > 0) {
+    const applyButton = dialog.getByRole('button', { name: 'Apply' }).first();
+    await expect(applyButton).toBeVisible({ timeout: 30_000 });
+    await applyButton.click();
+    await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
+  } else {
+    await expect(dialog.getByText(/No configuration passed validation/)).toBeVisible();
+  }
 });

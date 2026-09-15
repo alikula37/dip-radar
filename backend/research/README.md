@@ -149,15 +149,18 @@ enough and that the strategy gate must stay.
 
 Separation of concerns: *learning a score* failed the gates, while *black-box
 optimization over simulator outcomes* is the right tool for "find the best
-parameters for this pinned universe" — shipped as `GET /api/backtest/optimize`
-(see `backend/optimizer.py`). It runs a nested validation funnel: Optuna TPE
-searches on a training region → unique candidates are re-scored by purged +
-embargoed walk-forward CV inside that region and **ranked by CV mean** (worst
-fold breaks ties) → only finalists touch the trailing holdout, and configs
-that lose there are flagged as overfit risk. Measured example: 200 trials
-find a config with train Sharpe 0.85 whose holdout is −12% — the UI shows
-train / CV / holdout side by side, which is why the validated presets stay
-the defaults.
+parameters for this pinned universe" — shipped as `POST /api/backtest/optimize`
+(see `backend/optimizer.py`). It runs a nested validation funnel: you add the
+parameters to search with **+** (the rest are pinned to editable values) and
+Optuna TPE searches on a training region → unique candidates are re-scored by
+purged + embargoed walk-forward CV inside that region → only finalists touch
+the trailing holdout. **Hard gates** decide what is shown: every CV fold must
+be positive, the holdout must be positive and retain at least half of the CV
+edge (`gap_fraction`), otherwise the candidate is rejected. When nothing
+survives, the API/UI returns an explicit "stay with the presets" message —
+overfit numbers are never dressed up as recommendations. Measured: on the
+current data both the default and the $1B+ universes end with zero validated
+configs, which is itself the honest answer at this sample size.
 
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up

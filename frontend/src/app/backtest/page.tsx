@@ -33,7 +33,6 @@ const DEFAULT_FORM: BacktestForm = {
   regimeFilter: 'alt_trend',
   regimeMinBreadth: 50,
   regimeExposure: 35,
-  optimize: false,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -99,6 +98,46 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
   },
 ];
 
+const PARAM_SPECS: Record<
+  string,
+  { label: string; kind: 'int' | 'categorical'; choices?: (string | number | null)[] }
+> = {
+  top_n: { label: 'Top N', kind: 'int' },
+  min_score: { label: 'Min score', kind: 'int' },
+  sell_score: { label: 'Sell score', kind: 'categorical', choices: [null, 20, 25, 30, 40, 50, 60] },
+  min_trend_30d: { label: 'Min 30d trend', kind: 'categorical', choices: [null, -60, -40, -25, 0] },
+  weighting: { label: 'Weighting', kind: 'categorical', choices: ['equal', 'score', 'market_cap'] },
+  rotation: { label: 'Exit rule', kind: 'categorical', choices: ['hold', 'rebalance'] },
+  regime_filter: { label: 'Regime filter', kind: 'categorical', choices: [null, 'alt_trend', 'breadth'] },
+  regime_exposure: { label: 'Risk-off exposure', kind: 'categorical', choices: [0, 0.25, 0.35, 0.5, 0.75, 1] },
+  trailing_stop_pct: { label: 'Trailing stop', kind: 'categorical', choices: [null, 35, 50, 75] },
+  take_profit_pct: { label: 'Take profit', kind: 'categorical', choices: [null, 100, 200, 500] },
+  stop_loss_pct: { label: 'Stop loss', kind: 'categorical', choices: [null, 30, 40, 50] },
+};
+
+const DEFAULT_SEARCH_PARAMS = [
+  'top_n',
+  'min_score',
+  'sell_score',
+  'min_trend_30d',
+  'weighting',
+  'rotation',
+  'regime_filter',
+  'regime_exposure',
+];
+
+const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = {
+  trailing_stop_pct: null,
+  take_profit_pct: null,
+  stop_loss_pct: null,
+};
+
+function paramLabel(value: string | number | null): string {
+  if (value === null) return 'off';
+  if (typeof value === 'number') return String(value);
+  return value;
+}
+
 const MIN_CAP_OPTIONS = [
   { value: 0, label: 'Any market cap' },
   { value: 10_000_000, label: '≥ $10M market cap' },
@@ -139,7 +178,6 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
     if (form.regimeFilter === 'breadth') query.set('regime_min_breadth', String(form.regimeMinBreadth / 100));
   }
   if (form.end) query.set('end', form.end);
-  if (form.optimize) query.set('optimize', 'true');
 
   const response = await fetch(`/api/backtest?${query.toString()}`, { cache: 'no-store' });
   const payload = await response.json().catch(() => null);
@@ -151,24 +189,35 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
 
 async function requestOptimizer(
   form: BacktestForm,
-  options: { objective: string; trials: number; maxDrawdownLimit: number | null; validationFraction: number },
+  options: {
+    objective: string;
+    trials: number;
+    maxDrawdownLimit: number | null;
+    validationFraction: number;
+    optimizeParams: string[];
+    fixedParams: Record<string, string | number | boolean | null>;
+  },
 ): Promise<OptimizerResponse> {
-  const query = new URLSearchParams({
-    start: form.start,
-    rebalance: form.rebalance,
-    min_market_cap: String(form.minCap),
-    min_volume: String(form.minVolume),
-    fee_pct: String(form.feePct),
-    fill_with_btc: String(form.fillWithBtc),
-    score_model: form.scoreModel,
-    objective: options.objective,
-    trials: String(options.trials),
-    validation_fraction: String(options.validationFraction / 100),
+  const response = await fetch('/api/backtest/optimize', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      start: form.start,
+      end: form.end || undefined,
+      rebalance: form.rebalance,
+      min_market_cap: form.minCap,
+      min_volume: form.minVolume,
+      fee_pct: form.feePct,
+      fill_with_btc: form.fillWithBtc,
+      score_model: form.scoreModel,
+      objective: options.objective,
+      trials: options.trials,
+      max_drawdown_limit: options.maxDrawdownLimit,
+      validation_fraction: options.validationFraction / 100,
+      optimize_params: options.optimizeParams,
+      fixed_params: options.fixedParams,
+    }),
   });
-  if (form.end) query.set('end', form.end);
-  if (options.maxDrawdownLimit !== null) query.set('max_drawdown_limit', String(options.maxDrawdownLimit));
-
-  const response = await fetch(`/api/backtest/optimize?${query.toString()}`, { cache: 'no-store' });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(payload?.detail ?? `Optimizer failed (HTTP ${response.status})`);
@@ -244,6 +293,10 @@ export default function BacktestPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizeResult, setOptimizeResult] = useState<OptimizerResponse | null>(null);
+  const [searchParams, setSearchParams] = useState<string[]>(DEFAULT_SEARCH_PARAMS);
+  const [pinnedValues, setPinnedValues] = useState<Record<string, string | number | boolean | null>>({
+    ...DEFAULT_PINNED_VALUES,
+  });
   const [objective, setObjective] = useState<'sharpe' | 'return' | 'calmar'>('sharpe');
   const [trials, setTrials] = useState(150);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
@@ -273,6 +326,8 @@ export default function BacktestPage() {
         trials,
         maxDrawdownLimit,
         validationFraction,
+        optimizeParams: searchParams,
+        fixedParams: pinnedValues,
       });
       setOptimizeResult(payload);
     } catch (caught) {
@@ -280,25 +335,35 @@ export default function BacktestPage() {
     } finally {
       setOptimizing(false);
     }
-  }, [form, objective, trials, maxDrawdownLimit, validationFraction]);
+  }, [form, objective, trials, maxDrawdownLimit, validationFraction, searchParams, pinnedValues]);
 
   const applyCandidate = (candidate: OptimizerCandidate) => {
     const params = candidate.params;
-    const number = (value: unknown, fallback: number) => (value === null || value === undefined ? fallback : Number(value));
+    const number = (value: unknown, fallback: number) => {
+      const parsed = Number(value);
+      return value === null || value === undefined || Number.isNaN(parsed) ? fallback : parsed;
+    };
+    const optional = (value: unknown): number | null => {
+      if (value === null || value === undefined) return null;
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
     const next: BacktestForm = {
       ...form,
       topN: number(params.top_n, form.topN),
       minScore: number(params.min_score, form.minScore),
-      sellScore: params.sell_score === null ? number(params.min_score, form.minScore) : number(params.sell_score, form.sellScore),
-      minTrend: params.min_trend_30d === null ? null : Number(params.min_trend_30d),
+      sellScore:
+        params.sell_score === null || params.sell_score === undefined
+          ? number(params.min_score, form.minScore)
+          : number(params.sell_score, form.sellScore),
+      minTrend: optional(params.min_trend_30d),
       weighting: (params.weighting ?? form.weighting) as BacktestForm['weighting'],
       rotation: (params.rotation ?? form.rotation) as BacktestForm['rotation'],
       regimeFilter: (params.regime_filter ?? 'none') as BacktestForm['regimeFilter'],
-      regimeExposure: Math.round(Number(params.regime_exposure ?? 0) * 100),
-      trailingStop: params.trailing_stop_pct === null ? null : Number(params.trailing_stop_pct),
-      takeProfit: params.take_profit_pct === null ? null : Number(params.take_profit_pct),
-      stopLoss: params.stop_loss_pct === null ? null : Number(params.stop_loss_pct),
-      optimize: false,
+      regimeExposure: Math.round(number(params.regime_exposure, form.regimeExposure / 100) * 100),
+      trailingStop: optional(params.trailing_stop_pct),
+      takeProfit: optional(params.take_profit_pct),
+      stopLoss: optional(params.stop_loss_pct),
     };
     setForm(next);
     void runBacktest(next);
@@ -334,6 +399,11 @@ export default function BacktestPage() {
       ([key, value]) => form[key as keyof BacktestForm] === value,
     ),
   )?.key;
+
+  const addableParams = Object.keys(PARAM_SPECS).filter(
+    (name) => !searchParams.includes(name) && !(name in pinnedValues),
+  );
+  const fixedParamNames = Object.keys(pinnedValues);
 
   const metrics = result?.metrics;
   const allPeriods = useMemo(() => (result ? [...result.holdings].reverse() : []), [result]);
@@ -387,21 +457,6 @@ export default function BacktestPage() {
             options={[...PRESETS.map((preset) => ({ value: preset.key, label: preset.label })), { value: 'custom', label: 'Custom' }]}
           />
 
-          <button
-            type="button"
-            aria-pressed={form.optimize}
-            onClick={() => update('optimize', !form.optimize)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
-              form.optimize
-                ? 'border-primary bg-primary text-on-primary'
-                : 'border-outline bg-surface-2 text-content-muted hover:text-content',
-            )}
-            title="Also grid-search top-N, score threshold and BTC fill"
-          >
-            <Sparkles size={14} />
-            Optimize
-          </button>
 
           <Button
             variant="outline"
@@ -773,10 +828,128 @@ export default function BacktestPage() {
                     className="mt-1 w-20 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
                   />
                 </label>
-                <Button variant="primary" onClick={() => void runOptimizer()} disabled={optimizing}>
+                <Button
+                  variant="primary"
+                  onClick={() => void runOptimizer()}
+                  disabled={optimizing || searchParams.length === 0}
+                >
                   <Sparkles size={15} />
                   {optimizing ? 'Searching…' : 'Find best parameters'}
                 </Button>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-outline bg-surface-2 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-content-muted">Optimizing</span>
+                  {searchParams.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface px-2 py-0.5 text-[11px]"
+                    >
+                      {PARAM_SPECS[name].label}
+                      <button
+                        type="button"
+                        aria-label={`Stop optimizing ${name}`}
+                        onClick={() => {
+                          const spec = PARAM_SPECS[name];
+                          const fallback =
+                            DEFAULT_PINNED_VALUES[name] ??
+                            (spec.kind === 'int' ? 5 : spec.choices?.[0] ?? null);
+                          setSearchParams((current) => current.filter((entry) => entry !== name));
+                          setPinnedValues((current) => ({ ...current, [name]: fallback }));
+                        }}
+                        className="rounded-full p-0.5 text-content-muted transition-colors hover:text-content"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  {addableParams.length > 0 && (
+                    <select
+                      value=""
+                      aria-label="Add parameter to optimize"
+                      onChange={(event) => {
+                        const name = event.target.value;
+                        if (!name) return;
+                        setPinnedValues((current) => {
+                          const next = { ...current };
+                          delete next[name];
+                          return next;
+                        });
+                        setSearchParams((current) => [...current, name]);
+                      }}
+                      className="rounded-full border border-dashed border-outline bg-transparent px-2 py-0.5 text-[11px] text-content-muted outline-none"
+                    >
+                      <option value="">+ Add parameter</option>
+                      {addableParams.map((name) => (
+                        <option key={name} value={name}>
+                          {PARAM_SPECS[name].label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {fixedParamNames.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] uppercase tracking-wide text-content-muted">Fixed</span>
+                    {fixedParamNames.map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface px-2 py-0.5 text-[11px]"
+                      >
+                        <span className="text-content-muted">{PARAM_SPECS[name].label}</span>
+                        {PARAM_SPECS[name].kind === 'int' ? (
+                          <input
+                            type="number"
+                            aria-label={`Fixed value for ${name}`}
+                            value={Number(pinnedValues[name] ?? 5)}
+                            onChange={(event) =>
+                              setPinnedValues((current) => ({ ...current, [name]: Number(event.target.value) || 0 }))
+                            }
+                            className="w-14 bg-transparent text-content outline-none"
+                          />
+                        ) : (
+                          <select
+                            value={String(pinnedValues[name] ?? 'off')}
+                            aria-label={`Fixed value for ${name}`}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              const value = raw === 'off' ? null : Number.isFinite(Number(raw)) && raw !== '' ? Number(raw) : raw;
+                              setPinnedValues((current) => ({ ...current, [name]: value }));
+                            }}
+                            className="bg-transparent text-content outline-none"
+                          >
+                            {PARAM_SPECS[name].choices?.map((choice) => (
+                              <option key={String(choice)} value={String(choice ?? 'off')}>
+                                {paramLabel(choice)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <button
+                          type="button"
+                          aria-label={`Optimize ${name}`}
+                          onClick={() => {
+                            setPinnedValues((current) => {
+                              const next = { ...current };
+                              delete next[name];
+                              return next;
+                            });
+                            setSearchParams((current) => [...current, name]);
+                          }}
+                          className="rounded-full p-0.5 text-content-muted transition-colors hover:text-content"
+                        >
+                          +
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] text-content-muted">
+                  Added parameters are searched; everything under Fixed is pinned. The universe filters and dates from
+                  the form are always fixed.
+                </p>
               </div>
 
               <p className="mt-2 text-[11px] text-content-muted">
@@ -796,6 +969,19 @@ export default function BacktestPage() {
                     {optimizeResult.holdout.start.slice(0, 10)} → {optimizeResult.holdout.end.slice(0, 10)}
                     {optimizeResult.max_drawdown_limit ? ` · max DD ≤ ${optimizeResult.max_drawdown_limit}%` : ''}
                   </p>
+                  <p className="mt-1 text-[11px] text-content-muted">
+                    Validated {optimizeResult.validated} · rejected {optimizeResult.rejected.count}
+                    {Object.entries(optimizeResult.rejected.reasons).length > 0
+                      ? ` (${Object.entries(optimizeResult.rejected.reasons)
+                          .map(([reason, count]) => `${reason} ×${count}`)
+                          .join(', ')})`
+                      : ''}
+                  </p>
+                  {optimizeResult.message && (
+                    <p className="mt-3 rounded-xl border border-[#f87171]/40 bg-[#f87171]/10 px-3 py-2 text-xs text-[#f87171]">
+                      {optimizeResult.message}
+                    </p>
+                  )}
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full min-w-[860px] text-left text-xs">
                       <thead>
@@ -828,9 +1014,6 @@ export default function BacktestPage() {
                                 )}
                                 {candidate.params.take_profit_pct !== null && (
                                   <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">tp {String(candidate.params.take_profit_pct)}%</span>
-                                )}
-                                {candidate.overfit_risk && (
-                                  <span className="rounded-full bg-[#f87171]/15 px-2 py-0.5 text-[#f87171]">overfit risk</span>
                                 )}
                               </div>
                             </td>
@@ -941,69 +1124,6 @@ export default function BacktestPage() {
               <EquityChart curve={result.curve} mode={displayMode} />
             </div>
           </section>
-
-          {result.optimization && result.optimization.length > 0 && (
-            <section className="mt-4 rounded-2xl border border-outline bg-surface p-4">
-              <h2 className="text-sm font-semibold text-content">Best configurations (by Sharpe)</h2>
-              <p className="text-[11px] text-content-muted">
-                Grid search over exit rule, top-N, minimum score and BTC fill on the same snapshot.
-              </p>
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
-                      <th className="py-2 pr-3">Exit</th>
-                      <th className="py-2 pr-3">Top N</th>
-                      <th className="py-2 pr-3">Min score</th>
-                      <th className="py-2 pr-3">Unfilled</th>
-                      <th className="py-2 pr-3">Total (BTC)</th>
-                      <th className="py-2 pr-3">Sharpe</th>
-                      <th className="py-2 pr-3">Max DD</th>
-                      <th className="py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.optimization.map((row) => (
-                      <tr
-                        key={`${row.rotation}-${row.top_n}-${row.min_score}-${row.fill_with_btc}`}
-                        className="border-b border-outline/50"
-                      >
-                        <td className="py-2 pr-3">{row.rotation === 'hold' ? 'Hold' : 'Top-N'}</td>
-                        <td className="py-2 pr-3 font-mono">{row.top_n}</td>
-                        <td className="py-2 pr-3 font-mono">{row.min_score}</td>
-                        <td className="py-2 pr-3">{row.fill_with_btc ? 'BTC' : 'Cash'}</td>
-                        <td className={cn('py-2 pr-3 font-mono', row.total_return > 0 ? 'text-[#4ade80]' : 'text-[#f87171]')}>
-                          {formatPct(row.total_return * 100)}
-                        </td>
-                        <td className="py-2 pr-3 font-mono">{row.sharpe.toFixed(2)}</td>
-                        <td className="py-2 pr-3 font-mono text-[#f87171]">{formatPct(row.max_drawdown * 100)}</td>
-                        <td className="py-2 text-right">
-                          <Button
-                            variant="ghost"
-                            className="px-2 py-1 text-[11px]"
-                            onClick={() => {
-                              const next: BacktestForm = {
-                                ...form,
-                                rotation: row.rotation as BacktestForm['rotation'],
-                                topN: row.top_n,
-                                minScore: row.min_score,
-                                fillWithBtc: row.fill_with_btc,
-                                optimize: false,
-                              };
-                              setForm(next);
-                              void runBacktest(next);
-                            }}
-                          >
-                            Apply
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
 
           <section className="mt-4 rounded-2xl border border-outline bg-surface p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

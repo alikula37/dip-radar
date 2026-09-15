@@ -135,16 +135,6 @@ export interface BacktestMetrics {
   periods: number;
 }
 
-export interface BacktestOptimizeRow {
-  rotation: string;
-  top_n: number;
-  min_score: number;
-  fill_with_btc: boolean;
-  total_return: number;
-  sharpe: number;
-  max_drawdown: number;
-}
-
 export interface BacktestResponse {
   requested_start: string;
   requested_end: string;
@@ -172,7 +162,6 @@ export interface BacktestResponse {
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
   trades: BacktestTrade[];
-  optimization: BacktestOptimizeRow[] | null;
 }
 
 export interface BacktestForm {
@@ -196,7 +185,6 @@ export interface BacktestForm {
   regimeFilter: 'none' | 'alt_trend' | 'breadth';
   regimeMinBreadth: number;
   regimeExposure: number;
-  optimize: boolean;
 }
 
 export interface OptimizerFold {
@@ -216,7 +204,6 @@ export interface OptimizerCandidate {
   train_metrics: BacktestMetrics;
   cv_metrics: OptimizerCvMetrics | null;
   holdout_metrics: BacktestMetrics | null;
-  overfit_risk: boolean;
 }
 
 export interface OptimizerResponse {
@@ -240,4 +227,27 @@ export interface OptimizerResponse {
     candidates_scored: number;
   };
   best: OptimizerCandidate[];
+  validated: number;
+  rejected: { count: number; reasons: Record<string, number> };
+  gap_fraction: number;
+  optimize_params: string[];
+  fixed_params: Record<string, string | number | boolean | null>;
+  message: string | null;
+}
+
+export interface OptimizerRequest {
+  start: string;
+  end?: string;
+  rebalance: string;
+  min_market_cap: number;
+  min_volume: number;
+  fee_pct: number;
+  fill_with_btc: boolean;
+  score_model: string;
+  objective: string;
+  trials: number;
+  max_drawdown_limit: number | null;
+  validation_fraction: number;
+  optimize_params: string[];
+  fixed_params: Record<string, string | number | boolean | null>;
 }

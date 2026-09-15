@@ -147,14 +147,21 @@ class BacktestMetrics(BaseModel):
     periods: int
 
 
-class BacktestOptimizeRow(BaseModel):
-    rotation: str
-    top_n: int
-    min_score: float
-    fill_with_btc: bool
-    total_return: float
-    sharpe: float
-    max_drawdown: float
+class OptimizerRequest(BaseModel):
+    start: str
+    end: Optional[str] = None
+    rebalance: str = "weekly"
+    min_market_cap: float = 10_000_000.0
+    min_volume: float = 250_000.0
+    fee_pct: float = 0.1
+    fill_with_btc: bool = True
+    score_model: str = "rule"
+    objective: str = "sharpe"
+    trials: int = 200
+    max_drawdown_limit: Optional[float] = None
+    validation_fraction: float = 0.3
+    optimize_params: Optional[List[str]] = None
+    fixed_params: Optional[dict] = None
 
 
 class OptimizerCandidate(BaseModel):
@@ -162,7 +169,6 @@ class OptimizerCandidate(BaseModel):
     train_metrics: BacktestMetrics
     cv_metrics: Optional[dict] = None
     holdout_metrics: Optional[BacktestMetrics] = None
-    overfit_risk: bool = False
 
 
 class OptimizerResponse(BaseModel):
@@ -181,6 +187,12 @@ class OptimizerResponse(BaseModel):
     holdout: dict
     cv: dict
     best: List[OptimizerCandidate]
+    validated: int
+    rejected: dict
+    gap_fraction: float
+    optimize_params: List[str]
+    fixed_params: dict
+    message: Optional[str] = None
 
 
 class BacktestResponse(BaseModel):
@@ -210,4 +222,3 @@ class BacktestResponse(BaseModel):
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]
     trades: List[BacktestTrade]
-    optimization: Optional[List[BacktestOptimizeRow]] = None
