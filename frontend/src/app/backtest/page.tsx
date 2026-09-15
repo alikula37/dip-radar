@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import EquityChart from '@/components/EquityChart';
-import { Button, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
+import { Button, Hint, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
 import { formatBtcValue, formatPct } from '@/lib/colors';
 import type { BacktestForm, BacktestMetrics, BacktestResponse, OptimizerCandidate, OptimizerResponse } from '@/types';
 
@@ -41,6 +41,7 @@ const DEFAULT_FORM: BacktestForm = {
   shortExposure: 25,
   profitSweep: 50,
   maxHolding: null,
+  invertScore: false,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -70,6 +71,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       shortExposure: 25,
       profitSweep: 0,
       maxHolding: null,
+      invertScore: false,
     },
   },
   {
@@ -98,6 +100,7 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       shortExposure: 25,
       profitSweep: 50,
       maxHolding: null,
+      invertScore: false,
     },
   },
   {
@@ -126,13 +129,14 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       shortExposure: 50,
       profitSweep: 30,
       maxHolding: null,
+      invertScore: false,
     },
   },
 ];
 
 const PARAM_SPECS: Record<
   string,
-  { label: string; kind: 'int' | 'categorical'; choices?: (string | number | null)[] }
+  { label: string; kind: 'int' | 'categorical'; choices?: (string | number | boolean | null)[] }
 > = {
   top_n: { label: 'Top N', kind: 'int' },
   min_score: { label: 'Min score', kind: 'int' },
@@ -153,6 +157,7 @@ const PARAM_SPECS: Record<
   short_exposure: { label: 'Short exposure', kind: 'categorical', choices: [0, 0.25, 0.5, 1] },
   profit_sweep_pct: { label: 'Profit sweep', kind: 'categorical', choices: [0, 30, 50, 70] },
   max_holding_periods: { label: 'Max holding', kind: 'categorical', choices: [null, 26, 52, 104] },
+  invert_score: { label: 'Factor side', kind: 'categorical', choices: [false, true] },
 };
 
 const DEFAULT_SEARCH_PARAMS = [
@@ -178,10 +183,13 @@ const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = 
   short_exposure: 1,
   profit_sweep_pct: 0,
   max_holding_periods: null,
+  invert_score: false,
 };
 
-function paramLabel(value: string | number | null): string {
+function paramLabel(value: string | number | boolean | null): string {
   if (value === null) return 'off';
+  if (value === true) return 'momentum';
+  if (value === false) return 'value';
   if (typeof value === 'number') return String(value);
   return value;
 }
@@ -229,6 +237,7 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   }
   if (form.profitSweep > 0) query.set('profit_sweep_pct', String(form.profitSweep));
   if (form.maxHolding !== null) query.set('max_holding_periods', String(form.maxHolding));
+  if (form.invertScore) query.set('invert_score', 'true');
   query.set('score_model', form.scoreModel);
   if (form.regimeFilter !== 'none') {
     query.set('regime_filter', form.regimeFilter);
@@ -441,6 +450,7 @@ export default function BacktestPage() {
       shortExposure: Math.round(number(params.short_exposure, form.shortExposure / 100) * 100),
       profitSweep: number(params.profit_sweep_pct, form.profitSweep),
       maxHolding: optional(params.max_holding_periods),
+      invertScore: params.invert_score === true,
     };
     setForm(next);
     void runBacktest(next);
@@ -599,6 +609,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Rebalance
+            <Hint text="How often the book is re-evaluated and rebalanced." />
             <select
               value={form.rebalance}
               onChange={(event) => update('rebalance', event.target.value as Rebalance)}
@@ -611,6 +622,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Top N coins
+            <Hint text="Maximum number of concurrent long positions. Lower = more concentrated." />
             <input
               type="number"
               min={1}
@@ -622,6 +634,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Min Value Score
+            <Hint text="Only buy coins whose Value Score (0-100 cheapness rank) is at least this." />
             <input
               type="number"
               min={0}
@@ -633,6 +646,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Market cap filter
+            <Hint text="Universe filter. The optimizer pins this floor; it never searches below it." />
             <select
               value={form.minCap}
               onChange={(event) => update('minCap', Number(event.target.value))}
@@ -647,6 +661,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Volume filter
+            <Hint text="Minimum 24h volume — keeps illiquid coins out of the universe." />
             <select
               value={form.minVolume}
               onChange={(event) => update('minVolume', Number(event.target.value))}
@@ -661,6 +676,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Weighting
+            <Hint text="How capital is split across picks: equal, score-proportional or market-cap-proportional." />
             <select
               value={form.weighting}
               onChange={(event) => update('weighting', event.target.value as Weighting)}
@@ -673,6 +689,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Score model
+            <Hint text="Which score ranks the coins: the rule-based composite or an experimental learned artifact." />
             <select
               value={form.scoreModel}
               onChange={(event) => update('scoreModel', event.target.value as BacktestForm['scoreModel'])}
@@ -686,6 +703,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Regime filter
+            <Hint text="Alt/BTC trend or breadth: while risk-off the book shrinks exposure and holds BTC instead." />
             <select
               value={form.regimeFilter}
               onChange={(event) => update('regimeFilter', event.target.value as BacktestForm['regimeFilter'])}
@@ -699,6 +717,7 @@ export default function BacktestPage() {
           {form.regimeFilter !== 'none' && (
             <label className="text-[11px] text-content-muted">
               Risk-off exposure (%)
+            <Hint text="Exposure kept during risk-off periods; the rest sits in BTC." />
               <input
                 type="number"
                 min={0}
@@ -713,6 +732,7 @@ export default function BacktestPage() {
           )}
           <label className="text-[11px] text-content-muted">
             Equity-trend exposure (%, blank = off)
+            <Hint text="Shrink exposure while the strategy's own equity is below its 6-anchor average (protects accumulated gains)." />
             <input
               type="number"
               min={0}
@@ -727,6 +747,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Profit lock (%, blank = off)
+            <Hint text="Every time the equity doubles above the last lock, move this share of the book permanently into BTC." />
             <input
               type="number"
               min={0}
@@ -741,6 +762,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Short N (market-neutral sleeve)
+            <Hint text="Short the N most expensive coins every rebalance (market-neutral sleeve). 0 = off." />
             <input
               type="number"
               min={0}
@@ -754,6 +776,7 @@ export default function BacktestPage() {
             <>
               <label className="text-[11px] text-content-muted">
                 Max short score (blank = any)
+            <Hint text="Only short coins whose Value Score is at most this (blank = any score)." />
                 <input
                   type="number"
                   min={0}
@@ -768,6 +791,7 @@ export default function BacktestPage() {
               </label>
               <label className="text-[11px] text-content-muted">
                 Short funding APR (%)
+            <Hint text="Annual funding cost charged on the short notional — the main practical cost of shorting." />
                 <input
                   type="number"
                   min={0}
@@ -779,6 +803,7 @@ export default function BacktestPage() {
               </label>
               <label className="text-[11px] text-content-muted">
                 Short exposure (% of long book)
+            <Hint text="Short book size relative to the long book: 25% = quarter-size hedge." />
                 <input
                   type="number"
                   min={0}
@@ -792,6 +817,7 @@ export default function BacktestPage() {
           )}
           <label className="text-[11px] text-content-muted">
             Profit sweep (% of profit back to BTC)
+            <Hint text="Harvest this share of each position's BTC-denominated profit back into BTC every rebalance; the trimmed size persists." />
             <input
               type="number"
               min={0}
@@ -803,6 +829,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Max holding (rebalances, blank = off)
+            <Hint text="Force a position back to BTC after this many rebalances (time stop)." />
             <input
               type="number"
               min={1}
@@ -814,6 +841,18 @@ export default function BacktestPage() {
               }
               className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
             />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Factor side
+            <Hint text="Value: long the cheapest coins and short the most expensive. Momentum: flip it — long the most expensive, short the cheapest (a way to trade the other side while cheapness is out of favor)." />
+            <select
+              value={form.invertScore ? 'momentum' : 'value'}
+              onChange={(event) => update('invertScore', event.target.value === 'momentum')}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="value">Value (long cheap / short expensive)</option>
+              <option value="momentum">Momentum (long expensive / short cheap)</option>
+            </select>
           </label>
           {form.regimeFilter === 'breadth' && (
             <label className="text-[11px] text-content-muted">
@@ -832,6 +871,7 @@ export default function BacktestPage() {
           )}
           <label className="text-[11px] text-content-muted">
             Fee per trade (%)
+            <Hint text="Trading fee charged on turnover at every rebalance (both sides of a trade)." />
             <input
               type="number"
               min={0}
@@ -844,6 +884,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Exit rule
+            <Hint text="Hold each position until its score drops below the exit threshold, or reset to the top-N every period." />
             <select
               value={form.rotation}
               onChange={(event) => update('rotation', event.target.value as BacktestForm['rotation'])}
@@ -855,6 +896,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Sell when score &lt;
+            <Hint text="Exit threshold for the hold rule; defaults to the buy threshold." />
             <input
               type="number"
               min={0}
@@ -866,6 +908,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Min 30d trend (%, blank = any)
+            <Hint text="Skip entries whose 30-day trend is below this — avoids free-falling knives." />
             <input
               type="number"
               min={-100}
@@ -878,6 +921,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Stop loss (%, blank = off)
+            <Hint text="Sell when the price falls this much below the entry (checked daily)." />
             <input
               type="number"
               min={0}
@@ -892,6 +936,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Trailing stop (%, blank = off)
+            <Hint text="Sell when the price falls this much from its peak since entry." />
             <input
               type="number"
               min={0}
@@ -909,6 +954,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Take profit (%, blank = off)
+            <Hint text="Sell when the price rises this much above the entry." />
             <input
               type="number"
               min={0}
@@ -1123,7 +1169,16 @@ export default function BacktestPage() {
                             aria-label={`Fixed value for ${name}`}
                             onChange={(event) => {
                               const raw = event.target.value;
-                              const value = raw === 'off' ? null : Number.isFinite(Number(raw)) && raw !== '' ? Number(raw) : raw;
+                              const value =
+                                raw === 'off'
+                                  ? null
+                                  : raw === 'true'
+                                    ? true
+                                    : raw === 'false'
+                                      ? false
+                                      : Number.isFinite(Number(raw)) && raw !== ''
+                                        ? Number(raw)
+                                        : raw;
                               setPinnedValues((current) => ({ ...current, [name]: value }));
                             }}
                             className="bg-transparent text-content outline-none"
@@ -1298,6 +1353,7 @@ export default function BacktestPage() {
           <section className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
             <StatCard
               label="Total return (BTC)"
+              info="Multiple of the starting BTC balance (a x1.00 result means the BTC amount is unchanged)."
               value={formatPct(metrics.total_return * 100)}
               hint={
                 metrics.total_return_usd !== null
@@ -1308,16 +1364,21 @@ export default function BacktestPage() {
               }
               accent={metrics.total_return > 0 ? 'positive' : undefined}
             />
-            <StatCard label="CAGR" value={formatPct(metrics.cagr * 100)} hint="Annualized, BTC terms" />
-            <StatCard label="Sharpe" value={metrics.sharpe.toFixed(2)} hint="Per-period returns, annualized" />
+            <StatCard label="CAGR"
+              info="Annualized BTC-terms return over the selected window." value={formatPct(metrics.cagr * 100)} hint="Annualized, BTC terms" />
+            <StatCard label="Sharpe"
+              info="Average period return divided by its volatility, annualized." value={metrics.sharpe.toFixed(2)} hint="Per-period returns, annualized" />
             <StatCard
               label="Max drawdown"
+              info="Worst peak-to-trough decline of the BTC balance."
               value={formatPct(metrics.max_drawdown * 100)}
               hint={metrics.calmar !== null ? `Calmar ${metrics.calmar.toFixed(2)}` : undefined}
             />
-            <StatCard label="Volatility" value={formatPct(metrics.volatility * 100)} hint="Annualized" />
+            <StatCard label="Volatility"
+              info="Annualized standard deviation of the per-period returns." value={formatPct(metrics.volatility * 100)} hint="Annualized" />
             <StatCard
               label="Win rate"
+              info="Share of rebalance periods with a positive return."
               value={formatPct(metrics.win_rate * 100)}
               hint={`Avg holdings ${metrics.avg_holdings.toFixed(1)} · turnover ${formatPct(
                 metrics.avg_turnover * 100,
@@ -1325,11 +1386,13 @@ export default function BacktestPage() {
             />
             <StatCard
               label="Consistency"
+              info="Positive calendar-year share and share of rolling 1-year windows that end positive."
               value={`${((metrics.positive_years ?? 0) * 100).toFixed(0)}%`}
               hint={`positive years · ${((metrics.positive_rolling_share ?? 0) * 100).toFixed(0)}% of rolling 1y windows`}
             />
             <StatCard
               label="Time in drawdown"
+              info="Share of periods below a previous peak; the hint shows how much of all gains came from the best 5% of periods."
               value={`${((metrics.time_in_drawdown ?? 0) * 100).toFixed(0)}%`}
               hint={`best 5% of periods made ${((metrics.best_period_share ?? 0) * 100).toFixed(0)}% of the gains`}
             />

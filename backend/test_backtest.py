@@ -688,3 +688,15 @@ def test_profit_sweep_locks_part_of_the_gain_and_persists():
     assert weights[2] < weights[1]  # the trimmed size persists
     assert swept["metrics"]["total_return"] < free["metrics"]["total_return"]
     assert swept["metrics"]["avg_long_notional"] < free["metrics"]["avg_long_notional"]
+
+
+def test_invert_score_flips_the_factor_direction():
+    snapshot = _manual_snapshot()
+
+    value = simulate(snapshot, **_ROTATION_WINDOW)
+    momentum = simulate(snapshot, invert_score=True, **_ROTATION_WINDOW)
+
+    value_picks = [pick["symbol"] for pick in value["holdings"][0]["picks"] if pick["direction"] == "long"]
+    momentum_picks = [pick["symbol"] for pick in momentum["holdings"][0]["picks"] if pick["direction"] == "long"]
+    assert value_picks == ["AAAUSDT"]  # score 90 (cheapest)
+    assert momentum_picks == ["BBBUSDT"]  # score 30 (most expensive, mirrored gate)

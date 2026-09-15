@@ -174,6 +174,7 @@ export interface BacktestResponse {
   short_exposure: number;
   profit_sweep_pct: number;
   max_holding_periods: number | null;
+  invert_score: boolean;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -209,6 +210,7 @@ export interface BacktestForm {
   shortExposure: number;
   profitSweep: number;
   maxHolding: number | null;
+  invertScore: boolean;
 }
 
 export interface OptimizerFold {

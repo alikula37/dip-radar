@@ -239,6 +239,7 @@ class BacktestResponse(BaseModel):
     short_exposure: float = 1.0
     profit_sweep_pct: float = 0.0
     max_holding_periods: Optional[int] = None
+    invert_score: bool = False
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

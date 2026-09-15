@@ -35,6 +35,7 @@ const response: BacktestResponse = {
   short_exposure: 1,
   profit_sweep_pct: 0,
   max_holding_periods: null,
+  invert_score: false,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -135,7 +136,7 @@ describe('BacktestPage', () => {
     render(<BacktestPage />);
     await screen.findByText('Win rate');
 
-    fireEvent.change(screen.getByLabelText('Exit rule'), { target: { value: 'rebalance' } });
+    fireEvent.change(screen.getByLabelText(/exit rule/i), { target: { value: 'rebalance' } });
     fireEvent.change(screen.getByLabelText(/sell when score/i), { target: { value: '55' } });
     fireEvent.change(screen.getByLabelText(/take profit/i), { target: { value: '200' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
@@ -156,7 +157,7 @@ describe('BacktestPage', () => {
     render(<BacktestPage />);
     await screen.findByText('Win rate');
 
-    fireEvent.change(screen.getByLabelText('Regime filter'), { target: { value: 'breadth' } });
+    fireEvent.change(screen.getByLabelText(/regime filter/i), { target: { value: 'breadth' } });
     fireEvent.change(screen.getByLabelText(/min breadth/i), { target: { value: '60' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
 
@@ -176,7 +177,7 @@ describe('BacktestPage', () => {
     render(<BacktestPage />);
     await screen.findByText('Win rate');
 
-    fireEvent.change(screen.getByLabelText('Score model'), { target: { value: 'learned_v1' } });
+    fireEvent.change(screen.getByLabelText(/score model/i), { target: { value: 'learned_v1' } });
 
     expect(screen.getByText(/experimental score/i)).toBeTruthy();
 
