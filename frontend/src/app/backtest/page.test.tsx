@@ -17,6 +17,8 @@ const response: BacktestResponse = {
   weighting: 'equal',
   fill_with_btc: true,
   fee_pct: 0.1,
+  rotation: 'hold',
+  sell_score: 40,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -43,7 +45,15 @@ const response: BacktestResponse = {
     },
   ],
   optimization: [
-    { top_n: 3, min_score: 40, fill_with_btc: true, total_return: 0.9, sharpe: 1.5, max_drawdown: -0.2 },
+    {
+      rotation: 'hold',
+      top_n: 3,
+      min_score: 40,
+      fill_with_btc: true,
+      total_return: 0.9,
+      sharpe: 1.5,
+      max_drawdown: -0.2,
+    },
   ],
 };
 
@@ -96,6 +106,26 @@ describe('BacktestPage', () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
         expect.stringMatching(/top_n=3.*min_score=40/),
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+    });
+  });
+
+  it('sends the exit rule and sell threshold when they change', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.change(screen.getByLabelText('Exit rule'), { target: { value: 'rebalance' } });
+    fireEvent.change(screen.getByLabelText(/sell when score/i), { target: { value: '55' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run backtest' }));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(/rotation=rebalance.*sell_score=55/),
         expect.objectContaining({ cache: 'no-store' }),
       );
     });

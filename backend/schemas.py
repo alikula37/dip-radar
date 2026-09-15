@@ -133,6 +133,7 @@ class BacktestMetrics(BaseModel):
 
 
 class BacktestOptimizeRow(BaseModel):
+    rotation: str
     top_n: int
     min_score: float
     fill_with_btc: bool
@@ -154,6 +155,8 @@ class BacktestResponse(BaseModel):
     weighting: str
     fill_with_btc: bool
     fee_pct: float
+    rotation: str
+    sell_score: Optional[float] = None
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

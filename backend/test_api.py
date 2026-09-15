@@ -450,8 +450,25 @@ def test_backtest_endpoint_replays_value_score_history():
     assert payload["metrics"]["benchmark_btc_usd_return"] == pytest.approx(1 / 3, abs=0.01)
     assert payload["optimization"]
     assert payload["optimization"][0]["sharpe"] >= payload["optimization"][-1]["sharpe"]
+    assert "rotation" in payload["optimization"][0]
+
+    hold = client.get(
+        "/api/backtest",
+        params={
+            "start": "2023-01-01",
+            "rotation": "hold",
+            "sell_score": 40,
+            "min_score": 50,
+            "min_market_cap": 0,
+            "min_volume": 0,
+        },
+    )
+    assert hold.status_code == 200
+    assert hold.json()["rotation"] == "hold"
+    assert hold.json()["sell_score"] == 40
 
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422
+    assert client.get("/api/backtest", params={"start": "2023-01-01", "rotation": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "end": "2022-01-01"}).status_code == 422
 
 

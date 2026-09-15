@@ -23,6 +23,8 @@ const DEFAULT_FORM: BacktestForm = {
   weighting: 'equal',
   fillWithBtc: true,
   feePct: 0.1,
+  rotation: 'hold',
+  sellScore: 40,
   optimize: false,
 };
 
@@ -30,17 +32,41 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
   {
     key: 'conservative',
     label: 'Conservative',
-    values: { rebalance: 'quarterly', topN: 3, minScore: 60, weighting: 'equal', fillWithBtc: true },
+    values: {
+      rebalance: 'quarterly',
+      topN: 3,
+      minScore: 60,
+      weighting: 'equal',
+      fillWithBtc: true,
+      rotation: 'hold',
+      sellScore: 50,
+    },
   },
   {
     key: 'balanced',
     label: 'Balanced',
-    values: { rebalance: 'monthly', topN: 5, minScore: 50, weighting: 'equal', fillWithBtc: true },
+    values: {
+      rebalance: 'monthly',
+      topN: 5,
+      minScore: 50,
+      weighting: 'equal',
+      fillWithBtc: true,
+      rotation: 'hold',
+      sellScore: 40,
+    },
   },
   {
     key: 'aggressive',
     label: 'Aggressive',
-    values: { rebalance: 'weekly', topN: 10, minScore: 40, weighting: 'score', fillWithBtc: false },
+    values: {
+      rebalance: 'weekly',
+      topN: 10,
+      minScore: 40,
+      weighting: 'score',
+      fillWithBtc: false,
+      rotation: 'rebalance',
+      sellScore: 40,
+    },
   },
 ];
 
@@ -70,6 +96,8 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
     weighting: form.weighting,
     fill_with_btc: String(form.fillWithBtc),
     fee_pct: String(form.feePct),
+    rotation: form.rotation,
+    sell_score: String(form.sellScore),
   });
   if (form.end) query.set('end', form.end);
   if (form.optimize) query.set('optimize', 'true');
@@ -211,6 +239,9 @@ export default function BacktestPage() {
             <span className="text-[11px] text-content-muted">
               {result.metrics.periods} rebalances · {result.start.slice(0, 10)} → {result.end.slice(0, 10)} ·{' '}
               {result.rebalance}
+              {result.rotation === 'hold'
+                ? ` · hold until score < ${result.sell_score ?? result.min_score}`
+                : ' · reset to top N'}
             </span>
           )}
         </div>
@@ -323,6 +354,28 @@ export default function BacktestPage() {
             />
           </label>
           <label className="text-[11px] text-content-muted">
+            Exit rule
+            <select
+              value={form.rotation}
+              onChange={(event) => update('rotation', event.target.value as BacktestForm['rotation'])}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            >
+              <option value="hold">Hold until score drops</option>
+              <option value="rebalance">Reset to top N each period</option>
+            </select>
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Sell when score &lt;
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={form.sellScore}
+              onChange={(event) => update('sellScore', Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
             Unfilled slots
             <select
               value={form.fillWithBtc ? 'btc' : 'cash'}
@@ -418,12 +471,13 @@ export default function BacktestPage() {
             <section className="mt-4 rounded-2xl border border-outline bg-surface p-4">
               <h2 className="text-sm font-semibold text-content">Best configurations (by Sharpe)</h2>
               <p className="text-[11px] text-content-muted">
-                Grid search over top-N, minimum score and BTC fill on the same snapshot.
+                Grid search over exit rule, top-N, minimum score and BTC fill on the same snapshot.
               </p>
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left text-xs">
+                <table className="w-full min-w-[620px] text-left text-xs">
                   <thead>
                     <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
+                      <th className="py-2 pr-3">Exit</th>
                       <th className="py-2 pr-3">Top N</th>
                       <th className="py-2 pr-3">Min score</th>
                       <th className="py-2 pr-3">Unfilled</th>
@@ -435,7 +489,11 @@ export default function BacktestPage() {
                   </thead>
                   <tbody>
                     {result.optimization.map((row) => (
-                      <tr key={`${row.top_n}-${row.min_score}-${row.fill_with_btc}`} className="border-b border-outline/50">
+                      <tr
+                        key={`${row.rotation}-${row.top_n}-${row.min_score}-${row.fill_with_btc}`}
+                        className="border-b border-outline/50"
+                      >
+                        <td className="py-2 pr-3">{row.rotation === 'hold' ? 'Hold' : 'Top-N'}</td>
                         <td className="py-2 pr-3 font-mono">{row.top_n}</td>
                         <td className="py-2 pr-3 font-mono">{row.min_score}</td>
                         <td className="py-2 pr-3">{row.fill_with_btc ? 'BTC' : 'Cash'}</td>
@@ -451,6 +509,7 @@ export default function BacktestPage() {
                             onClick={() => {
                               const next: BacktestForm = {
                                 ...form,
+                                rotation: row.rotation as BacktestForm['rotation'],
                                 topN: row.top_n,
                                 minScore: row.min_score,
                                 fillWithBtc: row.fill_with_btc,

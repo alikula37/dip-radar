@@ -175,4 +175,92 @@ def test_optimize_returns_ranked_configs(seeded_db):
 
     assert len(results) == 3
     assert results[0]["sharpe"] >= results[1]["sharpe"] >= results[2]["sharpe"]
-    assert all({"top_n", "min_score", "fill_with_btc"} <= set(row) for row in results)
+    assert all({"rotation", "top_n", "min_score", "fill_with_btc"} <= set(row) for row in results)
+
+
+def _manual_snapshot():
+    """Tiny handcrafted snapshot where AAA gets expensive and BBB gets cheap."""
+    dates = [datetime(2023, 1, 1), datetime(2023, 2, 1), datetime(2023, 3, 1), datetime(2023, 4, 1)]
+
+    def entry(score, price):
+        return {
+            "score": score,
+            "distance": 0.0,
+            "price": price,
+            "cap": 1_000_000_000.0,
+            "volume": 100_000_000.0,
+        }
+
+    entries = {
+        dates[0]: {"AAAUSDT": entry(90, 100.0), "BBBUSDT": entry(30, 100.0)},
+        dates[1]: {"AAAUSDT": entry(45, 110.0), "BBBUSDT": entry(80, 100.0)},
+        dates[2]: {"AAAUSDT": entry(35, 120.0), "BBBUSDT": entry(85, 100.0)},
+        dates[3]: {"AAAUSDT": entry(30, 130.0), "BBBUSDT": entry(90, 100.0)},
+    }
+    return {
+        "frequency": "monthly",
+        "end": dates[-1],
+        "dates": dates,
+        "entries": entries,
+        "rates": {},
+        "rate_dates": [],
+    }
+
+
+_ROTATION_WINDOW = {
+    "start": datetime(2023, 1, 1),
+    "end": datetime(2023, 4, 1),
+    "top_n": 1,
+    "min_score": 50,
+    "min_market_cap": 0,
+    "min_volume": 0,
+    "weighting": "equal",
+    "fill_with_btc": False,
+    "fee_pct": 0,
+}
+
+
+def _held_symbols(result):
+    return [period["picks"][0]["symbol"] for period in result["holdings"]]
+
+
+def test_hold_rotation_keeps_a_position_while_its_score_stays_above_exit():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="hold", sell_score=30, **_ROTATION_WINDOW)
+
+    # AAA is 45, 35, 30 across the periods: still cheap enough to hold.
+    assert _held_symbols(result) == ["AAAUSDT", "AAAUSDT", "AAAUSDT"]
+
+
+def test_hold_rotation_sells_once_the_score_drops_below_exit():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="hold", sell_score=40, **_ROTATION_WINDOW)
+
+    # Period 1: AAA (45) still above 40 and BBB cannot take the only slot.
+    # Period 2: AAA falls to 35, gets sold and BBB is bought in its place.
+    assert _held_symbols(result) == ["AAAUSDT", "AAAUSDT", "BBBUSDT"]
+
+
+def test_rebalance_rotation_swaps_as_soon_as_scores_flip():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="rebalance", **_ROTATION_WINDOW)
+
+    assert _held_symbols(result) == ["AAAUSDT", "BBBUSDT", "BBBUSDT"]
+
+
+def test_hold_rotation_defaults_to_the_buy_threshold():
+    snapshot = _manual_snapshot()
+
+    result = simulate(snapshot, rotation="hold", **_ROTATION_WINDOW)
+
+    # Without an explicit sell_score the buy threshold (50) is the exit:
+    # AAA (45) is sold at the first rebalance even though it is still ranked.
+    assert _held_symbols(result) == ["AAAUSDT", "BBBUSDT", "BBBUSDT"]
+
+
+def test_simulate_rejects_unknown_rotation():
+    with pytest.raises(BacktestError):
+        simulate(_manual_snapshot(), rotation="daily", **_ROTATION_WINDOW)
