@@ -371,6 +371,8 @@ def run_backtest(
     regime_filter: Optional[str] = Query(default=None, pattern="^(alt_trend|breadth)$", description="Sit in BTC when altcoin dominance/breadth is deteriorating"),
     regime_min_breadth: float = Query(default=0.5, ge=0, le=1, description="Minimum share of coins above their 200d SMA for regime_filter=breadth"),
     regime_exposure: float = Query(default=0.0, ge=0, le=1, description="Exposure kept while risk-off (0 = move fully to BTC)"),
+    equity_trend_exposure: Optional[float] = Query(default=None, ge=0, le=1, description="Shrink exposure while the strategy's own equity is below its moving average"),
+    profit_lock_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Move this share of the book to BTC every time equity doubles"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     db: Session = Depends(get_db),
 ):
@@ -411,6 +413,8 @@ def run_backtest(
         "regime_filter": regime_filter,
         "regime_min_breadth": regime_min_breadth,
         "regime_exposure": regime_exposure,
+        "equity_trend_exposure": equity_trend_exposure,
+        "profit_lock_pct": profit_lock_pct,
     }
 
     try:

@@ -186,6 +186,32 @@ sign). Conclusion: on this dataset the value-dip edge is vintage-concentrated,
 and the validation gates are telling the truth — keep the presets as
 reference, not as a promise, and test different universes/windows.
 
+### Chasing sustained returns (what actually works)
+
+A single vintage spike followed by flat years is not repeatable income, so
+consistency is now measured explicitly (positive-year share, rolling 1-year
+positive share, time in drawdown, share of gains from the best 5% of periods)
+and the optimizer can target it directly (`objective=consistency`). Findings
+from scanning the strategy space:
+
+- Exit overlays do not create consistency: trailing stops and stop-losses are
+  catastrophic on volatile alts (rolling-positive share 4-31%), take-profit
+  above 200% is identical to doing nothing, take-profit at 50% caps the edge.
+- Higher market caps are much worse (`min_market_cap` $100M-$1B: every year
+  negative, rolling-positive share 7-19%) — the dip edge lives in smaller
+  alts, at the price of survivorship risk.
+- An equity-curve overlay (scale exposure down while the strategy's own equity
+  is below its moving average) modestly improves the recent years (−14% →
+  −9% in 2025, −12% → −3% in 2026) at a small total-return cost, and halves
+  the drawdown at exposure 0.
+- A profit-lock rule that moves part of the book to BTC every time equity
+  doubles triggers too late to matter on this data.
+- With `objective=consistency`, every top candidate still fails the
+  "holdout loses money" gate: on this dataset the long-only alt-dip family has
+  no configuration with sustained out-of-sample returns. The honest product
+  answer is capital preservation (sit in BTC when risk-off) plus episodic
+  alpha, not steady compounding.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

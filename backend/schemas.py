@@ -144,6 +144,10 @@ class BacktestMetrics(BaseModel):
     win_rate: float
     avg_holdings: float
     avg_turnover: float
+    positive_years: float = 0.0
+    positive_rolling_share: float = 0.0
+    time_in_drawdown: float = 0.0
+    best_period_share: float = 0.0
     periods: int
 
 
@@ -191,6 +195,7 @@ class OptimizerResponse(BaseModel):
     holdout: dict
     cv: dict
     best: List[OptimizerCandidate]
+    closest: Optional[dict] = None
     validated: int
     rejected: dict
     gap_fraction: float
@@ -222,6 +227,8 @@ class BacktestResponse(BaseModel):
     regime_filter: Optional[str] = None
     regime_min_breadth: float = 0.5
     regime_exposure: float = 0.0
+    equity_trend_exposure: Optional[float] = None
+    profit_lock_pct: Optional[float] = None
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

@@ -31,7 +31,7 @@ from research.cv import assert_no_overlap
 
 logger = logging.getLogger(__name__)
 
-OBJECTIVES = ("return", "sharpe", "calmar")
+OBJECTIVES = ("return", "sharpe", "calmar", "consistency")
 MAX_TRIALS = 1000
 DEFAULT_CV_CANDIDATES = 16
 DEFAULT_GAP_FRACTION = 0.5  # the holdout must retain half of the CV edge
@@ -48,6 +48,8 @@ STRICTNESS = {
 
 CATEGORICAL_SPACE = {
     "sell_score": [None, 20, 25, 30, 40, 50, 60],
+    "equity_trend_exposure": [None, 0.0, 0.35, 0.5, 0.7],
+    "profit_lock_pct": [None, 25, 50],
     "min_trend_30d": [None, -60, -40, -25, 0],
     "weighting": ["equal", "score", "market_cap"],
     "rotation": ["hold", "rebalance"],
@@ -80,6 +82,8 @@ DEFAULT_FIXED_PARAMS = {
     "trailing_stop_pct": None,
     "take_profit_pct": None,
     "stop_loss_pct": None,
+    "equity_trend_exposure": None,
+    "profit_lock_pct": None,
 }
 
 
@@ -156,6 +160,10 @@ def _objective_value(metrics: dict, objective: str) -> float:
     elif objective == "calmar":
         value = metrics.get("calmar")
         value = value if value is not None else -10.0
+    elif objective == "consistency":
+        # Share of rolling one-year windows that end positive: rewards steady
+        # compounding over one-off vintage spikes.
+        value = metrics.get("positive_rolling_share", 0.0)
     else:
         value = metrics["sharpe"]
     return float(value)
@@ -186,6 +194,8 @@ def passes_gate(cv, holdout_metrics, objective: str, strictness: str = "strict")
     if spec["require_min_positive"] and cv["min"] <= 0:
         return False, "a walk-forward fold lost"
     holdout_score = _objective_value(holdout_metrics, objective)
+    if holdout_metrics["total_return"] <= 0:
+        return False, "holdout loses money"
     if holdout_score <= 0:
         return False, "holdout not positive"
     if holdout_score < spec["gap_fraction"] * cv["mean"]:
@@ -285,6 +295,45 @@ def _slice_metrics(curve: list, slice_start: datetime, slice_end: datetime, freq
     years = max((points[-1]["date"] - (prefix[-1]["date"] if prefix else points[0]["date"])).days / 365.0, 1 / 365.0)
     cagr = equity ** (1.0 / years) - 1.0 if equity > 0 and equity_start > 0 else -1.0
 
+    # Consistency diagnostics scaled to the slice length (a 52-period rolling
+    # window cannot fit inside a 40-period fold).
+    rolling_window = min(int(round(periods_per_year)), max(2, periods // 3))
+    positive_rolling = 0
+    rolling_total = 0
+    for start_index in range(0, max(0, periods - rolling_window) + 1):
+        product = 1.0
+        for value in returns[start_index : start_index + rolling_window]:
+            product *= 1.0 + value
+        rolling_total += 1
+        positive_rolling += 1 if product > 1.0 else 0
+    positive_rolling_share = positive_rolling / rolling_total if rolling_total else 0.0
+
+    year_end_equity = {}
+    equity_path = ([prefix[-1]] if prefix else []) + points
+    for point in equity_path:
+        year_end_equity[point["date"].year] = point["equity"]
+    year_returns = []
+    previous = equity_start
+    for year in sorted(year_end_equity):
+        year_returns.append(year_end_equity[year] / previous - 1.0)
+        previous = year_end_equity[year]
+    positive_years = sum(1 for value in year_returns if value > 0) / len(year_returns) if year_returns else 0.0
+
+    peak = equity_start
+    periods_in_drawdown = 0
+    for point in ([prefix[-1]] if prefix else []) + points:
+        peak = max(peak, point["equity"])
+        if point["equity"] < peak - 1e-12:
+            periods_in_drawdown += 1
+    time_in_drawdown = periods_in_drawdown / len(equity_path) if equity_path else 0.0
+
+    best_count = max(1, int(round(periods * 0.05)))
+    positive_returns = sorted((value for value in returns if value > 0), reverse=True)
+    best_period_share = (
+        sum(positive_returns[:best_count]) / sum(positive_returns) if positive_returns else 1.0
+    )
+    period_returns = returns
+
     return {
         "total_return": round(total_return, 4),
         "total_return_usd": None,
@@ -294,9 +343,13 @@ def _slice_metrics(curve: list, slice_start: datetime, slice_end: datetime, freq
         "sharpe": round(sharpe, 3),
         "max_drawdown": round(max_drawdown, 4),
         "calmar": round(cagr / abs(max_drawdown), 3) if max_drawdown < 0 else None,
-        "win_rate": round(sum(1 for value in returns if value > 0) / periods, 4),
+        "win_rate": round(sum(1 for value in period_returns if value > 0) / periods, 4),
         "avg_holdings": 0.0,
         "avg_turnover": 0.0,
+        "positive_years": round(positive_years, 4),
+        "positive_rolling_share": round(positive_rolling_share, 4),
+        "time_in_drawdown": round(time_in_drawdown, 4),
+        "best_period_share": round(best_period_share, 4),
         "periods": periods,
     }
 
@@ -472,6 +525,7 @@ def optimize_strategy(
     # Validation gate: the search already maximised the walk-forward CV score;
     # the untouched holdout must now confirm it under the chosen strictness.
     best = []
+    closest = None
     signatures = set()
     rejected = {"count": 0, "reasons": {}}
     evaluated_for_validation = 0
@@ -496,6 +550,14 @@ def optimize_strategy(
         if not passed:
             rejected["count"] += 1
             rejected["reasons"][reason] = rejected["reasons"].get(reason, 0) + 1
+            if closest is None:
+                closest = {
+                    "params": candidate["params"],
+                    "train_metrics": train_metrics,
+                    "cv_metrics": cv_metrics,
+                    "holdout_metrics": holdout_metrics,
+                    "reason": reason,
+                }
             continue
 
         # Behavioural dedupe: different parameter combinations that produce
@@ -544,6 +606,7 @@ def optimize_strategy(
             "candidates_scored": len(candidates),
         },
         "best": best,
+        "closest": closest,
         "validated": len(best),
         "rejected": rejected,
         "strictness": strictness,

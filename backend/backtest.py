@@ -491,6 +491,8 @@ def simulate(
     regime_filter: Optional[str] = None,
     regime_min_breadth: float = 0.5,
     regime_exposure: float = 0.0,
+    equity_trend_exposure: Optional[float] = None,
+    profit_lock_pct: Optional[float] = None,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -531,9 +533,13 @@ def simulate(
     period_returns = []
     turnovers = []
 
+    equity_history = []
+    lock_base = 1.0
+
     for index in range(len(dates) - 1):
         date = dates[index]
         next_date = dates[index + 1]
+        equity_history.append(equity)
         pool = entries_by_date.get(date, {})
         next_pool = entries_by_date.get(next_date, {})
 
@@ -599,6 +605,22 @@ def simulate(
         if not risk_on and regime_exposure > 0:
             exposure = max(0.0, min(1.0, regime_exposure))
             weights = {symbol: weight * exposure for symbol, weight in weights.items()}
+
+        # Equity-curve overlay: shrink exposure while the strategy itself is
+        # below its own moving average (protects accumulated gains).
+        if equity_trend_exposure is not None and weights:
+            window = equity_history[-REGIME_SMA_ANCHORS:]
+            average = sum(window) / len(window)
+            if len(window) >= 3 and equity < average:
+                exposure = max(0.0, min(1.0, equity_trend_exposure))
+                weights = {symbol: weight * exposure for symbol, weight in weights.items()}
+
+        # Profit lock: every time the equity doubles above the last lock level,
+        # move a slice of the book permanently into BTC.
+        if profit_lock_pct is not None and weights and equity >= lock_base * 2.0:
+            remaining = 1.0 - max(0.0, min(0.95, profit_lock_pct / 100.0))
+            weights = {symbol: weight * remaining for symbol, weight in weights.items()}
+            lock_base = equity
 
         # Positions dropped at this anchor are sold at the anchor price; the
         # trade log keeps where each position was bought and sold.
@@ -735,6 +757,45 @@ def simulate(
     avg_holdings = statistics.mean(len(item["picks"]) for item in holdings) if holdings else 0.0
     avg_turnover = statistics.mean(turnovers) if turnovers else 0.0
 
+    # Consistency diagnostics: a single vintage spike followed by flat years
+    # looks great on total return but is not repeatable income.
+    year_end_equity = {}
+    for point in curve:
+        year_end_equity[point["date"][:4]] = point["equity"]
+    year_returns = []
+    previous = 1.0
+    for year in sorted(year_end_equity):
+        year_returns.append(year_end_equity[year] / previous - 1.0)
+        previous = year_end_equity[year]
+    positive_years = (
+        sum(1 for value in year_returns if value > 0) / len(year_returns) if year_returns else 0.0
+    )
+
+    rolling_window = max(4, int(round(periods_per_year)))
+    positive_rolling = 0
+    rolling_total = 0
+    for start_index in range(0, max(0, periods - rolling_window) + 1):
+        product = 1.0
+        for value in period_returns[start_index : start_index + rolling_window]:
+            product *= 1.0 + value
+        rolling_total += 1
+        positive_rolling += 1 if product > 1.0 else 0
+    positive_rolling_share = positive_rolling / rolling_total if rolling_total else 0.0
+
+    peak_equity = -math.inf
+    periods_in_drawdown = 0
+    for point in curve:
+        peak_equity = max(peak_equity, point["equity"])
+        if point["equity"] < peak_equity - 1e-12:
+            periods_in_drawdown += 1
+    time_in_drawdown = periods_in_drawdown / len(curve) if curve else 0.0
+
+    best_count = max(1, int(round(periods * 0.05)))
+    positive_returns = sorted((value for value in period_returns if value > 0), reverse=True)
+    best_period_share = (
+        sum(positive_returns[:best_count]) / sum(positive_returns) if positive_returns else 1.0
+    )
+
     metrics = {
         "total_return": round(equity - 1.0, 4),
         "total_return_usd": round(equity * rate_end / rate_start - 1.0, 4) if rate_start and rate_end else None,
@@ -747,6 +808,10 @@ def simulate(
         "win_rate": round(win_rate, 4),
         "avg_holdings": round(avg_holdings, 2),
         "avg_turnover": round(avg_turnover, 4),
+        "positive_years": round(positive_years, 4),
+        "positive_rolling_share": round(positive_rolling_share, 4),
+        "time_in_drawdown": round(time_in_drawdown, 4),
+        "best_period_share": round(best_period_share, 4),
         "periods": periods,
     }
 

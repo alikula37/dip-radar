@@ -33,6 +33,8 @@ const DEFAULT_FORM: BacktestForm = {
   regimeFilter: 'alt_trend',
   regimeMinBreadth: 50,
   regimeExposure: 35,
+  equityTrendExposure: null,
+  profitLock: null,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -54,6 +56,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       scoreModel: 'rule',
       regimeFilter: 'none',
       regimeExposure: 35,
+      equityTrendExposure: null,
+      profitLock: null,
     },
   },
   {
@@ -74,6 +78,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       scoreModel: 'rule',
       regimeFilter: 'alt_trend',
       regimeExposure: 35,
+      equityTrendExposure: null,
+      profitLock: null,
     },
   },
   {
@@ -94,6 +100,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       scoreModel: 'rule',
       regimeFilter: 'alt_trend',
       regimeExposure: 35,
+      equityTrendExposure: null,
+      profitLock: null,
     },
   },
 ];
@@ -113,6 +121,8 @@ const PARAM_SPECS: Record<
   trailing_stop_pct: { label: 'Trailing stop', kind: 'categorical', choices: [null, 35, 50, 75] },
   take_profit_pct: { label: 'Take profit', kind: 'categorical', choices: [null, 100, 200, 500] },
   stop_loss_pct: { label: 'Stop loss', kind: 'categorical', choices: [null, 30, 40, 50] },
+  equity_trend_exposure: { label: 'Equity-trend exposure', kind: 'categorical', choices: [null, 0, 0.35, 0.5, 0.7] },
+  profit_lock_pct: { label: 'Profit lock', kind: 'categorical', choices: [null, 25, 50] },
 };
 
 const DEFAULT_SEARCH_PARAMS = [
@@ -130,6 +140,8 @@ const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = 
   trailing_stop_pct: null,
   take_profit_pct: null,
   stop_loss_pct: null,
+  equity_trend_exposure: null,
+  profit_lock_pct: null,
 };
 
 function paramLabel(value: string | number | null): string {
@@ -171,6 +183,8 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   if (form.stopLoss !== null) query.set('stop_loss_pct', String(form.stopLoss));
   if (form.trailingStop !== null) query.set('trailing_stop_pct', String(form.trailingStop));
   if (form.takeProfit !== null) query.set('take_profit_pct', String(form.takeProfit));
+  if (form.equityTrendExposure !== null) query.set('equity_trend_exposure', String(form.equityTrendExposure / 100));
+  if (form.profitLock !== null) query.set('profit_lock_pct', String(form.profitLock));
   query.set('score_model', form.scoreModel);
   if (form.regimeFilter !== 'none') {
     query.set('regime_filter', form.regimeFilter);
@@ -301,7 +315,7 @@ export default function BacktestPage() {
   const [pinnedValues, setPinnedValues] = useState<Record<string, string | number | boolean | null>>({
     ...DEFAULT_PINNED_VALUES,
   });
-  const [objective, setObjective] = useState<'sharpe' | 'return' | 'calmar'>('sharpe');
+  const [objective, setObjective] = useState<'sharpe' | 'return' | 'calmar' | 'consistency'>('sharpe');
   const [trials, setTrials] = useState(150);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
   const [validationFraction, setValidationFraction] = useState(30);
@@ -372,6 +386,11 @@ export default function BacktestPage() {
       trailingStop: optional(params.trailing_stop_pct),
       takeProfit: optional(params.take_profit_pct),
       stopLoss: optional(params.stop_loss_pct),
+      equityTrendExposure:
+        params.equity_trend_exposure === null || params.equity_trend_exposure === undefined
+          ? null
+          : Math.round(Number(params.equity_trend_exposure) * 100),
+      profitLock: optional(params.profit_lock_pct),
     };
     setForm(next);
     void runBacktest(next);
@@ -639,6 +658,34 @@ export default function BacktestPage() {
               />
             </label>
           )}
+          <label className="text-[11px] text-content-muted">
+            Equity-trend exposure (%, blank = off)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="off"
+              value={form.equityTrendExposure ?? ''}
+              onChange={(event) =>
+                update('equityTrendExposure', event.target.value === '' ? null : Math.min(100, Math.max(0, Number(event.target.value))))
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Profit lock (%, blank = off)
+            <input
+              type="number"
+              min={0}
+              max={95}
+              placeholder="off"
+              value={form.profitLock ?? ''}
+              onChange={(event) =>
+                update('profitLock', event.target.value === '' ? null : Math.min(95, Math.max(0, Number(event.target.value))))
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
           {form.regimeFilter === 'breadth' && (
             <label className="text-[11px] text-content-muted">
               Min breadth (%)
@@ -801,6 +848,7 @@ export default function BacktestPage() {
                     <option value="sharpe">Sharpe</option>
                     <option value="return">Total return</option>
                     <option value="calmar">Calmar</option>
+                    <option value="consistency">Consistency (rolling 1y positive)</option>
                   </select>
                 </label>
                 <label className="text-[11px] text-content-muted">
@@ -1079,6 +1127,19 @@ export default function BacktestPage() {
                     holdout means the search overfit — stay with the presets in that case.
                   </p>
                   )}
+                  {optimizeResult.best.length === 0 && optimizeResult.closest && (
+                    <p className="mt-2 text-[11px] text-content-muted">
+                      Closest attempt (rejected: {optimizeResult.closest.reason}) — train{' '}
+                      {metricsText(optimizeResult.closest.train_metrics)} · CV{' '}
+                      {optimizeResult.closest.cv_metrics
+                        ? `mean ${optimizeResult.closest.cv_metrics.mean.toFixed(2)} / min ${optimizeResult.closest.cv_metrics.min.toFixed(2)}`
+                        : '—'}{' '}
+                      · holdout{' '}
+                      {optimizeResult.closest.holdout_metrics
+                        ? metricsText(optimizeResult.closest.holdout_metrics)
+                        : '—'}
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -1105,7 +1166,7 @@ export default function BacktestPage() {
         </section>
       ) : result && metrics ? (
         <>
-          <section className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <section className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
             <StatCard
               label="Total return (BTC)"
               value={formatPct(metrics.total_return * 100)}
@@ -1132,6 +1193,16 @@ export default function BacktestPage() {
               hint={`Avg holdings ${metrics.avg_holdings.toFixed(1)} · turnover ${formatPct(
                 metrics.avg_turnover * 100,
               )}`}
+            />
+            <StatCard
+              label="Consistency"
+              value={`${((metrics.positive_years ?? 0) * 100).toFixed(0)}%`}
+              hint={`positive years · ${((metrics.positive_rolling_share ?? 0) * 100).toFixed(0)}% of rolling 1y windows`}
+            />
+            <StatCard
+              label="Time in drawdown"
+              value={`${((metrics.time_in_drawdown ?? 0) * 100).toFixed(0)}%`}
+              hint={`best 5% of periods made ${((metrics.best_period_share ?? 0) * 100).toFixed(0)}% of the gains`}
             />
           </section>
 
