@@ -373,6 +373,10 @@ def run_backtest(
     regime_exposure: float = Query(default=0.0, ge=0, le=1, description="Exposure kept while risk-off (0 = move fully to BTC)"),
     equity_trend_exposure: Optional[float] = Query(default=None, ge=0, le=1, description="Shrink exposure while the strategy's own equity is below its moving average"),
     profit_lock_pct: Optional[float] = Query(default=None, ge=0, le=95, description="Move this share of the book to BTC every time equity doubles"),
+    short_n: int = Query(default=0, ge=0, le=25, description="Number of most-expensive coins to short each period (market-neutral sleeve)"),
+    short_max_score: Optional[float] = Query(default=None, ge=0, le=100, description="Only short coins whose score is at most this value"),
+    short_funding_apr: float = Query(default=0.0, ge=0, le=100, description="Annual funding cost charged on the short notional"),
+    short_exposure: float = Query(default=1.0, ge=0, le=1, description="Short book size relative to the long book (1 = dollar neutral)"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     db: Session = Depends(get_db),
 ):
@@ -415,6 +419,10 @@ def run_backtest(
         "regime_exposure": regime_exposure,
         "equity_trend_exposure": equity_trend_exposure,
         "profit_lock_pct": profit_lock_pct,
+        "short_n": short_n,
+        "short_max_score": short_max_score,
+        "short_funding_apr": short_funding_apr,
+        "short_exposure": short_exposure,
     }
 
     try:

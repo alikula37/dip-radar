@@ -35,6 +35,10 @@ const DEFAULT_FORM: BacktestForm = {
   regimeExposure: 35,
   equityTrendExposure: null,
   profitLock: null,
+  shortN: 0,
+  shortMaxScore: null,
+  shortFundingApr: 10,
+  shortExposure: 25,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -58,6 +62,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       regimeExposure: 35,
       equityTrendExposure: null,
       profitLock: null,
+      shortN: 0,
+      shortMaxScore: null,
+      shortFundingApr: 10,
+      shortExposure: 25,
     },
   },
   {
@@ -80,6 +88,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       regimeExposure: 35,
       equityTrendExposure: null,
       profitLock: null,
+      shortN: 0,
+      shortMaxScore: null,
+      shortFundingApr: 10,
+      shortExposure: 25,
     },
   },
   {
@@ -102,6 +114,10 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       regimeExposure: 35,
       equityTrendExposure: null,
       profitLock: null,
+      shortN: 0,
+      shortMaxScore: null,
+      shortFundingApr: 10,
+      shortExposure: 25,
     },
   },
 ];
@@ -123,6 +139,10 @@ const PARAM_SPECS: Record<
   stop_loss_pct: { label: 'Stop loss', kind: 'categorical', choices: [null, 30, 40, 50] },
   equity_trend_exposure: { label: 'Equity-trend exposure', kind: 'categorical', choices: [null, 0, 0.35, 0.5, 0.7] },
   profit_lock_pct: { label: 'Profit lock', kind: 'categorical', choices: [null, 25, 50] },
+  short_n: { label: 'Short N', kind: 'categorical', choices: [0, 2, 3, 5] },
+  short_max_score: { label: 'Max short score', kind: 'categorical', choices: [null, 30, 40, 50] },
+  short_funding_apr: { label: 'Short funding APR', kind: 'categorical', choices: [0, 10, 20] },
+  short_exposure: { label: 'Short exposure', kind: 'categorical', choices: [0, 0.25, 0.5, 1] },
 };
 
 const DEFAULT_SEARCH_PARAMS = [
@@ -142,6 +162,10 @@ const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = 
   stop_loss_pct: null,
   equity_trend_exposure: null,
   profit_lock_pct: null,
+  short_n: 0,
+  short_max_score: null,
+  short_funding_apr: 0,
+  short_exposure: 1,
 };
 
 function paramLabel(value: string | number | null): string {
@@ -185,6 +209,12 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   if (form.takeProfit !== null) query.set('take_profit_pct', String(form.takeProfit));
   if (form.equityTrendExposure !== null) query.set('equity_trend_exposure', String(form.equityTrendExposure / 100));
   if (form.profitLock !== null) query.set('profit_lock_pct', String(form.profitLock));
+  if (form.shortN > 0) {
+    query.set('short_n', String(form.shortN));
+    query.set('short_funding_apr', String(form.shortFundingApr));
+    query.set('short_exposure', String(form.shortExposure / 100));
+    if (form.shortMaxScore !== null) query.set('short_max_score', String(form.shortMaxScore));
+  }
   query.set('score_model', form.scoreModel);
   if (form.regimeFilter !== 'none') {
     query.set('regime_filter', form.regimeFilter);
@@ -391,6 +421,10 @@ export default function BacktestPage() {
           ? null
           : Math.round(Number(params.equity_trend_exposure) * 100),
       profitLock: optional(params.profit_lock_pct),
+      shortN: number(params.short_n, form.shortN),
+      shortMaxScore: optional(params.short_max_score),
+      shortFundingApr: number(params.short_funding_apr, form.shortFundingApr),
+      shortExposure: Math.round(number(params.short_exposure, form.shortExposure / 100) * 100),
     };
     setForm(next);
     void runBacktest(next);
@@ -512,6 +546,9 @@ export default function BacktestPage() {
                 ? ` · hold until score < ${result.sell_score ?? result.min_score}`
                 : ' · reset to top N'}
               {result.score_model !== 'rule' ? ` · ${result.score_model} score` : ' · rule-based score'}
+              {result.short_n > 0
+                ? ` · short ${result.short_n} @ ${Math.round(result.short_exposure * 100)}% (funding ${result.short_funding_apr}%)`
+                : ''}
               {result.regime_filter
                 ? ` · risk-off: ${
                     result.regime_filter === 'alt_trend'
@@ -686,6 +723,57 @@ export default function BacktestPage() {
               className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
             />
           </label>
+          <label className="text-[11px] text-content-muted">
+            Short N (market-neutral sleeve)
+            <input
+              type="number"
+              min={0}
+              max={25}
+              value={form.shortN}
+              onChange={(event) => update('shortN', Math.min(25, Math.max(0, Number(event.target.value) || 0)))}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          {form.shortN > 0 && (
+            <>
+              <label className="text-[11px] text-content-muted">
+                Max short score (blank = any)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="any"
+                  value={form.shortMaxScore ?? ''}
+                  onChange={(event) =>
+                    update('shortMaxScore', event.target.value === '' ? null : Math.min(100, Math.max(0, Number(event.target.value))))
+                  }
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                Short funding APR (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.shortFundingApr}
+                  onChange={(event) => update('shortFundingApr', Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                Short exposure (% of long book)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.shortExposure}
+                  onChange={(event) => update('shortExposure', Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+                  className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs font-medium text-content outline-none focus:border-primary"
+                />
+              </label>
+            </>
+          )}
           {form.regimeFilter === 'breadth' && (
             <label className="text-[11px] text-content-muted">
               Min breadth (%)
@@ -1272,6 +1360,7 @@ export default function BacktestPage() {
                                 <span className="text-content">{pick.symbol.replace(/(USDT|BTC)$/, '')}</span>
                                 <span className="text-primary">{pick.score.toFixed(0)}</span>
                                 <span className="text-content-muted">{(pick.weight * 100).toFixed(0)}%</span>
+                                {pick.direction === 'short' && <span className="text-[#f87171]">short</span>}
                                 {pick.exited && <span className="text-[#f87171]">stop</span>}
                               </span>
                             ))}

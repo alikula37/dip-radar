@@ -100,6 +100,7 @@ export interface BacktestPick {
   weight: number;
   period_return: number;
   exited?: boolean;
+  direction?: 'long' | 'short';
 }
 
 export interface BacktestPeriod {
@@ -132,6 +133,8 @@ export interface BacktestMetrics {
   win_rate: number;
   avg_holdings: number;
   avg_turnover: number;
+  avg_short_notional: number;
+  funding_cost: number;
   positive_years: number;
   positive_rolling_share: number;
   time_in_drawdown: number;
@@ -164,6 +167,10 @@ export interface BacktestResponse {
   regime_exposure: number;
   equity_trend_exposure: number | null;
   profit_lock_pct: number | null;
+  short_n: number;
+  short_max_score: number | null;
+  short_funding_apr: number;
+  short_exposure: number;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -193,6 +200,10 @@ export interface BacktestForm {
   regimeExposure: number;
   equityTrendExposure: number | null;
   profitLock: number | null;
+  shortN: number;
+  shortMaxScore: number | null;
+  shortFundingApr: number;
+  shortExposure: number;
 }
 
 export interface OptimizerFold {
