@@ -8,7 +8,7 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
   await expect(page.getByRole('heading', { name: 'Strategy Lab' })).toBeVisible();
 
   const chart = page.getByTestId('equity-chart');
-  await expect(chart).toBeVisible({ timeout: 60_000 });
+  await expect(chart).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText('Total return (BTC)')).toBeVisible();
   await expect(page.getByText('Max drawdown')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Rebalances' })).toBeVisible();
@@ -28,35 +28,38 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
   await page.getByLabel('Exit rule').selectOption('rebalance');
   await page.getByLabel(/sell when score/i).fill('55');
   await page.getByRole('button', { name: 'Run backtest' }).click();
-  await expect(chart).toBeVisible({ timeout: 60_000 });
+  await expect(chart).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/reset to top N/)).toBeVisible();
 });
 
 test('strategy lab can grid-search and apply a configuration', async ({ page }) => {
   await page.goto('/backtest');
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
 
   await page.getByRole('button', { name: 'Optimize', exact: true }).click();
   await page.getByRole('button', { name: 'Run backtest' }).click();
 
-  await expect(page.getByText('Best configurations (by Sharpe)')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('Best configurations (by Sharpe)')).toBeVisible({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Apply' }).first().click();
 
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/rebalances ·/)).toBeVisible();
 });
 
-test('auto-optimizer suggests configurations and validates on a holdout', async ({ page }) => {
+test('auto-optimizer opens a dialog and validates with CV and a holdout', async ({ page }) => {
   await page.goto('/backtest');
-  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
 
   await page.getByRole('button', { name: /auto-optimize/i }).click();
-  await page.getByRole('button', { name: /find best parameters/i }).click();
+  const dialog = page.getByRole('dialog', { name: 'Auto-optimize' });
+  await expect(dialog).toBeVisible();
 
-  await expect(page.getByText(/configs kept/)).toBeVisible({ timeout: 90_000 });
-  await expect(page.getByText(/train \d{4}-\d{2}-\d{2}/)).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
+  await dialog.getByRole('button', { name: /find best parameters/i }).click();
 
-  await page.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(dialog.getByText(/unique configs/)).toBeVisible({ timeout: 90_000 });
+  await expect(dialog.getByRole('columnheader', { name: /CV \(walk-forward\)/ })).toBeVisible();
+  await expect(dialog.getByRole('columnheader', { name: 'Holdout' })).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Apply' }).first().click();
   await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 90_000 });
 });

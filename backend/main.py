@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from backtest import BacktestError, build_snapshot, simulate
+from backtest import BacktestError, build_snapshot, regime_warmup_start, simulate
 from backtest import optimize as optimize_grid
 from database import Base, engine, get_db
 from fetcher import EVENT_CUTOFF, run_sync_with_lock
@@ -416,7 +416,13 @@ def run_backtest(
     }
 
     try:
-        snapshot = build_snapshot(db, rebalance, end_at, score_model=score_model)
+        snapshot = build_snapshot(
+            db,
+            rebalance,
+            end_at,
+            score_model=score_model,
+            earliest=regime_warmup_start(start_at, rebalance),
+        )
         outcome = simulate(snapshot, start=start_at, end=end_at, **params)
     except BacktestError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -473,7 +479,13 @@ def optimize_backtest(
         raise HTTPException(status_code=422, detail="end must be after start")
 
     try:
-        snapshot = build_snapshot(db, rebalance, end_at, score_model=score_model)
+        snapshot = build_snapshot(
+            db,
+            rebalance,
+            end_at,
+            score_model=score_model,
+            earliest=regime_warmup_start(start_at, rebalance),
+        )
         result = optimize_strategy(
             snapshot,
             start=start_at,

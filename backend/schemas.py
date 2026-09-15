@@ -160,7 +160,9 @@ class BacktestOptimizeRow(BaseModel):
 class OptimizerCandidate(BaseModel):
     params: dict
     train_metrics: BacktestMetrics
+    cv_metrics: Optional[dict] = None
     holdout_metrics: Optional[BacktestMetrics] = None
+    overfit_risk: bool = False
 
 
 class OptimizerResponse(BaseModel):
@@ -177,6 +179,7 @@ class OptimizerResponse(BaseModel):
     validation_fraction: float
     train: dict
     holdout: dict
+    cv: dict
     best: List[OptimizerCandidate]
 
 
