@@ -202,6 +202,7 @@ def get_coins(
     coins = (
         db.query(models.Coin)
         .filter(models.Coin.current_price_btc.isnot(None))
+        .filter(models.Coin.delisted_at.is_(None))
         .order_by(func.coalesce(models.Coin.market_cap, -1).desc())
         .all()
     )
@@ -430,7 +431,12 @@ def run_backtest(
 def get_meta(db: Session = Depends(get_db)):
     last_updated = db.query(models.Meta).filter(models.Meta.key == "last_updated").first()
     progress = db.query(models.Meta).filter(models.Meta.key == "sync_progress").first()
-    count = db.query(models.Coin).filter(models.Coin.current_price_btc.isnot(None)).count()
+    count = (
+        db.query(models.Coin)
+        .filter(models.Coin.current_price_btc.isnot(None), models.Coin.delisted_at.is_(None))
+        .count()
+    )
+    delisted = db.query(models.Coin).filter(models.Coin.delisted_at.isnot(None)).count()
 
     sync_progress = None
     if progress and progress.value:
@@ -442,6 +448,7 @@ def get_meta(db: Session = Depends(get_db)):
     return schemas.MetaResponse(
         last_updated=last_updated.value if last_updated else None,
         tracked_coins=count,
+        delisted_coins=delisted,
         sync_in_progress=is_locked(db),
         sync_progress=sync_progress,
         btc_usd_price=_current_btc_usd(db),

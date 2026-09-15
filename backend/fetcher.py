@@ -122,6 +122,7 @@ KLINES_LIMIT = 1000
 UPSERT_CHUNK_SIZE = 200
 REQUEST_DELAY = float(os.getenv("SYNC_REQUEST_DELAY", "0.15"))
 COINGECKO_BATCH_DELAY = float(os.getenv("COINGECKO_BATCH_DELAY", "2"))
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "").strip()
 MAX_RETRY_WAIT = 120.0
 
 
@@ -241,18 +242,38 @@ class BinanceClient:
 
 
 class CoinGeckoClient:
-    """Minimal CoinGecko client for coin metadata and market caps."""
+    """Minimal CoinGecko client for coin metadata and market caps.
 
-    def __init__(self, session: requests.Session = None, sleep=time.sleep, base_url: str = None):
+    ``market_chart`` (used by ``python -m market_history``) requires a free
+    Demo API key on CoinGecko's side; set ``COINGECKO_API_KEY`` to enable it.
+    The other endpoints keep working anonymously.
+    """
+
+    def __init__(
+        self,
+        session: requests.Session = None,
+        sleep=time.sleep,
+        base_url: str = None,
+        api_key: str = None,
+    ):
         self.session = session or build_http_session()
         self.sleep = sleep
         self.base_url = base_url or COINGECKO_BASE_URL
+        self.api_key = api_key if api_key is not None else COINGECKO_API_KEY
+
+    def _headers(self) -> dict:
+        return {"x-cg-demo-api-key": self.api_key} if self.api_key else {}
 
     def _get(self, path: str, params: dict = None, attempts: int = 3) -> requests.Response:
         last_error = None
         for _ in range(attempts):
             try:
-                response = self.session.get(f"{self.base_url}/{path}", params=params, timeout=(5, 30))
+                response = self.session.get(
+                    f"{self.base_url}/{path}",
+                    params=params,
+                    headers=self._headers(),
+                    timeout=(5, 30),
+                )
             except requests.RequestException as exc:
                 last_error = exc
                 continue
@@ -298,6 +319,13 @@ class CoinGeckoClient:
                     prices[coin_id] = float(price)
             self.sleep(COINGECKO_BATCH_DELAY)
         return prices
+
+    def fetch_market_chart(self, coin_id: str, days: str = "max") -> dict:
+        """Daily USD price/market-cap/volume history (used by market_history)."""
+        return self._get(
+            f"coins/{coin_id}/market_chart",
+            {"vs_currency": "usd", "days": days},
+        ).json()
 
     def fetch_category_ids(self, category: str, max_pages: int = 3) -> set:
         """All CoinGecko ids that belong to a category (paged)."""
@@ -451,6 +479,24 @@ def sync_coins(db: DBSession, client: BinanceClient, progress=None) -> int:
         if progress:
             progress("coins", index, len(pairs))
 
+    # Coins that vanished from exchangeInfo are archived (not deleted) so the
+    # research universe keeps their history; a symbol that returns to Binance
+    # is marked live again.
+    live_symbols = {pair["symbol"] for pair in pairs}
+    archived = 0
+    restored = 0
+    for coin in db.query(Coin).all():
+        if coin.symbol in live_symbols:
+            if coin.delisted_at is not None:
+                coin.delisted_at = None
+                restored += 1
+        elif coin.delisted_at is None:
+            coin.delisted_at = utcnow_naive()
+            archived += 1
+    if archived or restored:
+        db.commit()
+        logger.info("Delist archive: %s marked delisted, %s restored.", archived, restored)
+
     logger.info("sync_coins done: %s new symbols (of %s tracked pairs).", created, len(pairs))
     return created
 
@@ -598,6 +644,7 @@ def sync_klines(
     logger.info("Starting sync_klines...")
     coins = (
         db.query(Coin)
+        .filter(Coin.delisted_at.is_(None))
         .filter(or_(Coin.is_pre_2021.is_(True), Coin.market_cap >= MIN_TRACKED_MARKET_CAP))
         .all()
     )
@@ -738,7 +785,7 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
         if coin_id not in candidates and len(candidates) < MAX_CANDIDATES_PER_SYMBOL:
             candidates.append(coin_id)
 
-    coins = db.query(Coin).all()
+    coins = db.query(Coin).filter(Coin.delisted_at.is_(None)).all()
     ambiguous = []
     for coin in coins:
         candidates = symbol_map.get(coin.base_asset.lower(), [])
@@ -839,7 +886,12 @@ def write_sync_progress(db: DBSession, phase: str, processed: int, total: int) -
 def verify_prices(db: DBSession, client: CoinGeckoClient) -> int:
     """Cross-check Binance BTC prices against CoinGecko (keyless endpoint)."""
     logger.info("Starting verify_prices...")
-    coins = db.query(Coin).filter(Coin.current_price_btc.isnot(None), Coin.coingecko_id.isnot(None)).all()
+    coins = (
+        db.query(Coin)
+        .filter(Coin.current_price_btc.isnot(None), Coin.coingecko_id.isnot(None))
+        .filter(Coin.delisted_at.is_(None))
+        .all()
+    )
     if not coins:
         return 0
 

@@ -65,6 +65,7 @@ export interface SyncProgress {
 export interface Meta {
   last_updated: string | null;
   tracked_coins: number;
+  delisted_coins?: number;
   sync_in_progress: boolean;
   sync_progress: SyncProgress | null;
   btc_usd_price?: number | null;

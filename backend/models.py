@@ -34,6 +34,7 @@ class Coin(Base):
     is_pre_2021 = Column(Boolean, default=False, nullable=False)
     listed_checked = Column(Boolean, default=False, nullable=False)
     is_stable = Column(Boolean, default=False, nullable=False)
+    delisted_at = Column(DateTime, nullable=True)
 
     current_price_btc = Column(Float, nullable=True)
     price_7d_ago_btc = Column(Float, nullable=True)
@@ -112,6 +113,27 @@ class BtcRate(Base):
     high = Column(Float)
     low = Column(Float)
     close = Column(Float)
+
+
+class MarketHistory(Base):
+    """Daily point-in-time USD market data (CoinGecko) per tracked coin.
+
+    Kept separate from ``Kline`` (BTC parity) so research features can use the
+    liquidity that actually existed on a historical date instead of today's
+    market cap/volume snapshot.
+    """
+
+    __tablename__ = "market_history"
+    __table_args__ = (
+        UniqueConstraint("symbol", "timestamp", name="uq_market_history_symbol_timestamp"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    symbol = Column(String, index=True, nullable=False)
+    timestamp = Column(DateTime, index=True, nullable=False)
+    price_usd = Column(Float, nullable=True)
+    market_cap = Column(Float, nullable=True)
+    volume_24h = Column(Float, nullable=True)
 
 
 class Watch(Base):

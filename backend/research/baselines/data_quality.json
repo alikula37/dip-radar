@@ -1,0 +1,45 @@
+{
+  "delisted_symbols": [],
+  "klines": {
+    "median_candles": 1274,
+    "p10_candles": 252,
+    "rows": 501454,
+    "symbols": 370,
+    "symbols_ge_1095_candles": 197,
+    "symbols_ge_400_candles": 297,
+    "symbols_with_gaps": 5,
+    "total_gaps": 5
+  },
+  "liquidity": {
+    "active_stale_over_7d": 0,
+    "active_with_market_cap": 469,
+    "active_without_price": 109
+  },
+  "market_history": {
+    "coverage_of_eligible": 0.0,
+    "first_day": null,
+    "last_day": null,
+    "rows": 0,
+    "symbols": 0,
+    "symbols_ge_400_days": 0,
+    "symbols_with_gaps": 0,
+    "total_gaps": 0
+  },
+  "provenance": {
+    "database": {
+      "bytes": 106299392,
+      "path": "/data/dipradar.db",
+      "sha256": "e1e74db2018eb63b"
+    },
+    "generated_at": "2026-09-15T12:02:37.986971+00:00",
+    "git_commit": null,
+    "latest_candle": "2026-09-15 00:00:00"
+  },
+  "universe": {
+    "active": 479,
+    "coins_total": 479,
+    "delisted": 0,
+    "stable": 10,
+    "with_coingecko_id": 469
+  }
+}

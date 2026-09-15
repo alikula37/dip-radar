@@ -73,6 +73,7 @@ class DipHistoryPoint(BaseModel):
 class MetaResponse(BaseModel):
     last_updated: Optional[str] = None
     tracked_coins: int
+    delisted_coins: int = 0
     sync_in_progress: bool = False
     sync_progress: Optional[dict] = None
     btc_usd_price: Optional[float] = None
