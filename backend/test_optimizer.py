@@ -74,7 +74,8 @@ def test_scope_validation_requires_full_coverage():
         ["top_n", "min_score"],
         {"sell_score": None, "min_trend_30d": None, "weighting": "score", "rotation": "hold",
          "regime_filter": None, "regime_exposure": 1.0, "trailing_stop_pct": None,
-         "take_profit_pct": None, "stop_loss_pct": None},
+         "take_profit_pct": None, "stop_loss_pct": None, "equity_trend_exposure": None,
+         "profit_lock_pct": None},
     )
     assert optimize == ["top_n", "min_score"]
     assert pinned["weighting"] == "score"
@@ -325,3 +326,25 @@ def test_strictness_is_validated_and_echoed():
             fill_with_btc=True,
             strictness="moon",
         )
+
+
+def test_consistency_objective_and_holdout_money_gate():
+    result = optimize_strategy(
+        _snapshot(),
+        start=START,
+        end=START + timedelta(days=30 * 11),
+        min_market_cap=0,
+        min_volume=0,
+        fee_pct=0.1,
+        fill_with_btc=True,
+        objective="consistency",
+        trials=6,
+        seed=4,
+        top_k=2,
+    )
+    assert result["objective"] == "consistency"
+    for candidate in result["best"]:
+        assert candidate["holdout_metrics"]["total_return"] > 0
+
+    # A holdout that loses money is rejected even when the objective is positive.
+    assert passes_gate({"mean": 0.9, "min": 0.9, "per_fold": []}, _metrics(-0.2), "consistency", "loose")[0] is False

@@ -132,6 +132,10 @@ export interface BacktestMetrics {
   win_rate: number;
   avg_holdings: number;
   avg_turnover: number;
+  positive_years: number;
+  positive_rolling_share: number;
+  time_in_drawdown: number;
+  best_period_share: number;
   periods: number;
 }
 
@@ -158,6 +162,8 @@ export interface BacktestResponse {
   regime_filter: string | null;
   regime_min_breadth: number;
   regime_exposure: number;
+  equity_trend_exposure: number | null;
+  profit_lock_pct: number | null;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -185,6 +191,8 @@ export interface BacktestForm {
   regimeFilter: 'none' | 'alt_trend' | 'breadth';
   regimeMinBreadth: number;
   regimeExposure: number;
+  equityTrendExposure: number | null;
+  profitLock: number | null;
 }
 
 export interface OptimizerFold {
@@ -230,6 +238,7 @@ export interface OptimizerResponse {
     candidates_scored: number;
   };
   best: OptimizerCandidate[];
+  closest: (OptimizerCandidate & { reason: string }) | null;
   validated: number;
   rejected: { count: number; reasons: Record<string, number> };
   gap_fraction: number;
