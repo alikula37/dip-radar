@@ -235,6 +235,31 @@ the sleeve's contribution. Conclusion: the short sleeve is a real
 diversification improvement for the return *sources*, not a fix for the most
 recent regime.
 
+### BTC accumulation is the objective (not holding altcoins)
+
+Everything above is measured in BTC, but the *behaviour* also has to aim at
+growing the BTC balance rather than collecting alt bags. Two mechanics were
+added for that: `profit_sweep_pct` harvests a share of each position's BTC
+gain back into BTC (persisted per position), and `max_holding_periods`
+returns stale positions to BTC. Measured on the long-short Balanced preset
+(2022+):
+
+| Variant | Total | Sharpe | Max DD | Gains from best 5% | Avg alt exposure |
+| --- | --- | --- | --- | --- | --- |
+| LS baseline | +316% | 0.66 | −32% | 54% | 1.00 |
+| sweep 30% | +265% | 0.70 | −30% | 52% | 0.85 |
+| sweep 50% | +232% | 0.71 | −29% | 51% | 0.79 |
+| sweep 70% | +203% | 0.72 | −29% | 49% | 0.76 |
+| max holding 52 | +339% | 0.69 | −48% | 61% | 0.99 |
+| max holding 26 | +142% | 0.53 | −74% | 60% | 0.97 |
+
+Sweeping trades upside for steadiness: Sharpe up, drawdown down, gains less
+concentrated, and the book spends more of its weight in BTC. On the recent
+windows it also helps (2024+: −41% → −11%; 2025+ Sharpe 0.5 → 0.6), though
+the last holdout (2025-04→2026-09) stays slightly negative. Time stops are
+the wrong tool here — forcing exits into weakness wrecked consistency
+(rolling-positive share 65% → 53%) — so they ship off by default.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

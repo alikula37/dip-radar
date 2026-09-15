@@ -626,3 +626,65 @@ def test_short_max_score_filters_the_short_book():
     # BBB scores 30 > 20, so nothing qualifies to short.
     assert all(pick["direction"] == "long" for pick in result["holdings"][0]["picks"])
     assert result["metrics"]["avg_short_notional"] == 0.0
+
+
+def _hold_snapshot(prices, scores=None):
+    """One coin that stays held: constant high score, configurable prices."""
+    scores = scores or [90.0] * len(prices)
+    dates = [datetime(2023, 1, 1) + timedelta(days=30 * index) for index in range(len(prices))]
+
+    def entry(price, score):
+        return {
+            "score": score,
+            "distance": 0.0,
+            "price": price,
+            "cap": 1e9,
+            "volume": 1e8,
+            "trend_30d": 0.0,
+        }
+
+    entries = {
+        date: {"AAAUSDT": entry(price, score)}
+        for date, price, score in zip(dates, prices, scores)
+    }
+    return {
+        "frequency": "monthly",
+        "end": dates[-1],
+        "dates": dates,
+        "entries": entries,
+        "rates": {},
+        "rate_dates": [],
+        "series": {},
+    }
+
+
+def test_time_stop_returns_positions_to_btc():
+    snapshot = _hold_snapshot([100.0] * 6)
+    window = {
+        **_ROTATION_WINDOW,
+        "end": datetime(2023, 6, 1),
+        "rotation": "hold",
+        "max_holding_periods": 2,
+    }
+
+    result = simulate(snapshot, **window)
+
+    assert result["trades"][0]["exit_reason"] == "time"
+    held = [len(period["picks"]) for period in result["holdings"]]
+    # Held for two periods, exits, sits out one rebalance, re-enters after.
+    assert held == [1, 1, 0, 0, 1]
+
+
+def test_profit_sweep_locks_part_of_the_gain_and_persists():
+    snapshot = _hold_snapshot([100.0, 110.0, 121.0, 133.1])
+    window = {**_ROTATION_WINDOW, "rotation": "hold"}
+
+    free = simulate(snapshot, **window)
+    swept = simulate(snapshot, profit_sweep_pct=50, **window)
+
+    weights = [period["picks"][0]["weight"] for period in swept["holdings"]]
+    assert weights[0] == pytest.approx(1.0)
+    assert weights[1] < 1.0  # 10% gain -> half of it harvested
+    assert weights[2] < weights[1]  # the trimmed size persists
+    assert swept["metrics"]["total_return"] < free["metrics"]["total_return"]
+    assert swept["metrics"]["avg_long_notional"] < free["metrics"]["avg_long_notional"]

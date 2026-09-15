@@ -134,6 +134,7 @@ export interface BacktestMetrics {
   avg_holdings: number;
   avg_turnover: number;
   avg_short_notional: number;
+  avg_long_notional: number;
   funding_cost: number;
   positive_years: number;
   positive_rolling_share: number;
@@ -171,6 +172,8 @@ export interface BacktestResponse {
   short_max_score: number | null;
   short_funding_apr: number;
   short_exposure: number;
+  profit_sweep_pct: number;
+  max_holding_periods: number | null;
   metrics: BacktestMetrics;
   curve: BacktestPoint[];
   holdings: BacktestPeriod[];
@@ -204,6 +207,8 @@ export interface BacktestForm {
   shortMaxScore: number | null;
   shortFundingApr: number;
   shortExposure: number;
+  profitSweep: number;
+  maxHolding: number | null;
 }
 
 export interface OptimizerFold {

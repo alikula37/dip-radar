@@ -146,6 +146,7 @@ class BacktestMetrics(BaseModel):
     avg_holdings: float
     avg_turnover: float
     avg_short_notional: float = 0.0
+    avg_long_notional: float = 0.0
     funding_cost: float = 0.0
     positive_years: float = 0.0
     positive_rolling_share: float = 0.0
@@ -236,6 +237,8 @@ class BacktestResponse(BaseModel):
     short_max_score: Optional[float] = None
     short_funding_apr: float = 0.0
     short_exposure: float = 1.0
+    profit_sweep_pct: float = 0.0
+    max_holding_periods: Optional[int] = None
     metrics: BacktestMetrics
     curve: List[BacktestPoint]
     holdings: List[BacktestPeriod]

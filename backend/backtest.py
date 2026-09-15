@@ -497,6 +497,8 @@ def simulate(
     short_max_score: Optional[float] = None,
     short_funding_apr: float = 0.0,
     short_exposure: float = 1.0,
+    profit_sweep_pct: float = 0.0,
+    max_holding_periods: Optional[int] = None,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -541,6 +543,7 @@ def simulate(
     lock_base = 1.0
     funding_costs = []
     short_notionals = []
+    long_notionals = []
     previous_shorts: set = set()
 
     for index in range(len(dates) - 1):
@@ -601,15 +604,52 @@ def simulate(
                 free_slots -= 1
             picks.sort(key=lambda item: -item[1]["score"])
         else:
-            picks = candidates[:top_n]
+            picks = [(symbol, entry) for symbol, entry in candidates if symbol not in blocked_symbols][:top_n]
 
         if not risk_on and regime_exposure <= 0:
             picks = []
+
+        # Time stop: a position may not be held longer than N anchors — the
+        # point is to accumulate BTC with altcoins, not to collect alt coin bags.
+        time_exits = set()
+        if max_holding_periods is not None and picks:
+            kept = []
+            for symbol, entry in picks:
+                position = open_positions.get(symbol)
+                if position is not None and position.get("periods_held", 0) + 1 >= max_holding_periods:
+                    time_exits.add(symbol)
+                    continue
+                kept.append((symbol, entry))
+            picks = kept
 
         weights = _weights_for(picks, weighting)
         if fill_with_btc and picks:
             scale = len(picks) / top_n
             weights = {symbol: weight * scale for symbol, weight in weights.items()}
+        # Profit sweep: harvest part of a position's BTC-denominated gain back
+        # into BTC, and keep the reduced size (persisted per position).
+        if profit_sweep_pct and weights:
+            for symbol in list(weights):
+                position = open_positions.get(symbol)
+                if position is None:
+                    continue
+                entry_price = position["entry_price"]
+                price_now = pool.get(symbol, {}).get("price")
+                if not entry_price or not price_now or price_now <= entry_price:
+                    continue
+                gain = price_now / entry_price - 1.0
+                profit_fraction = gain / (1.0 + gain)
+                reduction = min(0.9, (profit_sweep_pct / 100.0) * profit_fraction)
+                if reduction > 0:
+                    position["sweep"] = position.get("sweep", 1.0) * (1.0 - reduction)
+
+        if weights:
+            for symbol in list(weights):
+                position = open_positions.get(symbol)
+                if position is not None:
+                    weights[symbol] *= position.get("sweep", 1.0)
+            long_notionals.append(sum(weight for weight in weights.values() if weight > 0))
+
         if not risk_on and regime_exposure > 0:
             exposure = max(0.0, min(1.0, regime_exposure))
             weights = {symbol: weight * exposure for symbol, weight in weights.items()}
@@ -658,11 +698,14 @@ def simulate(
                 if entry is not None:
                     open_positions[symbol]["last_price"] = entry["price"]
                     open_positions[symbol]["peak"] = max(open_positions[symbol]["peak"], entry["price"])
+                    open_positions[symbol]["periods_held"] = open_positions[symbol].get("periods_held", 0) + 1
                 continue
             position = open_positions.pop(symbol)
             entry = pool.get(symbol)
             exit_price = entry["price"] if entry is not None else position["last_price"]
-            if not risk_on:
+            if symbol in time_exits:
+                reason = "time"
+            elif not risk_on:
                 reason = "regime"
             elif rotation == "rebalance":
                 reason = "rebalance"
@@ -685,6 +728,8 @@ def simulate(
                 "entry_score": entry["score"],
                 "last_price": entry["price"],
                 "peak": entry["price"],
+                "sweep": 1.0,
+                "periods_held": 0,
             }
 
         day_timestamp = date.timestamp()
@@ -775,7 +820,7 @@ def simulate(
         holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on})
         previous_weights = weights
         previous_shorts = set(short_symbols)
-        blocked_symbols = stopped_symbols
+        blocked_symbols = stopped_symbols | time_exits
 
     last_pool = entries_by_date.get(dates[-1], {})
     for symbol, position in open_positions.items():
@@ -863,6 +908,7 @@ def simulate(
         "avg_holdings": round(avg_holdings, 2),
         "avg_turnover": round(avg_turnover, 4),
         "avg_short_notional": round(statistics.mean(short_notionals), 4) if short_notionals else 0.0,
+        "avg_long_notional": round(statistics.mean(long_notionals), 4) if long_notionals else 0.0,
         "funding_cost": round(sum(funding_costs), 4) if funding_costs else 0.0,
         "positive_years": round(positive_years, 4),
         "positive_rolling_share": round(positive_rolling_share, 4),

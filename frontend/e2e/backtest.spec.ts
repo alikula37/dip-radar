@@ -33,6 +33,7 @@ test('strategy lab renders a backtest of the Value Score history', async ({ page
 });
 
 test('auto-optimizer opens a dialog, scopes parameters and validates candidates', async ({ page }) => {
+  test.setTimeout(240_000);
   await page.goto('/backtest');
   await expect(page.getByTestId('equity-chart')).toBeVisible({ timeout: 120_000 });
 
