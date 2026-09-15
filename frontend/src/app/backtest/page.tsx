@@ -1110,6 +1110,7 @@ export default function BacktestPage() {
                 </label>
                 <label className="text-[11px] text-content-muted">
                   Trials
+                  <Hint text="How many parameter combinations the TPE sampler evaluates. The full grid of all parameters is far too large to brute-force, so more trials simply cover more of the space." />
                   <input
                     type="number"
                     min={10}
@@ -1224,6 +1225,28 @@ export default function BacktestPage() {
                       ))}
                     </select>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchParams(Object.keys(PARAM_SPECS));
+                      setPinnedValues({});
+                    }}
+                    title="Move every parameter into the search scope: the optimizer explores their combinations with TPE"
+                    className="rounded-full border border-primary bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                  >
+                    Optimize all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchParams([...DEFAULT_SEARCH_PARAMS]);
+                      setPinnedValues({ ...DEFAULT_PINNED_VALUES });
+                    }}
+                    title="Restore the default search scope"
+                    className="rounded-full border border-outline px-2.5 py-0.5 text-[11px] text-content-muted transition-colors hover:text-content"
+                  >
+                    Reset scope
+                  </button>
                 </div>
 
                 {fixedParamNames.length > 0 && (
@@ -1292,8 +1315,10 @@ export default function BacktestPage() {
                   </div>
                 )}
                 <p className="mt-2 text-[11px] text-content-muted">
-                  Added parameters are searched; everything under Fixed is pinned. The universe filters and dates from
-                  the form are always fixed.
+                  Added parameters are searched; everything under Fixed is pinned. <strong>Optimize all</strong> moves
+                  every parameter into the search. The optimizer samples <em>combinations</em> with TPE — the full grid
+                  of all parameters is astronomically large, so more trials mean better coverage rather than an
+                  exhaustive brute force. Universe filters and dates from the form are always fixed.
                 </p>
               </div>
 
