@@ -293,6 +293,38 @@ def test_simulate_rejects_unknown_rotation():
         simulate(_manual_snapshot(), rotation="daily", **_ROTATION_WINDOW)
 
 
+def test_snapshot_includes_archived_coins_without_market_cap(db):
+    _seed_coin(db, "CHEAPUSDT", _price_cheap)
+    _seed_coin(db, "RICHUSDT", _price_rich)
+    archived = Coin(
+        symbol="FTTBTC",
+        is_pre_2021=False,
+        listed_checked=True,
+        market_cap=None,
+        volume_24h=None,
+        delisted_at=datetime(2022, 11, 16),
+    )
+    db.add(archived)
+    for day in range(DAYS):
+        price = _price_cheap(day)
+        db.add(
+            Kline(
+                symbol="FTTBTC",
+                timestamp=START + timedelta(days=day),
+                open=price,
+                high=price,
+                low=price,
+                close=price,
+                volume=1_000_000.0,
+            )
+        )
+    db.commit()
+
+    snapshot = build_snapshot(db, "monthly", START + timedelta(days=DAYS - 1), use_cache=False)
+
+    assert "FTTBTC" in snapshot["entries"][snapshot["dates"][-1]]
+
+
 def _stop_snapshot(closes: list):
     """Two monthly anchors with daily closes for AAA between them."""
     anchor = datetime(2023, 1, 1)

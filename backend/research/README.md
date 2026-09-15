@@ -95,11 +95,11 @@ If it fails, the rule-based score stays — a negative result is still a result.
 
 ## Roadmap
 
-- Phase 1 (shipped; still open: recovering coins delisted *before* the
-  archive existed, and refreshing `market_history` from the worker):
-  delisted-coin archive (`delisted_at`), point-in-time
-  market cap/volume ingestion (`market_history` module; needs a free
-  `COINGECKO_API_KEY`), and the `data_quality` report.
+- Phase 1 (complete): delisted-coin archive (`delisted_at`), point-in-time
+  market cap/volume ingestion (`market_history` module, refreshed weekly by
+  the worker when a free `COINGECKO_API_KEY` is set), historical recovery of
+  coins delisted before the archive existed (Binance data mirror via
+  `python -m binance_mirror`), and the `data_quality` report.
 - Phase 2 (this harness): point-in-time feature store keyed by rebalance date
   (`feature_store.py`) plus purged/embargoed walk-forward folds (`cv.py`), with
   a leakage regression test proving anchor features never change when future

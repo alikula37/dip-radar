@@ -1,12 +1,29 @@
 {
-  "delisted_symbols": [],
+  "delisted_symbols": [
+    {
+      "delisted_at": "2022-11-16 00:00:00.000000",
+      "symbol": "FTTBTC"
+    },
+    {
+      "delisted_at": "2025-05-24 00:00:00.000000",
+      "symbol": "ACABTC"
+    },
+    {
+      "delisted_at": "2026-04-02 00:00:00.000000",
+      "symbol": "A2ZUSDT"
+    },
+    {
+      "delisted_at": "2026-08-18 00:00:00.000000",
+      "symbol": "ACXUSDT"
+    }
+  ],
   "klines": {
-    "median_candles": 1274,
-    "p10_candles": 252,
-    "rows": 501454,
-    "symbols": 370,
-    "symbols_ge_1095_candles": 197,
-    "symbols_ge_400_candles": 297,
+    "median_candles": 1237,
+    "p10_candles": 246,
+    "rows": 504597,
+    "symbols": 374,
+    "symbols_ge_1095_candles": 198,
+    "symbols_ge_400_candles": 300,
     "symbols_with_gaps": 5,
     "total_gaps": 5
   },
@@ -27,18 +44,18 @@
   },
   "provenance": {
     "database": {
-      "bytes": 106299392,
+      "bytes": 106815488,
       "path": "/data/dipradar.db",
-      "sha256": "e1e74db2018eb63b"
+      "sha256": "174301be1218d98e"
     },
-    "generated_at": "2026-09-15T12:02:37.986971+00:00",
+    "generated_at": "2026-09-15T12:52:34.984779+00:00",
     "git_commit": null,
     "latest_candle": "2026-09-15 00:00:00"
   },
   "universe": {
     "active": 479,
-    "coins_total": 479,
-    "delisted": 0,
+    "coins_total": 483,
+    "delisted": 4,
     "stable": 10,
     "with_coingecko_id": 469
   }

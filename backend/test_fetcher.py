@@ -658,3 +658,40 @@ def test_run_all_syncs_updates_meta(db):
     progress = db.query(fetcher.Meta).filter(fetcher.Meta.key == "sync_progress").first()
     assert progress is not None
     assert '"phase": "done"' in progress.value
+
+
+def _market_history_client():
+    return FakeCoinGecko(
+        coin_list=[{"id": "ethereum", "symbol": "eth", "name": "Ethereum"}],
+        markets={"ethereum": {"id": "ethereum", "name": "Ethereum", "market_cap": 1e9}},
+    )
+
+
+def test_run_all_syncs_refreshes_market_history_when_a_key_is_configured(db, monkeypatch):
+    client = FakeBinance(
+        symbols=[{"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"}],
+        first_klines={"ETHBTC": make_kline_row(to_millis(datetime(2017, 1, 1)), 1, 1, 1, 1)},
+        klines={"ETHBTC": [make_kline_row(to_millis(datetime(2020, 1, 1)), 1, 2, 1, 1.5)]},
+    )
+    cg = _market_history_client()
+    cg.fetch_market_chart = lambda coin_id, days="max": {"prices": [], "market_caps": [], "total_volumes": []}
+    monkeypatch.setattr(fetcher, "COINGECKO_API_KEY", "test-key")
+
+    fetcher.run_all_syncs(db, binance=client, coingecko=cg)
+
+    refreshed = db.query(fetcher.Meta).filter(fetcher.Meta.key == "market_history_refreshed_at").first()
+    assert refreshed is not None
+
+
+def test_run_all_syncs_skips_market_history_without_a_key(db, monkeypatch):
+    client = FakeBinance(
+        symbols=[{"symbol": "ETHBTC", "base": "ETH", "quote": "BTC"}],
+        first_klines={"ETHBTC": make_kline_row(to_millis(datetime(2017, 1, 1)), 1, 1, 1, 1)},
+        klines={"ETHBTC": [make_kline_row(to_millis(datetime(2020, 1, 1)), 1, 2, 1, 1.5)]},
+    )
+    monkeypatch.setattr(fetcher, "COINGECKO_API_KEY", "")
+
+    fetcher.run_all_syncs(db, binance=client, coingecko=_market_history_client())
+
+    refreshed = db.query(fetcher.Meta).filter(fetcher.Meta.key == "market_history_refreshed_at").first()
+    assert refreshed is None

@@ -181,11 +181,7 @@ def build_snapshot(
     if use_cache and key in _SNAPSHOT_CACHE:
         return _SNAPSHOT_CACHE[key]
 
-    coins = (
-        db.query(Coin)
-        .filter(Coin.is_stable.is_(False), Coin.market_cap.isnot(None))
-        .all()
-    )
+    coins = db.query(Coin).filter(Coin.is_stable.is_(False)).all()
     universe = {coin.symbol: coin for coin in coins}
     if not universe:
         raise BacktestError("No eligible coins for a backtest")
