@@ -499,6 +499,7 @@ def simulate(
     short_exposure: float = 1.0,
     profit_sweep_pct: float = 0.0,
     max_holding_periods: Optional[int] = None,
+    invert_score: bool = False,
 ) -> dict:
     """Walk the rebalance anchors and compound the portfolio.
 
@@ -563,10 +564,14 @@ def simulate(
                 breadth = info.get("breadth")
                 risk_on = breadth is None or breadth >= regime_min_breadth
 
+        # With invert_score the factor direction flips: expensive coins become
+        # the longs and the threshold mirrors around 50 (a way to trade the
+        # momentum side while the cheapness factor is inverted).
+        score_floor = (100.0 - min_score) if invert_score else min_score
         candidates = [
             (symbol, entry)
             for symbol, entry in pool.items()
-            if entry["score"] >= min_score
+            if (entry["score"] <= score_floor if invert_score else entry["score"] >= score_floor)
             and (entry["cap"] or 0.0) >= min_market_cap
             and (entry["volume"] or 0.0) >= min_volume
             and (
@@ -579,7 +584,7 @@ def simulate(
         ]
         candidates.sort(
             key=lambda item: (
-                -item[1]["score"],
+                item[1]["score"] if invert_score else -item[1]["score"],
                 item[1]["distance"] if item[1]["distance"] is not None else math.inf,
             )
         )
@@ -683,7 +688,7 @@ def simulate(
                 and (entry["volume"] or 0.0) >= min_volume
                 and (short_max_score is None or entry["score"] <= short_max_score)
             ]
-            short_candidates.sort(key=lambda item: item[1]["score"])
+            short_candidates.sort(key=lambda item: -item[1]["score"] if invert_score else item[1]["score"])
             short_picks = short_candidates[:short_n]
             short_symbols = [symbol for symbol, _ in short_picks]
             short_scale = max(0.0, min(1.0, short_exposure)) / short_n

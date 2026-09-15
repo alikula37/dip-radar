@@ -260,6 +260,28 @@ the last holdout (2025-04→2026-09) stays slightly negative. Time stops are
 the wrong tool here — forcing exits into weakness wrecked consistency
 (rolling-positive share 65% → 53%) — so they ship off by default.
 
+### Factor timing: the cheapness spread alternates
+
+Measuring the pure market-neutral spread (long the 3 cheapest, short the 3
+most expensive, equal weight, no funding) confirms the cross-sectional factor
+is regime-dependent rather than persistently profitable:
+
+| Window | Spread return | Sharpe |
+| --- | --- | --- |
+| 2022-01 → 2023-06 | +57.7% | 1.01 |
+| 2023-06 → 2024-06 | −42.8% | −0.51 |
+| 2024-06 → 2025-04 | +10.5% | 0.50 |
+| 2025-04 → 2026-09 (holdout) | −48.5% | −0.11 |
+
+A 300-trial `objective=consistency` search over 13 parameters (including the
+short sleeve and profit sweep, loose gates) still produced **zero** candidates
+that make money in the holdout — the losses come too fast for equity-trend
+timing to dodge them. Flipping the factor (`invert_score`: long expensive,
+short cheap) is worse, not mirrored (−97% vs −42% over the full period;
+the expensive basket falls much harder than the cheap one rises), and it is
+also negative in the holdout. Practical conclusion: in an inverted regime the
+honest position for this product is BTC, not a factor bet.
+
 Operational note: the recovered delisted universe (623 symbols) made cold
 snapshot builds heavier (weekly ≈ 27 s, monthly ≈ 8 s, cached afterwards, up
 to four snapshots LRU). The next performance step is incremental stats

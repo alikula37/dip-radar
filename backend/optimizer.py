@@ -55,6 +55,7 @@ CATEGORICAL_SPACE = {
     "short_funding_apr": [0, 10, 20],
     "short_exposure": [0.0, 0.25, 0.5, 1.0],
     "profit_sweep_pct": [0, 30, 50, 70],
+    "invert_score": [False, True],
     "max_holding_periods": [None, 26, 52, 104],
     "min_trend_30d": [None, -60, -40, -25, 0],
     "weighting": ["equal", "score", "market_cap"],
@@ -96,6 +97,7 @@ DEFAULT_FIXED_PARAMS = {
     "short_exposure": 1.0,
     "profit_sweep_pct": 0,
     "max_holding_periods": None,
+    "invert_score": False,
 }
 
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownRight, ArrowUpRight, Loader2, Minus } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Info, Loader2, Minus } from 'lucide-react';
 import React from 'react';
 
 import { formatTrend } from '@/lib/coins';
@@ -118,20 +118,37 @@ export function RadarLoader({
   );
 }
 
+/** Hover/focus tooltip: explanations without a click. */
+export function Hint({ text }: { text: string }) {
+  return (
+    <span className="group relative ml-1 inline-flex cursor-help align-middle">
+      <Info size={11} aria-hidden="true" className="text-content-muted" />
+      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-[90] mb-1.5 hidden w-60 -translate-x-1/2 rounded-lg border border-outline bg-surface-3 px-2.5 py-2 text-[11px] font-normal normal-case leading-snug tracking-normal text-content shadow-xl group-hover:block group-focus-within:block">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 export function StatCard({
   label,
   value,
   hint,
+  info,
   accent,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
+  info?: string;
   accent?: 'primary' | 'positive';
 }) {
   return (
     <div className="rounded-xl border border-outline bg-surface px-4 py-3">
-      <p className="text-[11px] uppercase tracking-wide text-content-muted">{label}</p>
+      <p className="text-[11px] uppercase tracking-wide text-content-muted">
+        {label}
+        {info && <Hint text={info} />}
+      </p>
       <p
         className={cn(
           'mt-1 text-xl font-semibold tabular-nums',
