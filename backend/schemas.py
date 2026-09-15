@@ -157,6 +157,29 @@ class BacktestOptimizeRow(BaseModel):
     max_drawdown: float
 
 
+class OptimizerCandidate(BaseModel):
+    params: dict
+    train_metrics: BacktestMetrics
+    holdout_metrics: Optional[BacktestMetrics] = None
+
+
+class OptimizerResponse(BaseModel):
+    optimizer: str
+    objective: str
+    trials: int
+    evaluated: int
+    max_drawdown_limit: Optional[float] = None
+    rebalance: str
+    score_model: str
+    min_market_cap: float
+    min_volume: float
+    fee_pct: float
+    validation_fraction: float
+    train: dict
+    holdout: dict
+    best: List[OptimizerCandidate]
+
+
 class BacktestResponse(BaseModel):
     requested_start: str
     requested_end: str

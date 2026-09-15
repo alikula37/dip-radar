@@ -198,3 +198,26 @@ export interface BacktestForm {
   regimeExposure: number;
   optimize: boolean;
 }
+
+export interface OptimizerCandidate {
+  params: Record<string, string | number | boolean | null>;
+  train_metrics: BacktestMetrics;
+  holdout_metrics: BacktestMetrics | null;
+}
+
+export interface OptimizerResponse {
+  optimizer: string;
+  objective: string;
+  trials: number;
+  evaluated: number;
+  max_drawdown_limit: number | null;
+  rebalance: string;
+  score_model: string;
+  min_market_cap: number;
+  min_volume: number;
+  fee_pct: number;
+  validation_fraction: number;
+  train: { start: string; end: string };
+  holdout: { start: string; end: string };
+  best: OptimizerCandidate[];
+}

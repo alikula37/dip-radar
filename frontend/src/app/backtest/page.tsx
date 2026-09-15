@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import EquityChart from '@/components/EquityChart';
 import { Button, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
 import { formatBtcValue, formatPct } from '@/lib/colors';
-import type { BacktestForm, BacktestResponse } from '@/types';
+import type { BacktestForm, BacktestMetrics, BacktestResponse, OptimizerCandidate, OptimizerResponse } from '@/types';
 
 type Rebalance = 'weekly' | 'monthly' | 'quarterly';
 type Weighting = 'equal' | 'score' | 'market_cap';
@@ -149,6 +149,33 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   return payload as BacktestResponse;
 }
 
+async function requestOptimizer(
+  form: BacktestForm,
+  options: { objective: string; trials: number; maxDrawdownLimit: number | null; validationFraction: number },
+): Promise<OptimizerResponse> {
+  const query = new URLSearchParams({
+    start: form.start,
+    rebalance: form.rebalance,
+    min_market_cap: String(form.minCap),
+    min_volume: String(form.minVolume),
+    fee_pct: String(form.feePct),
+    fill_with_btc: String(form.fillWithBtc),
+    score_model: form.scoreModel,
+    objective: options.objective,
+    trials: String(options.trials),
+    validation_fraction: String(options.validationFraction / 100),
+  });
+  if (form.end) query.set('end', form.end);
+  if (options.maxDrawdownLimit !== null) query.set('max_drawdown_limit', String(options.maxDrawdownLimit));
+
+  const response = await fetch(`/api/backtest/optimize?${query.toString()}`, { cache: 'no-store' });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? `Optimizer failed (HTTP ${response.status})`);
+  }
+  return payload as OptimizerResponse;
+}
+
 function downloadCurveCsv(result: BacktestResponse): void {
   const header = 'date,equity,equity_usd,benchmark_usd,period_return';
   const rows = result.curve.map((point) =>
@@ -169,6 +196,15 @@ function downloadCurveCsv(result: BacktestResponse): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+
+function compactPct(value: number): string {
+  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(0)}%`;
+}
+
+function metricsText(metrics: BacktestMetrics): string {
+  return `ret ${compactPct(metrics.total_return)} · sh ${metrics.sharpe.toFixed(2)} · dd ${compactPct(metrics.max_drawdown)}`;
 }
 
 function weightedReturn(picks: BacktestResponse['holdings'][number]['picks']): number {
@@ -204,6 +240,14 @@ export default function BacktestPage() {
   const [showAllRebalances, setShowAllRebalances] = useState(false);
   const [tradesOpen, setTradesOpen] = useState(false);
   const [showAllTrades, setShowAllTrades] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [optimizeResult, setOptimizeResult] = useState<OptimizerResponse | null>(null);
+  const [objective, setObjective] = useState<'sharpe' | 'return' | 'calmar'>('sharpe');
+  const [trials, setTrials] = useState(150);
+  const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
+  const [validationFraction, setValidationFraction] = useState(30);
 
   const runBacktest = useCallback(async (params: BacktestForm) => {
     setLoading(true);
@@ -219,6 +263,46 @@ export default function BacktestPage() {
       setLoading(false);
     }
   }, []);
+
+  const runOptimizer = useCallback(async () => {
+    setOptimizing(true);
+    setOptimizeError(null);
+    try {
+      const payload = await requestOptimizer(form, {
+        objective,
+        trials,
+        maxDrawdownLimit,
+        validationFraction,
+      });
+      setOptimizeResult(payload);
+    } catch (caught) {
+      setOptimizeError(caught instanceof Error ? caught.message : 'Optimizer failed.');
+    } finally {
+      setOptimizing(false);
+    }
+  }, [form, objective, trials, maxDrawdownLimit, validationFraction]);
+
+  const applyCandidate = (candidate: OptimizerCandidate) => {
+    const params = candidate.params;
+    const number = (value: unknown, fallback: number) => (value === null || value === undefined ? fallback : Number(value));
+    const next: BacktestForm = {
+      ...form,
+      topN: number(params.top_n, form.topN),
+      minScore: number(params.min_score, form.minScore),
+      sellScore: params.sell_score === null ? number(params.min_score, form.minScore) : number(params.sell_score, form.sellScore),
+      minTrend: params.min_trend_30d === null ? null : Number(params.min_trend_30d),
+      weighting: (params.weighting ?? form.weighting) as BacktestForm['weighting'],
+      rotation: (params.rotation ?? form.rotation) as BacktestForm['rotation'],
+      regimeFilter: (params.regime_filter ?? 'none') as BacktestForm['regimeFilter'],
+      regimeExposure: Math.round(Number(params.regime_exposure ?? 0) * 100),
+      trailingStop: params.trailing_stop_pct === null ? null : Number(params.trailing_stop_pct),
+      takeProfit: params.take_profit_pct === null ? null : Number(params.take_profit_pct),
+      stopLoss: params.stop_loss_pct === null ? null : Number(params.stop_loss_pct),
+      optimize: false,
+    };
+    setForm(next);
+    void runBacktest(next);
+  };
 
   useEffect(() => {
     // Defer so the loading state is not set synchronously inside the effect.
@@ -593,6 +677,143 @@ export default function BacktestPage() {
             </select>
           </label>
         </div>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-outline bg-surface">
+        <button
+          type="button"
+          aria-expanded={autoOpen}
+          onClick={() => setAutoOpen((current) => !current)}
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-content">Auto-optimize</h2>
+            <p className="text-[11px] text-content-muted">
+              Universe filters and dates above stay pinned; the optimizer searches the rest and validates on a holdout
+            </p>
+          </div>
+          {autoOpen ? <ChevronUp size={16} className="text-content-muted" /> : <ChevronDown size={16} className="text-content-muted" />}
+        </button>
+        {autoOpen && (
+          <div className="border-t border-outline px-4 pb-4 pt-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-[11px] text-content-muted">
+                Objective
+                <select
+                  value={objective}
+                  onChange={(event) => setObjective(event.target.value as typeof objective)}
+                  className="mt-1 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                >
+                  <option value="sharpe">Sharpe</option>
+                  <option value="return">Total return</option>
+                  <option value="calmar">Calmar</option>
+                </select>
+              </label>
+              <label className="text-[11px] text-content-muted">
+                Trials
+                <input
+                  type="number"
+                  min={10}
+                  max={1000}
+                  value={trials}
+                  onChange={(event) => setTrials(Math.min(1000, Math.max(10, Number(event.target.value) || 10)))}
+                  className="mt-1 w-24 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                Max drawdown limit (%, blank = off)
+                <input
+                  type="number"
+                  min={0}
+                  max={95}
+                  value={maxDrawdownLimit ?? ''}
+                  onChange={(event) => setMaxDrawdownLimit(event.target.value === '' ? null : Number(event.target.value))}
+                  className="mt-1 w-28 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-[11px] text-content-muted">
+                Holdout (%)
+                <input
+                  type="number"
+                  min={10}
+                  max={50}
+                  value={validationFraction}
+                  onChange={(event) => setValidationFraction(Math.min(50, Math.max(10, Number(event.target.value) || 30)))}
+                  className="mt-1 w-20 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+              </label>
+              <Button variant="primary" onClick={() => void runOptimizer()} disabled={optimizing}>
+                <Sparkles size={15} />
+                {optimizing ? 'Searching…' : 'Find best parameters'}
+              </Button>
+            </div>
+
+            {optimizeError && <p className="mt-3 text-xs text-[#f87171]">{optimizeError}</p>}
+
+            {optimizeResult && (
+              <>
+                <p className="mt-3 text-[11px] text-content-muted">
+                  {optimizeResult.optimizer} · {optimizeResult.evaluated}/{optimizeResult.trials} configs kept ·
+                  train {optimizeResult.train.start.slice(0, 10)} → {optimizeResult.train.end.slice(0, 10)} ·
+                  holdout {optimizeResult.holdout.start.slice(0, 10)} → {optimizeResult.holdout.end.slice(0, 10)}
+                  {optimizeResult.max_drawdown_limit ? ` · max DD ≤ ${optimizeResult.max_drawdown_limit}%` : ''}
+                </p>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
+                        <th className="py-2 pr-3">Config</th>
+                        <th className="py-2 pr-3">Train</th>
+                        <th className="py-2 pr-3">Holdout</th>
+                        <th className="py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimizeResult.best.map((candidate, index) => (
+                        <tr key={index} className="border-b border-outline/50 align-top">
+                          <td className="py-2 pr-3">
+                            <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
+                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">top {String(candidate.params.top_n)}</span>
+                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">score ≥ {String(candidate.params.min_score)}</span>
+                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
+                                sell {candidate.params.sell_score === null ? '= buy' : String(candidate.params.sell_score)}
+                              </span>
+                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">{String(candidate.params.rotation)}</span>
+                              <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">
+                                {candidate.params.regime_filter === null
+                                  ? 'regime off'
+                                  : `${String(candidate.params.regime_filter)}@${Math.round(Number(candidate.params.regime_exposure) * 100)}%`}
+                              </span>
+                              {candidate.params.trailing_stop_pct !== null && (
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">trail {String(candidate.params.trailing_stop_pct)}%</span>
+                              )}
+                              {candidate.params.take_profit_pct !== null && (
+                                <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5">tp {String(candidate.params.take_profit_pct)}%</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-[11px] text-content-muted">{metricsText(candidate.train_metrics)}</td>
+                          <td className="py-2 pr-3 font-mono text-[11px] text-content">
+                            {candidate.holdout_metrics ? metricsText(candidate.holdout_metrics) : '—'}
+                          </td>
+                          <td className="py-2 text-right">
+                            <Button variant="ghost" className="px-2 py-1 text-[11px]" onClick={() => applyCandidate(candidate)}>
+                              Apply
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-[11px] text-content-muted">
+                  In-sample optimization: the holdout column is the honest one. Searched: top-N 2-10, score 0-80,
+                  sell/trend/rotation/weighting/regime/stops on small grids.
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       {loading ? (

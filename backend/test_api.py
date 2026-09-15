@@ -512,6 +512,28 @@ def test_backtest_endpoint_replays_value_score_history():
 
     assert client.get("/api/backtest", params={"start": "2023-01-01", "regime_filter": "moon"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "score_model": "nope"}).status_code == 422
+
+    optimized = client.get(
+        "/api/backtest/optimize",
+        params={
+            "start": "2023-01-01",
+            "min_market_cap": 0,
+            "min_volume": 0,
+            "trials": 4,
+            "objective": "return",
+        },
+    )
+    assert optimized.status_code == 200
+    payload_optimized = optimized.json()
+    assert payload_optimized["optimizer"] in ("optuna-tpe", "random")
+    assert payload_optimized["best"]
+    assert payload_optimized["holdout"]["start"] >= payload_optimized["train"]["end"]
+    assert payload_optimized["objective"] == "return"
+
+    assert (
+        client.get("/api/backtest/optimize", params={"start": "2023-01-01", "objective": "moon"}).status_code
+        == 422
+    )
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rebalance": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "rotation": "daily"}).status_code == 422
     assert client.get("/api/backtest", params={"start": "2023-01-01", "end": "2022-01-01"}).status_code == 422
