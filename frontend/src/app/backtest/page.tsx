@@ -35,10 +35,12 @@ const DEFAULT_FORM: BacktestForm = {
   regimeExposure: 35,
   equityTrendExposure: null,
   profitLock: null,
-  shortN: 0,
-  shortMaxScore: null,
+  shortN: 3,
+  shortMaxScore: 40,
   shortFundingApr: 10,
   shortExposure: 25,
+  profitSweep: 50,
+  maxHolding: null,
 };
 
 const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] = [
@@ -66,6 +68,8 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       shortMaxScore: null,
       shortFundingApr: 10,
       shortExposure: 25,
+      profitSweep: 0,
+      maxHolding: null,
     },
   },
   {
@@ -88,10 +92,12 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       regimeExposure: 35,
       equityTrendExposure: null,
       profitLock: null,
-      shortN: 0,
-      shortMaxScore: null,
+      shortN: 3,
+      shortMaxScore: 40,
       shortFundingApr: 10,
       shortExposure: 25,
+      profitSweep: 50,
+      maxHolding: null,
     },
   },
   {
@@ -114,10 +120,12 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
       regimeExposure: 35,
       equityTrendExposure: null,
       profitLock: null,
-      shortN: 0,
-      shortMaxScore: null,
+      shortN: 3,
+      shortMaxScore: 40,
       shortFundingApr: 10,
-      shortExposure: 25,
+      shortExposure: 50,
+      profitSweep: 30,
+      maxHolding: null,
     },
   },
 ];
@@ -143,6 +151,8 @@ const PARAM_SPECS: Record<
   short_max_score: { label: 'Max short score', kind: 'categorical', choices: [null, 30, 40, 50] },
   short_funding_apr: { label: 'Short funding APR', kind: 'categorical', choices: [0, 10, 20] },
   short_exposure: { label: 'Short exposure', kind: 'categorical', choices: [0, 0.25, 0.5, 1] },
+  profit_sweep_pct: { label: 'Profit sweep', kind: 'categorical', choices: [0, 30, 50, 70] },
+  max_holding_periods: { label: 'Max holding', kind: 'categorical', choices: [null, 26, 52, 104] },
 };
 
 const DEFAULT_SEARCH_PARAMS = [
@@ -166,6 +176,8 @@ const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = 
   short_max_score: null,
   short_funding_apr: 0,
   short_exposure: 1,
+  profit_sweep_pct: 0,
+  max_holding_periods: null,
 };
 
 function paramLabel(value: string | number | null): string {
@@ -215,6 +227,8 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
     query.set('short_exposure', String(form.shortExposure / 100));
     if (form.shortMaxScore !== null) query.set('short_max_score', String(form.shortMaxScore));
   }
+  if (form.profitSweep > 0) query.set('profit_sweep_pct', String(form.profitSweep));
+  if (form.maxHolding !== null) query.set('max_holding_periods', String(form.maxHolding));
   query.set('score_model', form.scoreModel);
   if (form.regimeFilter !== 'none') {
     query.set('regime_filter', form.regimeFilter);
@@ -346,7 +360,7 @@ export default function BacktestPage() {
     ...DEFAULT_PINNED_VALUES,
   });
   const [objective, setObjective] = useState<'sharpe' | 'return' | 'calmar' | 'consistency'>('sharpe');
-  const [trials, setTrials] = useState(150);
+  const [trials, setTrials] = useState(60);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState<number | null>(null);
   const [validationFraction, setValidationFraction] = useState(30);
   const [cvFolds, setCvFolds] = useState(3);
@@ -425,6 +439,8 @@ export default function BacktestPage() {
       shortMaxScore: optional(params.short_max_score),
       shortFundingApr: number(params.short_funding_apr, form.shortFundingApr),
       shortExposure: Math.round(number(params.short_exposure, form.shortExposure / 100) * 100),
+      profitSweep: number(params.profit_sweep_pct, form.profitSweep),
+      maxHolding: optional(params.max_holding_periods),
     };
     setForm(next);
     void runBacktest(next);
@@ -774,6 +790,31 @@ export default function BacktestPage() {
               </label>
             </>
           )}
+          <label className="text-[11px] text-content-muted">
+            Profit sweep (% of profit back to BTC)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={form.profitSweep}
+              onChange={(event) => update('profitSweep', Math.min(100, Math.max(0, Number(event.target.value) || 0)))}
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-[11px] text-content-muted">
+            Max holding (rebalances, blank = off)
+            <input
+              type="number"
+              min={1}
+              max={500}
+              placeholder="off"
+              value={form.maxHolding ?? ''}
+              onChange={(event) =>
+                update('maxHolding', event.target.value === '' ? null : Math.min(500, Math.max(1, Number(event.target.value))))
+              }
+              className="mt-1 w-full rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+            />
+          </label>
           {form.regimeFilter === 'breadth' && (
             <label className="text-[11px] text-content-muted">
               Min breadth (%)

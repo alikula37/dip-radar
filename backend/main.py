@@ -377,6 +377,8 @@ def run_backtest(
     short_max_score: Optional[float] = Query(default=None, ge=0, le=100, description="Only short coins whose score is at most this value"),
     short_funding_apr: float = Query(default=0.0, ge=0, le=100, description="Annual funding cost charged on the short notional"),
     short_exposure: float = Query(default=1.0, ge=0, le=1, description="Short book size relative to the long book (1 = dollar neutral)"),
+    profit_sweep_pct: float = Query(default=0.0, ge=0, le=100, description="Share of a position's BTC profit harvested back to BTC each rebalance"),
+    max_holding_periods: Optional[int] = Query(default=None, ge=1, le=500, description="Force positions back to BTC after this many rebalances"),
     score_model: str = Query(default="rule", description="Score to rank coins: rule (default) or a learned artifact version"),
     db: Session = Depends(get_db),
 ):
@@ -423,6 +425,8 @@ def run_backtest(
         "short_max_score": short_max_score,
         "short_funding_apr": short_funding_apr,
         "short_exposure": short_exposure,
+        "profit_sweep_pct": profit_sweep_pct,
+        "max_holding_periods": max_holding_periods,
     }
 
     try:

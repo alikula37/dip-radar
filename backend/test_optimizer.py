@@ -76,7 +76,8 @@ def test_scope_validation_requires_full_coverage():
          "regime_filter": None, "regime_exposure": 1.0, "trailing_stop_pct": None,
          "take_profit_pct": None, "stop_loss_pct": None, "equity_trend_exposure": None,
          "profit_lock_pct": None, "short_n": 0, "short_max_score": None,
-         "short_funding_apr": 0, "short_exposure": 1},
+         "short_funding_apr": 0, "short_exposure": 1, "profit_sweep_pct": 0,
+         "max_holding_periods": None},
     )
     assert optimize == ["top_n", "min_score"]
     assert pinned["weighting"] == "score"

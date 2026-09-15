@@ -33,6 +33,8 @@ const response: BacktestResponse = {
   short_max_score: null,
   short_funding_apr: 0,
   short_exposure: 1,
+  profit_sweep_pct: 0,
+  max_holding_periods: null,
   metrics: {
     total_return: 0.5,
     total_return_usd: 0.7,
@@ -46,6 +48,7 @@ const response: BacktestResponse = {
     avg_holdings: 5,
     avg_turnover: 0.4,
     avg_short_notional: 0,
+    avg_long_notional: 1,
     funding_cost: 0,
     positive_years: 0.6,
     positive_rolling_share: 0.55,
