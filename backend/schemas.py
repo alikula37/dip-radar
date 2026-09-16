@@ -150,6 +150,48 @@ class StrategySignalsResponse(BaseModel):
     message: str
 
 
+class StrategyWatchRequest(BaseModel):
+    name: str
+    start: str
+    end: Optional[str] = None
+    rebalance: str = "weekly"
+    params: dict = {}
+
+
+class StrategyWatchResponse(BaseModel):
+    id: int
+    name: str
+    active: bool
+    start: str
+    end: Optional[str] = None
+    rebalance: str
+    score_model: str = "rule"
+    start_equity: Optional[float] = None
+    last_equity: Optional[float] = None
+    paper_return: Optional[float] = None
+    last_anchor: Optional[str] = None
+    last_refreshed_at: Optional[str] = None
+
+
+class StrategySignalRecord(BaseModel):
+    id: int
+    date: str
+    action: str
+    symbol: str = ""
+    reason: Optional[str] = None
+    weight: Optional[float] = None
+    score: Optional[float] = None
+    price: Optional[float] = None
+    equity: Optional[float] = None
+    message: Optional[str] = None
+
+
+class StrategyWatchRefreshResponse(BaseModel):
+    watch: StrategyWatchResponse
+    anchors: dict
+    inserted: List[StrategySignalRecord]
+
+
 class ScoreModelFeature(BaseModel):
     name: str
     label: str

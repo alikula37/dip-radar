@@ -14,6 +14,9 @@ import type {
   OptimizerCandidate,
   OptimizerResponse,
   ScoreModelInfo,
+  StrategySignalRecord,
+  StrategySignalsResponse,
+  StrategyWatch,
 } from '@/types';
 
 type Rebalance = 'weekly' | 'monthly' | 'quarterly';
@@ -331,7 +334,7 @@ const MIN_VOLUME_OPTIONS = [
   { value: 10_000_000, label: '≥ $10M volume' },
 ];
 
-async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
+function buildBacktestQuery(form: BacktestForm): URLSearchParams {
   const query = new URLSearchParams({
     start: form.start,
     rebalance: form.rebalance,
@@ -374,7 +377,11 @@ async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
   }
   if (form.maxCap !== null) query.set('max_market_cap', String(form.maxCap));
   if (form.end) query.set('end', form.end);
+  return query;
+}
 
+async function requestBacktest(form: BacktestForm): Promise<BacktestResponse> {
+  const query = buildBacktestQuery(form);
   const response = await fetch(`/api/backtest?${query.toString()}`, { cache: 'no-store' });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -424,6 +431,30 @@ async function requestOptimizer(
     throw new Error(payload?.detail ?? `Optimizer failed (HTTP ${response.status})`);
   }
   return payload as OptimizerResponse;
+}
+
+async function requestSignals(form: BacktestForm): Promise<StrategySignalsResponse> {
+  const query = buildBacktestQuery(form);
+  const response = await fetch(`/api/strategy/signals?${query.toString()}`, { cache: 'no-store' });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? `Signals failed (HTTP ${response.status})`);
+  }
+  return payload as StrategySignalsResponse;
+}
+
+async function requestWatches(): Promise<StrategyWatch[]> {
+  const response = await fetch('/api/strategy/watches', { cache: 'no-store' });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.detail ?? 'Watches failed');
+  return payload as StrategyWatch[];
+}
+
+async function requestWatchSignals(watchId: number): Promise<StrategySignalRecord[]> {
+  const response = await fetch(`/api/strategy/watches/${watchId}/signals?limit=20`, { cache: 'no-store' });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.detail ?? 'Watch signals failed');
+  return payload as StrategySignalRecord[];
 }
 
 function downloadCurveCsv(result: BacktestResponse): void {
@@ -495,6 +526,12 @@ export default function BacktestPage() {
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizeResult, setOptimizeResult] = useState<OptimizerResponse | null>(null);
   const [searchParams, setSearchParams] = useState<string[]>(DEFAULT_SEARCH_PARAMS);
+  const [signals, setSignals] = useState<StrategySignalsResponse | null>(null);
+  const [signalsLoading, setSignalsLoading] = useState(false);
+  const [signalsError, setSignalsError] = useState<string | null>(null);
+  const [watches, setWatches] = useState<StrategyWatch[]>([]);
+  const [watchSignals, setWatchSignals] = useState<Record<number, StrategySignalRecord[]>>({});
+  const [watchName, setWatchName] = useState('');
   const [scoreModels, setScoreModels] = useState<ScoreModelInfo[]>([]);
   const loadScoreModels = useCallback(async () => {
     if (scoreModels.length > 0) return;
@@ -515,6 +552,97 @@ export default function BacktestPage() {
   const [validationFraction, setValidationFraction] = useState(30);
   const [cvFolds, setCvFolds] = useState(3);
   const [strictness, setStrictness] = useState<'strict' | 'balanced' | 'loose'>('strict');
+
+  const loadSignals = useCallback(async (params: BacktestForm) => {
+    setSignalsLoading(true);
+    setSignalsError(null);
+    try {
+      setSignals(await requestSignals(params));
+    } catch (caught) {
+      setSignalsError(caught instanceof Error ? caught.message : 'Signals failed.');
+    } finally {
+      setSignalsLoading(false);
+    }
+  }, []);
+
+  const loadWatches = useCallback(async () => {
+    try {
+      setWatches(await requestWatches());
+    } catch {
+      // The watch list is informational.
+    }
+  }, []);
+
+  const saveWatch = useCallback(
+    async (form: BacktestForm) => {
+      const name = watchName.trim() || `${form.rebalance} ${form.scoreModel} strategy`;
+      const params: Record<string, string | number | boolean | null> = {};
+      buildBacktestQuery(form).forEach((value, key) => {
+        if (!['start', 'end', 'rebalance'].includes(key)) params[key] = value;
+      });
+      Object.keys(params).forEach((key) => {
+        const raw = params[key];
+        if (raw === 'true') params[key] = true;
+        else if (raw === 'false') params[key] = false;
+        else if (typeof raw === 'string' && raw !== '' && !Number.isNaN(Number(raw))) params[key] = Number(raw);
+      });
+      try {
+        const response = await fetch('/api/strategy/watches', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, start: form.start, end: form.end || null, rebalance: form.rebalance, params }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.detail ?? 'Watch could not be saved');
+        setWatchName('');
+        await loadWatches();
+      } catch (caught) {
+        setSignalsError(caught instanceof Error ? caught.message : 'Watch could not be saved');
+      }
+    },
+    [watchName, loadWatches],
+  );
+
+  const refreshWatch = useCallback(
+    async (watchId: number) => {
+      try {
+        await fetch(`/api/strategy/watches/${watchId}/refresh`, { method: 'POST' });
+        await loadWatches();
+        setWatchSignals((current) => ({ ...current, [watchId]: [] }));
+      } catch {
+        // Keep the previous list on failure.
+      }
+    },
+    [loadWatches],
+  );
+
+  const deleteWatch = useCallback(
+    async (watchId: number) => {
+      await fetch(`/api/strategy/watches/${watchId}`, { method: 'DELETE' });
+      await loadWatches();
+    },
+    [loadWatches],
+  );
+
+  const toggleWatchSignals = useCallback(
+    async (watchId: number) => {
+      if (watchSignals[watchId]) {
+        setWatchSignals((current) => {
+          const next = { ...current };
+          delete next[watchId];
+          return next;
+        });
+        return;
+      }
+      try {
+        const rows = await requestWatchSignals(watchId);
+        setWatchSignals((current) => ({ ...current, [watchId]: rows }));
+      } catch {
+        setWatchSignals((current) => ({ ...current, [watchId]: [] }));
+      }
+    },
+    [watchSignals],
+  );
 
   const runBacktest = useCallback(async (params: BacktestForm) => {
     setLoading(true);
@@ -614,9 +742,12 @@ export default function BacktestPage() {
 
   useEffect(() => {
     // Defer so the state is not set synchronously inside the effect.
-    const timer = window.setTimeout(() => void loadScoreModels(), 0);
+    const timer = window.setTimeout(() => {
+      void loadScoreModels();
+      void loadWatches();
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadScoreModels]);
+  }, [loadScoreModels, loadWatches]);
 
   useEffect(() => {
     // Defer so the loading state is not set synchronously inside the effect.
@@ -1877,6 +2008,161 @@ export default function BacktestPage() {
                     )}
                   </>
                 )}
+              </div>
+            )}
+          </section>
+
+          <section className="mt-4 rounded-xl border border-outline bg-surface-1 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-content">Live signals</h2>
+                <p className="text-[11px] text-content-muted">
+                  Replay the current configuration to the latest anchor: what the book holds, which daily exits
+                  fired, and what the next anchor is about to rotate into. Cold replay can take ~30s.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={watchName}
+                  onChange={(event) => setWatchName(event.target.value)}
+                  placeholder="Watch name"
+                  className="w-40 rounded-lg border border-outline bg-surface-2 px-2.5 py-2 text-xs text-content outline-none focus:border-primary"
+                />
+                <Button variant="outline" onClick={() => void saveWatch(form)} disabled={signalsLoading}>
+                  Save as watch
+                </Button>
+                <Button variant="primary" onClick={() => void loadSignals(form)} disabled={signalsLoading}>
+                  <Sparkles size={15} />
+                  {signalsLoading ? 'Computing…' : 'Get signals'}
+                </Button>
+              </div>
+            </div>
+
+            {signalsError && <p className="mt-2 text-[11px] text-[#f87171]">{signalsError}</p>}
+
+            {signals && (
+              <div className="mt-3 space-y-3">
+                <p className="text-[11px] text-content-muted">
+                  Anchor {signals.anchor.slice(0, 10)} → next {signals.next_anchor.slice(0, 10)} · as of{' '}
+                  {signals.as_of.slice(0, 10)} · {signals.message}
+                </p>
+                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-content-muted">
+                    equity {signals.state.equity.toFixed(2)}× BTC
+                  </span>
+                  <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-content-muted">
+                    long {signals.state.long_notional.toFixed(2)} · short {signals.state.short_notional.toFixed(2)}
+                  </span>
+                  {signals.state.rolling_ic !== null && (
+                    <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-content-muted">
+                      rolling IC {signals.state.rolling_ic.toFixed(3)} {signals.state.ic_risk_on ? '(on)' : '(off)'}
+                    </span>
+                  )}
+                  {signals.state.in_btc && (
+                    <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[#facc15]">
+                      In BTC · {signals.state.in_btc}
+                    </span>
+                  )}
+                </div>
+
+                {signals.positions.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
+                          <th className="py-1.5 pr-3">Symbol</th>
+                          <th className="py-1.5 pr-3">Side</th>
+                          <th className="py-1.5 pr-3">Score</th>
+                          <th className="py-1.5 pr-3">Weight</th>
+                          <th className="py-1.5 pr-3">Entry</th>
+                          <th className="py-1.5 pr-3">Now</th>
+                          <th className="py-1.5 pr-3">BTC PnL</th>
+                          <th className="py-1.5">Signal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {signals.positions.map((position) => (
+                          <tr key={`${position.direction}-${position.symbol}`} className="border-b border-outline/50">
+                            <td className="py-1.5 pr-3 font-mono">{position.symbol.replace(/(USDT|BTC)$/, '')}</td>
+                            <td className="py-1.5 pr-3 text-content-muted">{position.direction}</td>
+                            <td className="py-1.5 pr-3 text-primary">{position.score?.toFixed(0) ?? '—'}</td>
+                            <td className="py-1.5 pr-3">{position.weight !== null ? `${(position.weight * 100).toFixed(0)}%` : '—'}</td>
+                            <td className="py-1.5 pr-3 font-mono text-[11px]">{position.entry_price?.toPrecision(4) ?? '—'}</td>
+                            <td className="py-1.5 pr-3 font-mono text-[11px]">{position.price_now?.toPrecision(4) ?? '—'}</td>
+                            <td className={cn('py-1.5 pr-3 font-mono', (position.pnl_pct ?? 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]')}>
+                              {position.pnl_pct !== null ? formatPct(position.pnl_pct * 100) : '—'}
+                            </td>
+                            <td className="py-1.5">
+                              {position.action === 'SELL' ? (
+                                <span className="text-[#f87171]">
+                                  SELL · {position.reason} · {position.trigger_date?.slice(0, 10)}
+                                </span>
+                              ) : (
+                                <span className="text-content-muted">
+                                  {position.action}
+                                  {position.stop_price ? ` · stop ${position.stop_price.toPrecision(3)}` : ''}
+                                  {position.trailing_stop_price ? ` · trail ${position.trailing_stop_price.toPrecision(3)}` : ''}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {signals.candidates.length > 0 && (
+                  <p className="text-[11px] text-content-muted">
+                    Next-anchor watchlist:{' '}
+                    {signals.candidates.map((candidate) => `${candidate.symbol.replace(/(USDT|BTC)$/, '')} ${candidate.score.toFixed(0)}`).join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {watches.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-outline pt-3">
+                <h3 className="text-[11px] uppercase tracking-wide text-content-muted">Watched strategies</h3>
+                {watches.map((watch) => (
+                  <div key={watch.id} className="rounded-lg border border-outline bg-surface-2 p-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="text-content">
+                        {watch.name} · {watch.rebalance} · {watch.score_model}
+                      </span>
+                      <span className="flex items-center gap-2 text-content-muted">
+                        {watch.paper_return !== null && (
+                          <span className={watch.paper_return >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>
+                            paper {formatPct(watch.paper_return * 100)}
+                          </span>
+                        )}
+                        <span>anchor {watch.last_anchor?.slice(0, 10) ?? '—'}</span>
+                        <button type="button" onClick={() => void toggleWatchSignals(watch.id)} className="text-primary hover:underline">
+                          {watchSignals[watch.id] ? 'hide signals' : 'signals'}
+                        </button>
+                        <button type="button" onClick={() => void refreshWatch(watch.id)} className="text-primary hover:underline">
+                          refresh
+                        </button>
+                        <button type="button" onClick={() => void deleteWatch(watch.id)} className="text-[#f87171] hover:underline">
+                          delete
+                        </button>
+                      </span>
+                    </div>
+                    {watchSignals[watch.id] && (
+                      <div className="mt-2 space-y-1 text-[11px]">
+                        {watchSignals[watch.id].length === 0 && <p className="text-content-muted">No signals stored yet.</p>}
+                        {watchSignals[watch.id].map((signal) => (
+                          <p key={signal.id} className="text-content-muted">
+                            <span className="font-mono">{signal.date.slice(0, 10)}</span>{' '}
+                            <span className={signal.action === 'SELL' ? 'text-[#f87171]' : 'text-content'}>{signal.action}</span>{' '}
+                            {signal.symbol && <span className="font-mono">{signal.symbol.replace(/(USDT|BTC)$/, '')}</span>}
+                            {signal.reason ? ` · ${signal.reason}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </section>

@@ -12,10 +12,12 @@ The output is informational: signals are derived from the same point-in-time
 scores the backtest uses, and the data vintage is part of the payload.
 """
 
+import json
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from alerts import send_alert
 from backtest import (
     FREQUENCY_DAYS,
     _anchor_dates,
@@ -24,7 +26,54 @@ from backtest import (
     regime_warmup_start,
     simulate,
 )
-from models import Kline
+from models import Kline, StrategySignal, StrategyWatch
+from timeutils import utcnow_naive
+
+SIGNAL_PARAM_DEFAULTS = {
+    "top_n": 5,
+    "min_score": 50.0,
+    "min_market_cap": 10_000_000.0,
+    "max_market_cap": None,
+    "min_volume": 250_000.0,
+    "weighting": "equal",
+    "fill_with_btc": True,
+    "fee_pct": 0.1,
+    "rotation": "rebalance",
+    "sell_score": None,
+    "min_trend_30d": None,
+    "stop_loss_pct": None,
+    "trailing_stop_pct": None,
+    "take_profit_pct": None,
+    "regime_filter": None,
+    "regime_min_breadth": 0.5,
+    "regime_exposure": 0.0,
+    "equity_trend_exposure": None,
+    "profit_lock_pct": None,
+    "short_n": 0,
+    "short_max_score": None,
+    "short_funding_apr": 0.0,
+    "short_exposure": 1.0,
+    "profit_sweep_pct": 0.0,
+    "max_holding_periods": None,
+    "invert_score": False,
+    "ic_filter": False,
+    "ic_window": 6,
+    "ic_threshold": 0.0,
+    "ic_exposure": 0.35,
+    "score_model": "rule",
+}
+
+ACTIONABLE = {"BUY", "SELL", "SHORT", "STAY_IN_BTC"}
+
+
+def normalize_params(params: dict) -> dict:
+    """Merge user params over the defaults; reject unknown keys."""
+    merged = dict(SIGNAL_PARAM_DEFAULTS)
+    for key, value in (params or {}).items():
+        if key not in SIGNAL_PARAM_DEFAULTS:
+            raise ValueError(f"Unknown strategy parameter: {key}")
+        merged[key] = value
+    return merged
 
 
 def _next_anchor(anchor: datetime, frequency: str) -> datetime:
@@ -226,3 +275,154 @@ def strategy_signals(
         "candidates": candidates,
         "message": message,
     }
+
+
+def _signal_rows(payload: dict) -> list:
+    """Turn a signals payload into deduplicated storage rows."""
+    anchor = payload["anchor"][:10]
+    equity = payload["state"]["equity"]
+    rows = []
+    if payload["state"]["in_btc"]:
+        rows.append(
+            {
+                "date": anchor,
+                "action": "STAY_IN_BTC",
+                "symbol": "",
+                "reason": payload["state"]["in_btc"],
+                "message": payload["message"],
+                "equity": equity,
+            }
+        )
+        for symbol in payload["state"]["tracked"]:
+            rows.append(
+                {
+                    "date": anchor,
+                    "action": "TRACKED",
+                    "symbol": symbol,
+                    "reason": payload["state"]["in_btc"],
+                    "equity": equity,
+                }
+            )
+        return rows
+
+    for position in payload["positions"]:
+        if position["action"] == "SELL":
+            rows.append(
+                {
+                    "date": (position["trigger_date"] or anchor)[:10],
+                    "action": "SELL",
+                    "symbol": position["symbol"],
+                    "reason": position["reason"],
+                    "weight": position["weight"],
+                    "score": position["score"],
+                    "price": position["trigger_price"],
+                    "equity": equity,
+                }
+            )
+            continue
+        is_new = position["entry_date"][:10] == anchor
+        if position["direction"] == "long":
+            action = "BUY" if is_new else "HOLD"
+        else:
+            action = "SHORT" if is_new else "HOLD"
+        rows.append(
+            {
+                "date": anchor,
+                "action": action,
+                "symbol": position["symbol"],
+                "reason": None,
+                "weight": position["weight"],
+                "score": position["score"],
+                "price": position["entry_price"],
+                "equity": equity,
+            }
+        )
+    return rows
+
+
+def refresh_watch(db, watch: StrategyWatch, *, notify: bool = True) -> dict:
+    """Recompute a watch's signals, persist the new rows and alert on changes."""
+    config = json.loads(watch.params_json)
+    end = datetime.fromisoformat(config["end"]) if config.get("end") else None
+    if end is None:
+        end = db.query(func.max(Kline.timestamp)).scalar()
+        if end is None:
+            raise ValueError("No price history yet")
+    payload = strategy_signals(
+        db,
+        start=datetime.fromisoformat(config["start"]),
+        end=end,
+        frequency=config.get("rebalance", "weekly"),
+        params=normalize_params(config.get("params")),
+    )
+
+    existing = {
+        (row.date, row.action, row.symbol)
+        for row in db.query(StrategySignal).filter(StrategySignal.watch_id == watch.id).all()
+    }
+    inserted = []
+    for row in _signal_rows(payload):
+        date = datetime.fromisoformat(row["date"])
+        key = (date, row["action"], row["symbol"])
+        if key in existing:
+            continue
+        db.add(StrategySignal(watch_id=watch.id, date=date, **{k: v for k, v in row.items() if k != "date"}))
+        inserted.append({**row, "date": date.isoformat()})
+
+    if watch.start_equity is None:
+        watch.start_equity = payload["state"]["equity"]
+    watch.last_equity = payload["state"]["equity"]
+    watch.last_anchor = datetime.fromisoformat(payload["anchor"])
+    watch.last_refreshed_at = utcnow_naive()
+    db.commit()
+
+    if notify:
+        for row in inserted:
+            if row["action"] in ACTIONABLE:
+                _alert(watch, row, payload)
+
+    return {"inserted": inserted, "payload": payload}
+
+
+def _alert(watch: StrategyWatch, row: dict, payload: dict) -> None:
+    label = {
+        "BUY": "buy",
+        "SELL": "sell",
+        "SHORT": "short",
+        "STAY_IN_BTC": "move to BTC",
+    }.get(row["action"], row["action"])
+    detail = f" ({row['reason']})" if row.get("reason") else ""
+    symbol = f" {row['symbol']}" if row.get("symbol") else ""
+    send_alert(
+        f"[{watch.name}] {label}{symbol}{detail} · anchor {row['date']}",
+        {
+            "watch": watch.name,
+            "action": row["action"],
+            "symbol": row.get("symbol"),
+            "reason": row.get("reason"),
+            "date": row["date"],
+            "equity": payload["state"]["equity"],
+        },
+    )
+
+
+def refresh_active_watches(notify: bool = True) -> dict:
+    """Worker entry point: refresh every active watch."""
+    from database import SessionLocal
+
+    db = SessionLocal()
+    summary = {"watches": 0, "signals": 0, "errors": 0}
+    try:
+        watches = db.query(StrategyWatch).filter(StrategyWatch.active.is_(True)).all()
+        for watch in watches:
+            summary["watches"] += 1
+            try:
+                result = refresh_watch(db, watch, notify=notify)
+            except Exception:
+                db.rollback()
+                summary["errors"] += 1
+                continue
+            summary["signals"] += len(result["inserted"])
+    finally:
+        db.close()
+    return summary

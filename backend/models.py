@@ -3,8 +3,10 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 
@@ -134,6 +136,49 @@ class MarketHistory(Base):
     price_usd = Column(Float, nullable=True)
     market_cap = Column(Float, nullable=True)
     volume_24h = Column(Float, nullable=True)
+
+
+class StrategyWatch(Base):
+    """A saved strategy configuration whose signals the worker tracks.
+
+    ``params_json`` carries the full signal parameter dict; ``start_equity``
+    freezes the simulated equity at creation so the watch can report a paper
+    return without trusting any external state.
+    """
+
+    __tablename__ = "strategy_watches"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    params_json = Column(Text, nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    start_equity = Column(Float, nullable=True)
+    last_equity = Column(Float, nullable=True)
+    last_anchor = Column(DateTime, nullable=True)
+    last_refreshed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+
+class StrategySignal(Base):
+    """One stored, deduplicated signal per watch, date, action and symbol."""
+
+    __tablename__ = "strategy_signals"
+    __table_args__ = (
+        UniqueConstraint("watch_id", "date", "action", "symbol", name="uq_strategy_signal"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    watch_id = Column(Integer, ForeignKey("strategy_watches.id"), index=True, nullable=False)
+    date = Column(DateTime, index=True, nullable=False)
+    action = Column(String, nullable=False)
+    symbol = Column(String, nullable=False, default="")
+    reason = Column(String, nullable=True)
+    weight = Column(Float, nullable=True)
+    score = Column(Float, nullable=True)
+    price = Column(Float, nullable=True)
+    equity = Column(Float, nullable=True)
+    message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
 
 class Watch(Base):

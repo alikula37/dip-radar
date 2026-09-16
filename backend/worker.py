@@ -23,6 +23,20 @@ def job() -> None:
         return
     logger.info("Sync %s.", "completed" if started else "skipped (already running)")
 
+    logger.info("Refreshing strategy signals...")
+    try:
+        from signals import refresh_active_watches
+
+        summary = refresh_active_watches()
+        logger.info(
+            "Strategy signals: %s watch(es), %s new signal(s), %s error(s).",
+            summary["watches"],
+            summary["signals"],
+            summary["errors"],
+        )
+    except Exception:
+        logger.exception("Strategy signal refresh failed.")
+
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)
