@@ -72,6 +72,23 @@ def test_watch_crud_list_and_delete():
     assert client.get(f"/api/strategy/watches/{watch_id}/signals").status_code == 404
 
 
+def test_watch_live_endpoint_replays_without_storing_and_reports_returns():
+    _fresh_db()
+    created = client.post("/api/strategy/watches", json=WATCH_BODY).json()
+    watch_id = created["watch"]["id"]
+    before = client.get(f"/api/strategy/watches/{watch_id}/signals").json()
+
+    live = client.get(f"/api/strategy/watches/{watch_id}/live")
+
+    assert live.status_code == 200
+    payload = live.json()
+    assert payload["anchor"] == created["watch"]["last_anchor"]
+    assert payload["positions"] is not None
+    after = client.get(f"/api/strategy/watches/{watch_id}/signals").json()
+    assert len(after) == len(before)
+    assert all(record["return_since"] == 0.0 for record in after)
+
+
 def test_actionable_signals_alert_and_holds_do_not(monkeypatch):
     _fresh_db()
     sent = []

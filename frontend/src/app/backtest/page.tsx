@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ChevronDown, ChevronUp, Download, FlaskConical, Play, Sparkles, X } from 'lucide-react';
+import { Activity, BellRing, ChevronDown, ChevronUp, Download, FlaskConical, Play, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -807,13 +807,22 @@ export default function BacktestPage() {
             </p>
           </div>
         </div>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
-        >
-          <Activity size={15} />
-          Dashboard
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/signals"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
+          >
+            <BellRing size={15} />
+            Signals
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
+          >
+            <Activity size={15} />
+            Dashboard
+          </Link>
+        </div>
       </header>
 
       <section className="mt-4 rounded-2xl border border-outline bg-surface p-4">

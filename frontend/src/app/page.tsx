@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BellRing,
   Activity,
   Ban,
   Camera,
@@ -578,6 +579,13 @@ export default function Home() {
               Updated {formatDate(meta.last_updated)}
             </span>
           )}
+          <Link
+            href="/signals"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
+          >
+            <BellRing size={15} />
+            Signals
+          </Link>
           <Link
             href="/backtest"
             className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"

@@ -303,6 +303,7 @@ export interface StrategySignalRecord {
   price: number | null;
   equity: number | null;
   message: string | null;
+  return_since?: number | null;
 }
 
 export interface StrategyWatchRefresh {

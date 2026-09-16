@@ -184,6 +184,7 @@ class StrategySignalRecord(BaseModel):
     price: Optional[float] = None
     equity: Optional[float] = None
     message: Optional[str] = None
+    return_since: Optional[float] = None
 
 
 class StrategyWatchRefreshResponse(BaseModel):
