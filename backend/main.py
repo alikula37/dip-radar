@@ -226,6 +226,111 @@ def get_score_models():
     return models
 
 
+@app.get("/api/strategy/signals", response_model=schemas.StrategySignalsResponse)
+def get_strategy_signals(
+    start: str = Query(..., description="Replay start date (YYYY-MM-DD)"),
+    end: Optional[str] = Query(default=None, description="As-of date, defaults to the latest candle"),
+    rebalance: str = Query(default="weekly", pattern="^(weekly|monthly|quarterly)$"),
+    top_n: int = Query(default=5, ge=1, le=25),
+    min_score: float = Query(default=50.0, ge=0, le=100),
+    min_market_cap: float = Query(default=10_000_000.0, ge=0),
+    max_market_cap: Optional[float] = Query(default=None),
+    min_volume: float = Query(default=250_000.0, ge=0),
+    weighting: str = Query(default="equal", pattern="^(equal|score|market_cap)$"),
+    fill_with_btc: bool = Query(default=True),
+    fee_pct: float = Query(default=0.1, ge=0, le=5),
+    rotation: str = Query(default="rebalance", pattern="^(rebalance|hold)$"),
+    sell_score: Optional[float] = Query(default=None, ge=0, le=100),
+    min_trend_30d: Optional[float] = Query(default=None, ge=-100, le=100),
+    stop_loss_pct: Optional[float] = Query(default=None, ge=0, le=95),
+    trailing_stop_pct: Optional[float] = Query(default=None, ge=0, le=95),
+    take_profit_pct: Optional[float] = Query(default=None, ge=0, le=10000),
+    regime_filter: Optional[str] = Query(default=None, pattern="^(alt_trend|breadth)$"),
+    regime_min_breadth: float = Query(default=0.5, ge=0, le=1),
+    regime_exposure: float = Query(default=0.0, ge=0, le=1),
+    equity_trend_exposure: Optional[float] = Query(default=None, ge=0, le=1),
+    profit_lock_pct: Optional[float] = Query(default=None, ge=0, le=95),
+    short_n: int = Query(default=0, ge=0, le=25),
+    short_max_score: Optional[float] = Query(default=None, ge=0, le=100),
+    short_funding_apr: float = Query(default=0.0, ge=0, le=100),
+    short_exposure: float = Query(default=1.0, ge=0, le=1),
+    profit_sweep_pct: float = Query(default=0.0, ge=0, le=100),
+    max_holding_periods: Optional[int] = Query(default=None, ge=1, le=500),
+    invert_score: bool = Query(default=False),
+    ic_filter: bool = Query(default=False),
+    ic_window: int = Query(default=6, ge=2, le=52),
+    ic_threshold: float = Query(default=0.0, ge=-1, le=1),
+    ic_exposure: float = Query(default=0.35, ge=0, le=1),
+    score_model: str = Query(default="rule"),
+    db: Session = Depends(get_db),
+):
+    """Replay a strategy configuration to the latest anchor and return live signals."""
+    import signals as signals_module
+
+    try:
+        start_at = datetime.strptime(start, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start must be YYYY-MM-DD")
+
+    if end:
+        try:
+            end_at = datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="end must be YYYY-MM-DD")
+    else:
+        latest = db.query(func.max(models.Kline.timestamp)).scalar()
+        if latest is None:
+            raise HTTPException(status_code=404, detail="No price history yet")
+        end_at = latest
+
+    if end_at <= start_at:
+        raise HTTPException(status_code=422, detail="end must be after start")
+
+    params = {
+        "top_n": top_n,
+        "min_score": min_score,
+        "min_market_cap": min_market_cap,
+        "max_market_cap": max_market_cap,
+        "min_volume": min_volume,
+        "weighting": weighting,
+        "fill_with_btc": fill_with_btc,
+        "fee_pct": fee_pct,
+        "rotation": rotation,
+        "sell_score": sell_score,
+        "min_trend_30d": min_trend_30d,
+        "stop_loss_pct": stop_loss_pct,
+        "trailing_stop_pct": trailing_stop_pct,
+        "take_profit_pct": take_profit_pct,
+        "regime_filter": regime_filter,
+        "regime_min_breadth": regime_min_breadth,
+        "regime_exposure": regime_exposure,
+        "equity_trend_exposure": equity_trend_exposure,
+        "profit_lock_pct": profit_lock_pct,
+        "short_n": short_n,
+        "short_max_score": short_max_score,
+        "short_funding_apr": short_funding_apr,
+        "short_exposure": short_exposure,
+        "profit_sweep_pct": profit_sweep_pct,
+        "max_holding_periods": max_holding_periods,
+        "invert_score": invert_score,
+        "ic_filter": ic_filter,
+        "ic_window": ic_window,
+        "ic_threshold": ic_threshold,
+        "ic_exposure": ic_exposure,
+        "score_model": score_model,
+    }
+    try:
+        return signals_module.strategy_signals(
+            db,
+            start=start_at,
+            end=end_at,
+            frequency=rebalance,
+            params=params,
+        )
+    except BacktestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
 def get_coins(
     low_from: Optional[str] = Query(default=None, description="Custom reference window start (YYYY-MM-DD)"),
