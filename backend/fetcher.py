@@ -17,7 +17,7 @@ from alerts import check_alerts
 from database import SessionLocal
 from locks import release_lock, renew_lock, try_acquire_lock
 from metrics import calculate_coin_stats, calculate_distance_pct
-from models import BtcRate, Coin, Kline, Meta
+from models import BtcRate, Coin, Kline, MarketHistory, Meta
 from timeutils import from_millis, to_millis, utcnow, utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -767,6 +767,29 @@ def _resolve_ambiguous(
     db.commit()
 
 
+def archive_market_snapshot(db: DBSession, symbol: str, market: dict, when: datetime, cache=None) -> None:
+    """Upsert one day of point-in-time market data for the backtest archive.
+
+    The backtest universe filters read market caps per rebalance date; without
+    this archive they fall back to *today's* cap for historical dates, so every
+    sync would silently rewrite history. One row per coin per day keeps the
+    archive cheap and lets the filters use caps that actually existed.
+    """
+    row = cache.get(symbol) if cache is not None else (
+        db.query(MarketHistory)
+        .filter(MarketHistory.symbol == symbol, MarketHistory.timestamp == when)
+        .first()
+    )
+    if row is None:
+        row = MarketHistory(symbol=symbol, timestamp=when)
+        db.add(row)
+        if cache is not None:
+            cache[symbol] = row
+    row.market_cap = market.get("market_cap")
+    row.volume_24h = market.get("total_volume")
+    row.price_usd = market.get("current_price")
+
+
 def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> None:
     logger.info("Starting sync_coingecko...")
     try:
@@ -811,6 +834,12 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
         if coin.coingecko_id and coin.coingecko_id not in cg_ids:
             cg_ids.append(coin.coingecko_id)
 
+    archive_day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    archived = {
+        row.symbol: row
+        for row in db.query(MarketHistory).filter(MarketHistory.timestamp == archive_day).all()
+    }
+
     batches = list(chunked(cg_ids, COINGECKO_MARKETS_BATCH_SIZE))
     for index, batch in enumerate(batches, start=1):
         try:
@@ -828,6 +857,7 @@ def sync_coingecko(db: DBSession, client: CoinGeckoClient, progress=None) -> Non
             coin.logo_url = market.get("image") or coin.logo_url
             coin.market_cap = market.get("market_cap")
             coin.volume_24h = market.get("total_volume")
+            archive_market_snapshot(db, coin.symbol, market, archive_day, cache=archived)
         db.commit()
         time.sleep(COINGECKO_BATCH_DELAY)
         if progress:

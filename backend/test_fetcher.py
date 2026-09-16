@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 import fetcher
 from database import Base
-from models import Coin, Kline
+from models import Coin, Kline, MarketHistory
 from timeutils import to_millis
 
 
@@ -248,6 +248,25 @@ def test_upsert_klines_is_idempotent_and_updates_existing_row(db):
     stored = db.query(Kline).one()
     assert db.query(Kline).count() == 1
     assert stored.close == 1.9
+
+
+def test_archive_market_snapshot_upserts_one_row_per_day(db):
+    when = datetime(2026, 9, 16)
+    fetcher.archive_market_snapshot(
+        db, "ETHUSDT", {"market_cap": 1e9, "total_volume": 5e7, "current_price": 3000.0}, when
+    )
+    db.commit()
+    fetcher.archive_market_snapshot(
+        db, "ETHUSDT", {"market_cap": 2e9, "total_volume": 6e7, "current_price": 3100.0}, when
+    )
+    db.commit()
+
+    rows = db.query(MarketHistory).all()
+    assert len(rows) == 1
+    assert rows[0].market_cap == 2e9
+    assert rows[0].volume_24h == 6e7
+    assert rows[0].price_usd == 3100.0
+    assert rows[0].timestamp == when
 
 
 def test_update_coin_metrics_records_7d_and_30d_prices(db):

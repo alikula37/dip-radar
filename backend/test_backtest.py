@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from backtest import BacktestError, build_snapshot, regime_warmup_start, simulate
-from models import Coin, Kline
+from models import Coin, Kline, MarketHistory
 
 START = datetime(2021, 1, 1)
 DAYS = 1100
@@ -334,6 +334,25 @@ def test_regime_filter_breadth_threshold_is_configurable():
 def test_simulate_rejects_unknown_regime_filter():
     with pytest.raises(BacktestError):
         simulate(_manual_snapshot(), regime_filter="moon", **_ROTATION_WINDOW)
+
+
+def test_snapshot_prefers_archived_point_in_time_market_cap(seeded_db):
+    last_anchor = _snapshot(seeded_db)["dates"][-1]
+    seeded_db.add(
+        MarketHistory(
+            symbol="CHEAPUSDT",
+            timestamp=last_anchor - timedelta(days=1),
+            market_cap=1_000_000.0,
+            volume_24h=10_000.0,
+        )
+    )
+    seeded_db.commit()
+
+    snapshot = _snapshot(seeded_db)
+
+    entry = snapshot["entries"][last_anchor]["CHEAPUSDT"]
+    assert entry["cap"] == 1_000_000.0
+    assert entry["volume"] == 10_000.0
 
 
 def test_snapshot_includes_archived_coins_without_market_cap(db):
