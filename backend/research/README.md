@@ -182,10 +182,16 @@ candidate:
 | 2024 | +9% | 0.42 | −21% |
 | 2025+ | +55% | 1.81 | −12% |
 | Last 17 months (2025-04 →) | −1% | 0.07 | −21% |
-| Full 2022+ | **+971%** | **1.79** | −19% |
+| Full 2022+ | **+699%** | **1.62** | −19% |
 
 Every calendar year and every rolling 1-year window in the cold-start run is
-positive, turnover is 0.14/week and funding costs 24.5% cumulatively. Two honest
+positive, turnover is 0.14/week and funding costs ~24% cumulatively. Numbers are
+stamped with the 2026-09-14 data vintage: the 2026-09-15 CoinGecko cap refresh
+moved FULL from +971% to +699% because the simulator applies today's market caps
+to historical filters (Balanced's 2025+ window moved from +31% to −25% in the same
+refresh). The keyless daily cap archive sketched in `market_history.py` — append
+today's cap/volume on every sync and prefer the point-in-time value in the
+snapshot — is the fix for future vintages. Two honest
 notes: (1) the **cold-start vs carried** distinction matters here — the optimizer
 validates the strategy as a continuous run (its holdout slice is +43% because the
 positions and internal state carry over from 2022), while applying the preset on a
