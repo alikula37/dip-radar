@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from sqlalchemy.exc import OperationalError
+
 from database import Base, SessionLocal, engine
 from fetcher import update_coin_metrics
 from models import BtcRate, Coin, Kline, Meta
@@ -20,7 +22,12 @@ COINS = [
 
 
 def main(days: int = 1700) -> None:
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except OperationalError as exc:
+        # The backend container may be creating the same tables concurrently.
+        if "already exists" not in str(exc):
+            raise
     db: Session = SessionLocal()
     try:
         if db.query(Coin).count() > 0:

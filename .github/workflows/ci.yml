@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Start backend and frontend
-        run: docker compose up -d --build backend frontend
+        run: docker compose up -d --build --wait backend frontend
       - name: Seed deterministic demo data
         run: docker compose exec -T backend python demo_seed.py
       - name: Wait for the dashboard
