@@ -3,9 +3,8 @@
 import math
 from datetime import datetime, timedelta
 
-from sqlalchemy.orm import Session
-
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine
 from fetcher import update_coin_metrics
