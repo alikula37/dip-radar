@@ -721,12 +721,14 @@ def simulate(
 
         # Equity-curve overlay: shrink exposure while the strategy itself is
         # below its own moving average (protects accumulated gains).
+        equity_brake = False
         if equity_trend_exposure is not None and weights:
             window = equity_history[-REGIME_SMA_ANCHORS:]
             average = sum(window) / len(window)
             if len(window) >= 3 and equity < average:
                 exposure = max(0.0, min(1.0, equity_trend_exposure))
                 weights = {symbol: weight * exposure for symbol, weight in weights.items()}
+                equity_brake = True
 
         # Profit lock: every time the equity doubles above the last lock level,
         # move a slice of the book permanently into BTC.
@@ -892,7 +894,21 @@ def simulate(
         period_returns.append(period_return)
         turnovers.append(turnover)
         curve.append({"date": next_date, "equity": equity, "period_return": period_return})
-        holdings.append({"date": date, "picks": pick_rows, "risk_on": risk_on, "ic": rolling_ic})
+        # Why a period can be flat in BTC terms: every weight scaled to zero.
+        # The row explains it in the UI instead of showing a puzzling 0.00%.
+        in_btc = None
+        if not any(abs(weight) > 1e-9 for weight in weights.values()):
+            if ic_filter and not ic_risk_on:
+                in_btc = "ic"
+            elif equity_brake and equity_trend_exposure <= 0:
+                in_btc = "equity"
+            elif not risk_on and regime_exposure <= 0:
+                in_btc = "regime"
+            else:
+                in_btc = "cash"
+        holdings.append(
+            {"date": date, "picks": pick_rows, "risk_on": risk_on, "ic": rolling_ic, "in_btc": in_btc}
+        )
         previous_weights = weights
         previous_shorts = set(short_symbols)
         blocked_symbols = stopped_symbols | time_exits

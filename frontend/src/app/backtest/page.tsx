@@ -280,6 +280,13 @@ const DEFAULT_SEARCH_PARAMS = [
   'regime_exposure',
 ];
 
+const IN_BTC_REASONS: Record<string, string> = {
+  ic: 'In BTC · factor IC weak',
+  regime: 'In BTC · risk-off regime',
+  equity: 'In BTC · equity brake',
+  cash: 'In BTC · no candidates',
+};
+
 const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = {
   min_market_cap: 10_000_000,
   max_market_cap: null,
@@ -1718,7 +1725,15 @@ export default function BacktestPage() {
                         <td className="py-2 pr-3 whitespace-nowrap font-mono">{period.date.slice(0, 10)}</td>
                         <td className="py-2 pr-3">
                           <div className="flex flex-wrap gap-1.5">
-                            {period.picks.length === 0 && (
+                            {period.in_btc && (
+                              <span
+                                className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[11px] text-content-muted"
+                                title="Every position was scaled to zero; the book sits in BTC for this period."
+                              >
+                                {IN_BTC_REASONS[period.in_btc] ?? 'In BTC'}
+                              </span>
+                            )}
+                            {period.picks.length === 0 && !period.in_btc && (
                               <span className={period.risk_on === false ? 'text-[#facc15]' : 'text-content-muted'}>
                                 {period.risk_on === false ? 'Risk-off — BTC' : 'No candidates — BTC/cash'}
                               </span>

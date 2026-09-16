@@ -192,7 +192,7 @@ positions and internal state carry over from 2022), while applying the preset on
 fresh date range restarts the book and gives the numbers above; (2) the same
 family short-only (long exposure zeroed by the regime switch) was validated by the
 calmar objective with a +13% holdout but a −40% full-period drawdown, showing how
-much of the edge lives in the short leg. The Hedge preset is the long+short variant.
+much of the edge lives in the short leg. The Hedge preset is the long+short variant. Its IC filter (window 12, threshold 0.05, exposure 0%) kept the book flat in BTC for 117 of 245 weeks — the flat rows the Strategy Lab now labels with an "In BTC · factor IC weak" chip, so a 0.00% period return reads as a deliberate de-risk rather than a bug.
 
 
 ## Shipping gates for a learned score

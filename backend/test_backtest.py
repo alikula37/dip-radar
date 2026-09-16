@@ -112,6 +112,24 @@ def test_snapshot_entries_carry_point_in_time_research_features(seeded_db):
     assert regime["breadth"] is not None
 
 
+def test_flat_periods_report_why_they_sit_in_btc(seeded_db):
+    snapshot = _snapshot(seeded_db)
+    result = simulate(
+        snapshot,
+        start=snapshot["dates"][0],
+        end=snapshot["dates"][-1],
+        top_n=3,
+        regime_filter="breadth",
+        regime_min_breadth=1.01,
+        regime_exposure=0.0,
+    )
+
+    flat = [period for period in result["holdings"] if period["in_btc"] == "regime"]
+    assert len(flat) >= 5
+    assert all(pick["weight"] == 0.0 for period in flat for pick in period["picks"])
+    assert all(period["in_btc"] is None for period in result["holdings"] if any(pick["weight"] for pick in period["picks"]))
+
+
 def test_snapshot_can_use_a_learned_score_artifact(seeded_db):
     end = START + timedelta(days=DAYS - 1)
     rule = build_snapshot(seeded_db, "monthly", end, use_cache=False)
