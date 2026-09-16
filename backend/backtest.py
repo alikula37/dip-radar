@@ -960,6 +960,37 @@ def simulate(
         previous_shorts = set(short_symbols)
         blocked_symbols = stopped_symbols | time_exits
 
+    # Final book state for the live-signals endpoint: positions carry their
+    # entry/peak/sweep so the next anchor's actions can be derived without
+    # re-running the path-dependent parts of the simulation.
+    state = {
+        "anchor": dates[-1].isoformat(),
+        "equity": round(equity, 6),
+        "weights": {symbol: round(weight, 6) for symbol, weight in weights.items()},
+        "long_notional": round(sum(weight for weight in weights.values() if weight > 0), 6),
+        "short_notional": round(sum(-weight for weight in weights.values() if weight < 0), 6),
+        "positions": [
+            {
+                "symbol": position["symbol"],
+                "entry_date": position["entry_date"].isoformat(),
+                "entry_price": position["entry_price"],
+                "entry_score": position["entry_score"],
+                "last_price": position["last_price"],
+                "peak": position["peak"],
+                "sweep": position["sweep"],
+                "periods_held": position.get("periods_held", 0),
+            }
+            for position in open_positions.values()
+        ],
+        "shorts": sorted(previous_shorts),
+        "risk_on": bool(risk_on),
+        "ic_risk_on": bool(ic_risk_on),
+        "rolling_ic": rolling_ic,
+        "equity_brake": bool(equity_brake),
+        "in_btc": in_btc,
+        "blocked": sorted(blocked_symbols),
+    }
+
     last_pool = entries_by_date.get(dates[-1], {})
     for symbol, position in open_positions.items():
         entry = last_pool.get(symbol)
@@ -1065,4 +1096,5 @@ def simulate(
         "curve": curve,
         "holdings": holdings,
         "trades": trades,
+        "state": state,
     }

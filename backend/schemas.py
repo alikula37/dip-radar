@@ -98,6 +98,58 @@ class WatchResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class StrategySignalPosition(BaseModel):
+    symbol: str
+    direction: str
+    score: Optional[float] = None
+    weight: Optional[float] = None
+    entry_date: Optional[str] = None
+    entry_price: Optional[float] = None
+    price_now: Optional[float] = None
+    pnl_pct: Optional[float] = None
+    peak: Optional[float] = None
+    sweep: Optional[float] = None
+    periods_held: Optional[int] = None
+    stop_price: Optional[float] = None
+    trailing_stop_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
+    action: str = "HOLD"
+    reason: Optional[str] = None
+    trigger_date: Optional[str] = None
+    trigger_price: Optional[float] = None
+
+
+class StrategySignalCandidate(BaseModel):
+    symbol: str
+    score: float
+    direction: str = "long"
+
+
+class StrategySignalsState(BaseModel):
+    equity: float
+    long_notional: float
+    short_notional: float
+    in_btc: Optional[str] = None
+    tracked: List[str] = []
+    risk_on: bool = True
+    ic_risk_on: bool = True
+    rolling_ic: Optional[float] = None
+    equity_brake: bool = False
+
+
+class StrategySignalsResponse(BaseModel):
+    as_of: str
+    anchor: str
+    next_anchor: str
+    rebalance: str
+    start: str
+    score_model: str = "rule"
+    state: StrategySignalsState
+    positions: List[StrategySignalPosition]
+    candidates: List[StrategySignalCandidate]
+    message: str
+
+
 class ScoreModelFeature(BaseModel):
     name: str
     label: str
