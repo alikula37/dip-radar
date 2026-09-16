@@ -340,21 +340,26 @@ def _signal_rows(payload: dict) -> list:
     return rows
 
 
-def refresh_watch(db, watch: StrategyWatch, *, notify: bool = True) -> dict:
-    """Recompute a watch's signals, persist the new rows and alert on changes."""
+def watch_payload(db, watch: StrategyWatch) -> dict:
+    """Live signals for a saved watch (no persistence)."""
     config = json.loads(watch.params_json)
     end = datetime.fromisoformat(config["end"]) if config.get("end") else None
     if end is None:
         end = db.query(func.max(Kline.timestamp)).scalar()
         if end is None:
             raise ValueError("No price history yet")
-    payload = strategy_signals(
+    return strategy_signals(
         db,
         start=datetime.fromisoformat(config["start"]),
         end=end,
         frequency=config.get("rebalance", "weekly"),
         params=normalize_params(config.get("params")),
     )
+
+
+def refresh_watch(db, watch: StrategyWatch, *, notify: bool = True) -> dict:
+    """Recompute a watch's signals, persist the new rows and alert on changes."""
+    payload = watch_payload(db, watch)
 
     existing = {
         (row.date, row.action, row.symbol)

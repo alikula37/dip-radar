@@ -485,6 +485,20 @@ def refresh_strategy_watch(watch_id: int, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/api/strategy/watches/{watch_id}/live", response_model=schemas.StrategySignalsResponse)
+def get_watch_live_signals(watch_id: int, db: Session = Depends(get_db)):
+    """Replay the watch's configuration to the latest anchor without storing anything."""
+    import signals as signals_module
+
+    watch = db.get(models.StrategyWatch, watch_id)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Watch not found")
+    try:
+        return signals_module.watch_payload(db, watch)
+    except (BacktestError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @app.get(
     "/api/strategy/watches/{watch_id}/signals",
     response_model=List[schemas.StrategySignalRecord],
@@ -516,6 +530,11 @@ def get_strategy_watch_signals(
             price=row.price,
             equity=row.equity,
             message=row.message,
+            return_since=(
+                round(watch.last_equity / row.equity - 1.0, 4)
+                if watch.last_equity and row.equity
+                else None
+            ),
         )
         for row in rows
     ]
