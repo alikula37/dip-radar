@@ -189,9 +189,13 @@ positive, turnover is 0.14/week and funding costs ~24% cumulatively. Numbers are
 stamped with the 2026-09-14 data vintage: the 2026-09-15 CoinGecko cap refresh
 moved FULL from +971% to +699% because the simulator applies today's market caps
 to historical filters (Balanced's 2025+ window moved from +31% to −25% in the same
-refresh). The keyless daily cap archive sketched in `market_history.py` — append
-today's cap/volume on every sync and prefer the point-in-time value in the
-snapshot — is the fix for future vintages. Two honest
+refresh). The keyless daily cap archive is now live: every `sync_coingecko` run appends
+today's cap/volume/price per tracked coin to `market_history`, and
+`build_snapshot` prefers the archived value at each rebalance date (falling back
+to today's cap only where the archive has no coverage). Snapshots also key their
+cache on the archive size/timestamp, so a sync invalidates stale snapshots. Dates
+before the archive began still carry the old look-ahead, which is why every
+number in this document is stamped with its data vintage. Two honest
 notes: (1) the **cold-start vs carried** distinction matters here — the optimizer
 validates the strategy as a continuous run (its holdout slice is +43% because the
 positions and internal state carry over from 2022), while applying the preset on a

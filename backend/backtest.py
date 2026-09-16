@@ -15,11 +15,11 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from metrics import calculate_coin_stats, calculate_value_scores
-from models import BtcRate, Coin, Kline
+from models import BtcRate, Coin, Kline, MarketHistory
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,39 @@ def _btc_usd_series(db: DBSession, end: datetime) -> dict:
     return {timestamp: close for timestamp, close in rows}
 
 
+def _market_archive(db, symbols: list) -> dict:
+    """Per symbol: parallel lists of archive dates / market caps / volumes."""
+    archive = defaultdict(lambda: ([], [], []))
+    if not symbols:
+        return archive
+    rows = db.execute(
+        select(
+            MarketHistory.symbol,
+            MarketHistory.timestamp,
+            MarketHistory.market_cap,
+            MarketHistory.volume_24h,
+        )
+        .where(MarketHistory.symbol.in_(symbols))
+        .order_by(MarketHistory.symbol, MarketHistory.timestamp)
+    ).all()
+    for symbol, timestamp, market_cap, volume in rows:
+        entry = archive[symbol]
+        entry[0].append(timestamp)
+        entry[1].append(market_cap)
+        entry[2].append(volume)
+    return archive
+
+
+def _pit_market(series, anchor: datetime):
+    """Last archived cap/volume at or before the anchor, or (None, None)."""
+    if not series:
+        return None, None
+    index = bisect.bisect_right(series[0], anchor) - 1
+    if index < 0:
+        return None, None
+    return series[1][index], series[2][index]
+
+
 def _rate_at(rates: dict, rate_dates: list, when: datetime) -> Optional[float]:
     if not rate_dates:
         return None
@@ -196,7 +229,15 @@ def build_snapshot(
     else:
         score_artifact = None
 
-    key = (frequency, end.date().isoformat(), score_model, earliest.date().isoformat() if earliest else None)
+    archived = db.query(func.count(MarketHistory.id), func.max(MarketHistory.timestamp)).one()
+    key = (
+        frequency,
+        end.date().isoformat(),
+        score_model,
+        earliest.date().isoformat() if earliest else None,
+        archived[0],
+        archived[1],
+    )
     if use_cache and key in _SNAPSHOT_CACHE:
         return _SNAPSHOT_CACHE[key]
 
@@ -204,6 +245,7 @@ def build_snapshot(
     universe = {coin.symbol: coin for coin in coins}
     if not universe:
         raise BacktestError("No eligible coins for a backtest")
+    market_archive = _market_archive(db, list(universe))
 
     rows = db.execute(
         select(Kline.symbol, Kline.timestamp, Kline.close, Kline.low, Kline.volume)
@@ -300,7 +342,12 @@ def build_snapshot(
                 continue
 
             coin = universe[symbol]
-            snapshot_coin = _SnapshotCoin(symbol, coin.market_cap, coin.volume_24h)
+            pit_cap, pit_volume = _pit_market(market_archive.get(symbol), date)
+            snapshot_coin = _SnapshotCoin(
+                symbol,
+                pit_cap if pit_cap is not None else coin.market_cap,
+                pit_volume if pit_volume is not None else coin.volume_24h,
+            )
             for field in STATS_FIELDS:
                 setattr(snapshot_coin, field, stats[field])
             event_low = data["event_min"][index] or data["all_min"][index]
