@@ -108,6 +108,7 @@ export interface BacktestPeriod {
   picks: BacktestPick[];
   risk_on?: boolean;
   ic?: number | null;
+  in_btc?: string | null;
 }
 
 export interface BacktestTrade {

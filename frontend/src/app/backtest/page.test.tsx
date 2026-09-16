@@ -70,6 +70,7 @@ const response: BacktestResponse = {
   holdings: Array.from({ length: 10 }, (_, index) => ({
     date: `2022-${String(index + 1).padStart(2, '0')}-01T00:00:00`,
     picks: [{ symbol: 'ETHBTC', score: 90 - index, weight: 0.5, period_return: 0.1 }],
+    ...(index === 9 ? { in_btc: 'ic' } : {}),
   })),
   trades: [
     {
@@ -287,6 +288,15 @@ describe('BacktestPage', () => {
         expect.objectContaining({ cache: 'no-store' }),
       );
     });
+  });
+
+  it('explains flat periods as sitting in BTC', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    expect(screen.getByText('In BTC · factor IC weak')).toBeTruthy();
   });
 
   it('expands the rebalance history on demand', async () => {

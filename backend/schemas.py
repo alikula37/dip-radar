@@ -137,6 +137,7 @@ class BacktestPeriod(BaseModel):
     picks: List[BacktestPick]
     risk_on: bool = True
     ic: Optional[float] = None
+    in_btc: Optional[str] = None
 
 
 class BacktestTrade(BaseModel):
