@@ -290,6 +290,88 @@ describe('BacktestPage', () => {
     });
   });
 
+  it('fetches live signals and lists watched strategies', async () => {
+    const signalsPayload = {
+      as_of: '2026-09-16T00:00:00',
+      anchor: '2026-09-14T00:00:00',
+      next_anchor: '2026-09-21T00:00:00',
+      rebalance: 'weekly',
+      start: '2022-01-01T00:00:00',
+      score_model: 'rule',
+      state: {
+        equity: 1.5,
+        long_notional: 0.5,
+        short_notional: 0.25,
+        in_btc: null,
+        tracked: [],
+        risk_on: true,
+        ic_risk_on: true,
+        rolling_ic: 0.12,
+        equity_brake: false,
+      },
+      positions: [
+        {
+          symbol: 'BCHUSDT',
+          direction: 'long',
+          score: 100,
+          weight: 0.5,
+          entry_date: '2026-09-07',
+          entry_price: 0.002,
+          price_now: 0.0024,
+          pnl_pct: 0.2,
+          peak: 0.0024,
+          sweep: 1,
+          periods_held: 1,
+          stop_price: 0.0014,
+          trailing_stop_price: null,
+          take_profit_price: null,
+          action: 'HOLD',
+          reason: null,
+          trigger_date: null,
+          trigger_price: null,
+        },
+      ],
+      candidates: [{ symbol: 'ETHUSDT', score: 95, direction: 'long' }],
+      message: 'The book is live as of the 2026-09-14 anchor.',
+    };
+    const watchesPayload = [
+      {
+        id: 7,
+        name: 'Hedge',
+        active: true,
+        start: '2022-01-01',
+        end: null,
+        rebalance: 'weekly',
+        score_model: 'rule',
+        start_equity: 1,
+        last_equity: 1.2,
+        paper_return: 0.2,
+        last_anchor: '2026-09-14T00:00:00',
+        last_refreshed_at: '2026-09-16T00:00:00',
+      },
+    ];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/strategy/signals?')) {
+        return new Response(JSON.stringify(signalsPayload), { status: 200 });
+      }
+      if (url.includes('/api/strategy/watches')) {
+        return new Response(JSON.stringify(watchesPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(response), { status: 200 });
+    });
+
+    render(<BacktestPage />);
+    await screen.findByText('Win rate');
+
+    fireEvent.click(screen.getByRole('button', { name: /get signals/i }));
+
+    expect(await screen.findByText('BCH')).toBeTruthy();
+    expect(screen.getByText(/next-anchor watchlist/i)).toBeTruthy();
+    expect(screen.getByText('Hedge · weekly · rule')).toBeTruthy();
+    expect(screen.getByText(/paper \+20\.00%/)).toBeTruthy();
+  });
+
   it('explains flat periods as sitting in BTC', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify(response), { status: 200 }));
 
@@ -543,8 +625,8 @@ describe('BacktestPage', () => {
   });
 
   it('shows backend validation errors with a retry', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ detail: 'Not enough history for this frequency' }), { status: 422 }),
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response(JSON.stringify({ detail: 'Not enough history for this frequency' }), { status: 422 }),
     );
 
     render(<BacktestPage />);

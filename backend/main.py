@@ -331,6 +331,196 @@ def get_strategy_signals(
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+def _watch_payload(model) -> schemas.StrategyWatchResponse:
+    config = json.loads(model.params_json)
+    paper_return = None
+    if model.start_equity and model.last_equity:
+        paper_return = round(model.last_equity / model.start_equity - 1.0, 4)
+    return schemas.StrategyWatchResponse(
+        id=model.id,
+        name=model.name,
+        active=model.active,
+        start=config["start"],
+        end=config.get("end"),
+        rebalance=config.get("rebalance", "weekly"),
+        score_model=config.get("params", {}).get("score_model", "rule"),
+        start_equity=model.start_equity,
+        last_equity=model.last_equity,
+        paper_return=paper_return,
+        last_anchor=model.last_anchor.isoformat() if model.last_anchor else None,
+        last_refreshed_at=model.last_refreshed_at.isoformat() if model.last_refreshed_at else None,
+    )
+
+
+@app.get("/api/strategy/watches", response_model=List[schemas.StrategyWatchResponse])
+def list_strategy_watches(db: Session = Depends(get_db)):
+    """Saved strategy configurations whose signals the worker tracks."""
+    watches = (
+        db.query(models.StrategyWatch).order_by(models.StrategyWatch.created_at.desc()).all()
+    )
+    return [_watch_payload(watch) for watch in watches]
+
+
+@app.post(
+    "/api/strategy/watches",
+    response_model=schemas.StrategyWatchRefreshResponse,
+    status_code=201,
+)
+def create_strategy_watch(payload: schemas.StrategyWatchRequest, db: Session = Depends(get_db)):
+    """Save a strategy configuration and emit its first signal set."""
+    import signals as signals_module
+
+    if payload.rebalance not in ("weekly", "monthly", "quarterly"):
+        raise HTTPException(status_code=422, detail="rebalance must be weekly, monthly or quarterly")
+    try:
+        start_at = datetime.strptime(payload.start, "%Y-%m-%d")
+        end_at = datetime.strptime(payload.end, "%Y-%m-%d") if payload.end else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dates must be YYYY-MM-DD")
+    if end_at is not None and end_at <= start_at:
+        raise HTTPException(status_code=422, detail="end must be after start")
+    try:
+        params = signals_module.normalize_params(payload.params)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    watch = models.StrategyWatch(
+        name=payload.name,
+        params_json=json.dumps(
+            {
+                "start": start_at.isoformat(),
+                "end": end_at.isoformat() if end_at else None,
+                "rebalance": payload.rebalance,
+                "params": params,
+            }
+        ),
+    )
+    db.add(watch)
+    db.commit()
+    db.refresh(watch)
+
+    try:
+        result = signals_module.refresh_watch(db, watch)
+    except (BacktestError, ValueError) as exc:
+        db.delete(watch)
+        db.commit()
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    inserted = (
+        db.query(models.StrategySignal)
+        .filter(models.StrategySignal.watch_id == watch.id)
+        .order_by(models.StrategySignal.id)
+        .all()
+    )
+    return schemas.StrategyWatchRefreshResponse(
+        watch=_watch_payload(watch),
+        anchors=result["payload"]["state"],
+        inserted=[
+            schemas.StrategySignalRecord(
+                id=row.id,
+                date=row.date.isoformat(),
+                action=row.action,
+                symbol=row.symbol or "",
+                reason=row.reason,
+                weight=row.weight,
+                score=row.score,
+                price=row.price,
+                equity=row.equity,
+                message=row.message,
+            )
+            for row in inserted
+        ],
+    )
+
+
+@app.delete("/api/strategy/watches/{watch_id}", status_code=204)
+def delete_strategy_watch(watch_id: int, db: Session = Depends(get_db)):
+    watch = db.get(models.StrategyWatch, watch_id)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Watch not found")
+    db.query(models.StrategySignal).filter(models.StrategySignal.watch_id == watch_id).delete()
+    db.delete(watch)
+    db.commit()
+
+
+@app.post("/api/strategy/watches/{watch_id}/refresh", response_model=schemas.StrategyWatchRefreshResponse)
+def refresh_strategy_watch(watch_id: int, db: Session = Depends(get_db)):
+    """Recompute the watch now and store any new signals."""
+    import signals as signals_module
+
+    watch = db.get(models.StrategyWatch, watch_id)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Watch not found")
+    try:
+        result = signals_module.refresh_watch(db, watch)
+    except (BacktestError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    rows = []
+    if result["inserted"]:
+        rows = (
+            db.query(models.StrategySignal)
+            .filter(models.StrategySignal.watch_id == watch_id)
+            .order_by(models.StrategySignal.id.desc())
+            .limit(len(result["inserted"]))
+            .all()
+        )
+    return schemas.StrategyWatchRefreshResponse(
+        watch=_watch_payload(watch),
+        anchors=result["payload"]["state"],
+        inserted=[
+            schemas.StrategySignalRecord(
+                id=row.id,
+                date=row.date.isoformat(),
+                action=row.action,
+                symbol=row.symbol or "",
+                reason=row.reason,
+                weight=row.weight,
+                score=row.score,
+                price=row.price,
+                equity=row.equity,
+                message=row.message,
+            )
+            for row in reversed(rows)
+        ],
+    )
+
+
+@app.get(
+    "/api/strategy/watches/{watch_id}/signals",
+    response_model=List[schemas.StrategySignalRecord],
+)
+def get_strategy_watch_signals(
+    watch_id: int,
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    watch = db.get(models.StrategyWatch, watch_id)
+    if watch is None:
+        raise HTTPException(status_code=404, detail="Watch not found")
+    rows = (
+        db.query(models.StrategySignal)
+        .filter(models.StrategySignal.watch_id == watch_id)
+        .order_by(models.StrategySignal.date.desc(), models.StrategySignal.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        schemas.StrategySignalRecord(
+            id=row.id,
+            date=row.date.isoformat(),
+            action=row.action,
+            symbol=row.symbol or "",
+            reason=row.reason,
+            weight=row.weight,
+            score=row.score,
+            price=row.price,
+            equity=row.equity,
+            message=row.message,
+        )
+        for row in rows
+    ]
+
+
 @app.get("/api/coins", response_model=List[schemas.CoinResponse])
 def get_coins(
     low_from: Optional[str] = Query(default=None, description="Custom reference window start (YYYY-MM-DD)"),

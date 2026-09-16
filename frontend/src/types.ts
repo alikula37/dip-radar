@@ -225,6 +225,92 @@ export interface BacktestForm {
   icExposure: number;
 }
 
+export interface StrategySignalPosition {
+  symbol: string;
+  direction: 'long' | 'short';
+  score: number | null;
+  weight: number | null;
+  entry_date: string | null;
+  entry_price: number | null;
+  price_now: number | null;
+  pnl_pct: number | null;
+  peak: number | null;
+  sweep: number | null;
+  periods_held: number | null;
+  stop_price: number | null;
+  trailing_stop_price: number | null;
+  take_profit_price: number | null;
+  action: string;
+  reason: string | null;
+  trigger_date: string | null;
+  trigger_price: number | null;
+}
+
+export interface StrategySignalCandidate {
+  symbol: string;
+  score: number;
+  direction: string;
+}
+
+export interface StrategySignalsState {
+  equity: number;
+  long_notional: number;
+  short_notional: number;
+  in_btc: string | null;
+  tracked: string[];
+  risk_on: boolean;
+  ic_risk_on: boolean;
+  rolling_ic: number | null;
+  equity_brake: boolean;
+}
+
+export interface StrategySignalsResponse {
+  as_of: string;
+  anchor: string;
+  next_anchor: string;
+  rebalance: string;
+  start: string;
+  score_model: string;
+  state: StrategySignalsState;
+  positions: StrategySignalPosition[];
+  candidates: StrategySignalCandidate[];
+  message: string;
+}
+
+export interface StrategyWatch {
+  id: number;
+  name: string;
+  active: boolean;
+  start: string;
+  end: string | null;
+  rebalance: string;
+  score_model: string;
+  start_equity: number | null;
+  last_equity: number | null;
+  paper_return: number | null;
+  last_anchor: string | null;
+  last_refreshed_at: string | null;
+}
+
+export interface StrategySignalRecord {
+  id: number;
+  date: string;
+  action: string;
+  symbol: string;
+  reason: string | null;
+  weight: number | null;
+  score: number | null;
+  price: number | null;
+  equity: number | null;
+  message: string | null;
+}
+
+export interface StrategyWatchRefresh {
+  watch: StrategyWatch;
+  anchors: StrategySignalsState;
+  inserted: StrategySignalRecord[];
+}
+
 export interface ScoreModelFeature {
   name: string;
   label: string;
