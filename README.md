@@ -104,16 +104,17 @@ The app is versioned (`backend/VERSION`, shipped inside the backend image and sh
 the GitHub releases API (cached for 6h, disabled with `UPDATE_CHECK=0`, repo
 overridable with `UPDATE_REPO`) whether a newer release exists, and every page
 shows an **Update vX.Y.Z** badge in the top-right corner when one does — hover it
-for the exact commands:
+for the exact commands. Image tags are built from source, so pull the source
+first:
 
 ```bash
-docker compose pull && docker compose up -d --build
+git pull && docker compose up -d --build      # or: ./scripts/update.sh
 ```
 
 The check is best-effort: offline installs (or a rate-limited GitHub) simply see
-no badge. Maintainers cut a release by tagging the merge commit
-(`gh release create vX.Y.Z --generate-notes`); the badge appears for everyone on
-an older `VERSION` within one cache window. Note that versions before v1.1.0 do
+no badge. Maintainers cut a release by bumping `backend/VERSION` and tagging the merge
+commit (`gh release create vX.Y.Z --generate-notes`); the badge appears for
+everyone on an older `VERSION` within one cache window. Note that versions before v1.1.0 do
 not expose `/api/version`, so the first badge a user sees appears after they
 update once.
 
