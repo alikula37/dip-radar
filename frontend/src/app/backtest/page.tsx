@@ -1291,7 +1291,7 @@ export default function BacktestPage() {
           </label>
           <label className="text-[11px] text-content-muted">
             Sell when score &lt;
-            <Hint text="Exit threshold for the hold rule (percentile score: 3 keeps positions until they are among the most expensive 3% — let winners run; 25 would sell as soon as the coin leaves the cheapest quarter)." />
+            <Hint text="Exit threshold for the hold rule, read literally: a position is kept while its score is at least this. Value books therefore sell once the coin stops being cheap; momentum (flipped) books exit the names that land in the most expensive sell_score% — a blow-off exit." />
             <input
               type="number"
               min={0}
@@ -2073,6 +2073,13 @@ export default function BacktestPage() {
                     </span>
                   )}
                 </div>
+
+                {signals.state.in_btc && signals.state.tracked.length > 0 && (
+                  <p className="text-[11px] text-content-muted">
+                    Carried at zero exposure:{' '}
+                    {signals.state.tracked.map((symbol) => symbol.replace(/(USDT|BTC)$/, '')).join(' · ')}
+                  </p>
+                )}
 
                 {signals.positions.length > 0 && (
                   <div className="overflow-x-auto">

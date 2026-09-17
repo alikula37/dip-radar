@@ -638,6 +638,7 @@ def simulate(
     ic_values = []
     equity_history = []
     lock_base = 1.0
+    short_open = {}
     funding_costs = []
     short_notionals = []
     long_notionals = []
@@ -703,6 +704,13 @@ def simulate(
                 if symbol in blocked_symbols or symbol in previous_shorts:
                     continue
                 entry = pool.get(symbol)
+                # Hold rule, literally: keep the position while its score is at
+                # least the exit threshold. On the value side that is "sell once
+                # the coin stops being cheap". On the momentum side (invert) the
+                # book holds expensive coins, so the same comparison exits the
+                # ones that land in the most expensive sell_score% — a blow-off
+                # exit. Mirrored thresholds were tested and rejected: the
+                # optimizer validated this literal rule for the momentum presets.
                 if entry is not None and entry["score"] >= exit_score:
                     picks.append((symbol, entry))
                     held_symbols.add(symbol)
@@ -804,6 +812,29 @@ def simulate(
             short_scale = max(0.0, min(1.0, short_exposure)) / short_n
             for symbol, _entry in short_picks:
                 weights[symbol] = -short_scale
+
+        # Track short entry points like the long book: a short kept across
+        # anchors keeps its original entry, a dropped one is forgotten. The
+        # signals endpoint uses this to show short PnL and holding time.
+        for symbol in list(short_open):
+            if symbol not in short_symbols:
+                short_open.pop(symbol)
+        for symbol in short_symbols:
+            entry = pool.get(symbol)
+            if entry is None:
+                continue
+            position = short_open.get(symbol)
+            if position is None:
+                short_open[symbol] = {
+                    "symbol": symbol,
+                    "entry_date": date,
+                    "entry_price": entry["price"],
+                    "last_price": entry["price"],
+                    "periods_held": 0,
+                }
+            else:
+                position["last_price"] = entry["price"]
+                position["periods_held"] = position.get("periods_held", 0) + 1
 
         # Factor-IC timing: while the score's own recent information
         # coefficient is below the threshold the whole factor bet (long and
@@ -983,6 +1014,16 @@ def simulate(
             for position in open_positions.values()
         ],
         "shorts": sorted(previous_shorts),
+        "short_positions": [
+            {
+                "symbol": position["symbol"],
+                "entry_date": position["entry_date"].isoformat(),
+                "entry_price": position["entry_price"],
+                "last_price": position["last_price"],
+                "periods_held": position.get("periods_held", 0),
+            }
+            for position in short_open.values()
+        ],
         "risk_on": bool(risk_on),
         "ic_risk_on": bool(ic_risk_on),
         "rolling_ic": rolling_ic,

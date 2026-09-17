@@ -319,7 +319,11 @@ def _slice_metrics(curve: list, slice_start: datetime, slice_end: datetime, freq
         max_drawdown = min(max_drawdown, point["equity"] / peak - 1.0)
 
     years = max((points[-1]["date"] - (prefix[-1]["date"] if prefix else points[0]["date"])).days / 365.0, 1 / 365.0)
-    cagr = equity ** (1.0 / years) - 1.0 if equity > 0 and equity_start > 0 else -1.0
+    # CAGR must compound the *slice's* return, not the run's cumulative equity:
+    # the calmar objective is scored on slices, and using ``equity`` here would
+    # reward a long training history instead of the fold's own performance.
+    slice_equity = equity / equity_start if equity_start else 0.0
+    cagr = slice_equity ** (1.0 / years) - 1.0 if slice_equity > 0 else -1.0
 
     # Consistency diagnostics scaled to the slice length (a 52-period rolling
     # window cannot fit inside a 40-period fold).

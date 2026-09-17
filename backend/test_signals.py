@@ -66,6 +66,65 @@ SIGNAL_PARAMS = {
 }
 
 
+def _seed_pair(db):
+    """ETHUSDT (falling) + RICHUSDT (rising): gives shorts and breadth something to work with."""
+    _seed(db)
+    db.add(
+        Coin(
+            symbol="RICHUSDT",
+            is_pre_2021=False,
+            listed_checked=True,
+            market_cap=50_000_000.0,
+            volume_24h=1_000_000.0,
+            current_price_btc=1.0 + 0.05 * (DAYS - 1),
+        )
+    )
+    for day in range(DAYS):
+        price = 1.0 + 0.05 * day
+        db.add(
+            Kline(
+                symbol="RICHUSDT",
+                timestamp=START + timedelta(days=day),
+                open=price,
+                high=price,
+                low=price,
+                close=price,
+                volume=1_000_000.0,
+            )
+        )
+    db.commit()
+
+
+def test_short_positions_carry_entry_price_and_pnl():
+    from database import Base, SessionLocal, engine
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    _seed_pair(db)
+    db.close()
+
+    response = client.get(
+        "/api/strategy/signals",
+        params={
+            **SIGNAL_PARAMS,
+            "start": "2023-01-01",
+            "rebalance": "weekly",
+            "short_n": "1",
+            "short_max_score": "100",
+            "top_n": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    positions = response.json()["positions"]
+    shorts = [position for position in positions if position["direction"] == "short"]
+    assert shorts, positions
+    assert shorts[0]["entry_price"] and shorts[0]["price_now"]
+    assert shorts[0]["pnl_pct"] is not None
+    assert shorts[0]["entry_date"]
+
+
 def test_signals_endpoint_reports_the_live_book_and_next_anchor():
     from database import Base, SessionLocal, engine
 
@@ -101,32 +160,7 @@ def test_signals_stay_flat_when_the_regime_is_off():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    _seed(db)
-    # A second coin gives the breadth regime something to measure.
-    db.add(
-        Coin(
-            symbol="RICHUSDT",
-            is_pre_2021=False,
-            listed_checked=True,
-            market_cap=50_000_000.0,
-            volume_24h=1_000_000.0,
-            current_price_btc=1.0 + 0.05 * (DAYS - 1),
-        )
-    )
-    for day in range(DAYS):
-        price = 1.0 + 0.05 * day
-        db.add(
-            Kline(
-                symbol="RICHUSDT",
-                timestamp=START + timedelta(days=day),
-                open=price,
-                high=price,
-                low=price,
-                close=price,
-                volume=1_000_000.0,
-            )
-        )
-    db.commit()
+    _seed_pair(db)
     db.close()
 
     response = client.get(

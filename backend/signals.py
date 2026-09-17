@@ -194,30 +194,39 @@ def strategy_signals(
                 "trigger_price": trigger_price,
             }
         )
-    for symbol in [] if flat else state["shorts"]:
-        mark = prices.get(symbol)
-        positions.append(
-            {
-                "symbol": symbol,
-                "direction": "short",
-                "score": pool.get(symbol, {}).get("score"),
-                "weight": state["weights"].get(symbol) or 0.0,
-                "entry_date": anchor.isoformat(),
-                "entry_price": None,
-                "price_now": mark[1] if mark else None,
-                "pnl_pct": None,
-                "peak": None,
-                "sweep": None,
-                "periods_held": None,
-                "stop_price": None,
-                "trailing_stop_price": None,
-                "take_profit_price": None,
-                "action": "HOLD",
-                "reason": None,
-                "trigger_date": None,
-                "trigger_price": None,
-            }
-        )
+    if not flat:
+        shorts_by_symbol = {entry["symbol"]: entry for entry in state.get("short_positions", [])}
+        for symbol in state["shorts"]:
+            tracked = shorts_by_symbol.get(symbol, {})
+            mark = prices.get(symbol)
+            price_now = mark[1] if mark else tracked.get("last_price")
+            entry_price = tracked.get("entry_price")
+            positions.append(
+                {
+                    "symbol": symbol,
+                    "direction": "short",
+                    "score": pool.get(symbol, {}).get("score"),
+                    "weight": state["weights"].get(symbol) or 0.0,
+                    "entry_date": tracked.get("entry_date", anchor.isoformat()),
+                    "entry_price": entry_price,
+                    "price_now": price_now,
+                    "pnl_pct": (
+                        round(entry_price / price_now - 1.0, 4)
+                        if entry_price and price_now
+                        else None
+                    ),
+                    "peak": None,
+                    "sweep": None,
+                    "periods_held": tracked.get("periods_held"),
+                    "stop_price": None,
+                    "trailing_stop_price": None,
+                    "take_profit_price": None,
+                    "action": "HOLD",
+                    "reason": None,
+                    "trigger_date": None,
+                    "trigger_price": None,
+                }
+            )
 
     # Next-anchor watchlist: the strategy's own ranking as of the last anchor,
     # excluding what the book already holds.
