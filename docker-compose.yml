@@ -4,7 +4,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # Host ports are configurable so an occupied port never blocks the install:
+      #   echo "BACKEND_PORT=8010" >> .env   (or run scripts/install.sh, which picks free ones)
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - db_data:/data
     env_file:
@@ -47,7 +49,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     env_file:
       - path: .env
         required: false

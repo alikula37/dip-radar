@@ -81,7 +81,24 @@ CoinGecko metadata / market caps
 
 *Note: On the first run, the worker fetches the listing date of every BTC pair and the full daily history of all coins listed before 2021. This normally takes a few minutes; the frontend shows a status screen until the first data arrives. Existing databases from older versions are migrated automatically on startup.*
 
+## Ports
+
+The stack publishes two host ports, both overridable so an occupied port never
+blocks an install: `FRONTEND_PORT` (default 3000) and `BACKEND_PORT` (default
+8000). Either set them in `.env` or let the installer pick free ones:
+
+```bash
+./scripts/install.sh        # finds free ports, writes .env, docker compose up -d --build
+```
+
+`docker compose up -d` alone uses the defaults. If you change `FRONTEND_PORT`,
+keep `CORS_ORIGINS` in sync (it only matters for direct backend calls; the
+frontend proxies `/api` internally).
+
 ## Updating
+
+Sharing the project? [INSTALL.md](INSTALL.md) contains a copy-paste prompt for an AI agent that installs the stack (it uses `scripts/install.sh`, so busy ports are handled automatically).
+
 
 The app is versioned (`backend/VERSION`, shipped inside the backend image and shown by `GET /api/version`). The backend asks
 the GitHub releases API (cached for 6h, disabled with `UPDATE_CHECK=0`, repo

@@ -87,6 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Validate compose file (defaults + port overrides)
+        run: |
+          docker compose config -q
+          FRONTEND_PORT=3123 BACKEND_PORT=8123 docker compose config -q
+          docker compose config | grep -q "published: \"3000\""
+      - name: Check installer script syntax
+        run: bash -n scripts/install.sh
       - name: Build backend image
         run: docker build -t dip-radar-backend backend
       - name: Build worker image
