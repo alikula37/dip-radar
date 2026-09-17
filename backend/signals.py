@@ -283,6 +283,7 @@ def strategy_signals(
         "positions": positions,
         "candidates": candidates,
         "message": message,
+        "equity_curve": simulation["curve"],
     }
 
 
@@ -292,26 +293,20 @@ def _signal_rows(payload: dict) -> list:
     equity = payload["state"]["equity"]
     rows = []
     if payload["state"]["in_btc"]:
+        tracked = payload["state"]["tracked"]
+        message = payload["message"]
+        if tracked:
+            message = f"{message} Tracked: {', '.join(tracked)}."
         rows.append(
             {
                 "date": anchor,
                 "action": "STAY_IN_BTC",
                 "symbol": "",
                 "reason": payload["state"]["in_btc"],
-                "message": payload["message"],
+                "message": message,
                 "equity": equity,
             }
         )
-        for symbol in payload["state"]["tracked"]:
-            rows.append(
-                {
-                    "date": anchor,
-                    "action": "TRACKED",
-                    "symbol": symbol,
-                    "reason": payload["state"]["in_btc"],
-                    "equity": equity,
-                }
-            )
         return rows
 
     for position in payload["positions"]:
@@ -370,22 +365,61 @@ def refresh_watch(db, watch: StrategyWatch, *, notify: bool = True) -> dict:
     """Recompute a watch's signals, persist the new rows and alert on changes."""
     payload = watch_payload(db, watch)
 
-    existing = {
-        (row.date, row.action, row.symbol)
-        for row in db.query(StrategySignal).filter(StrategySignal.watch_id == watch.id).all()
-    }
+    # Drop legacy TRACKED rows: the tracked symbols live in the STAY_IN_BTC
+    # message now, so the history stops accumulating rows that differ between
+    # data vintages.
+    db.query(StrategySignal).filter(
+        StrategySignal.watch_id == watch.id, StrategySignal.action == "TRACKED"
+    ).delete()
+
+    stored = db.query(StrategySignal).filter(StrategySignal.watch_id == watch.id).all()
+    existing = {(row.date, row.action, row.symbol) for row in stored}
     inserted = []
     for row in _signal_rows(payload):
         date = datetime.fromisoformat(row["date"])
         key = (date, row["action"], row["symbol"])
         if key in existing:
             continue
-        db.add(StrategySignal(watch_id=watch.id, date=date, **{k: v for k, v in row.items() if k != "date"}))
+        record = StrategySignal(
+            watch_id=watch.id, date=date, **{k: v for k, v in row.items() if k != "date"}
+        )
+        db.add(record)
+        stored.append(record)
         inserted.append({**row, "date": date.isoformat()})
 
-    if watch.start_equity is None:
+    # Re-base every stored signal on the *current* replay curve: the paper move
+    # since a signal is the watch's own equity change since that date, so a
+    # book sitting in BTC reads 0.00% instead of drifting with data vintages.
+    curve = [
+        (datetime.fromisoformat(point["date"]), point["equity"])
+        for point in payload.get("equity_curve", [])
+    ]
+    last_equity = payload["state"]["equity"]
+
+    def equity_at(when: datetime):
+        best = None
+        for date, value in curve:
+            if date <= when:
+                best = value
+            else:
+                break
+        return best
+
+    for record in stored:
+        base = equity_at(record.date) if curve else None
+        record.return_since = (
+            round(last_equity / base - 1.0, 4) if base and last_equity is not None else None
+        )
+
+    # The shadow baseline is the watch's equity at its creation date under the
+    # current vintage, so pre-creation re-pricing cannot leak into the paper
+    # return.
+    if curve:
+        base_equity = equity_at(watch.created_at or curve[0][0]) or curve[0][1]
+        watch.start_equity = round(base_equity, 6)
+    else:
         watch.start_equity = payload["state"]["equity"]
-    watch.last_equity = payload["state"]["equity"]
+    watch.last_equity = last_equity
     watch.last_anchor = datetime.fromisoformat(payload["anchor"])
     watch.last_refreshed_at = utcnow_naive()
     db.commit()

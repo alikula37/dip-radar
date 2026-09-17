@@ -49,6 +49,31 @@ def test_watch_creation_stores_the_first_signals_and_a_shadow_baseline():
     assert history and history[0]["symbol"] == "ETHUSDT"
 
 
+def test_flat_books_show_zero_follow_through_and_no_tracked_rows():
+    _fresh_db()
+    created = client.post("/api/strategy/watches", json=WATCH_BODY).json()
+    watch_id = created["watch"]["id"]
+
+    history = client.get(f"/api/strategy/watches/{watch_id}/signals").json()
+
+    assert history
+    assert all(record["return_since"] == 0.0 for record in history)
+    assert all(record["action"] != "TRACKED" for record in history)
+
+
+def test_return_since_rebases_on_the_current_curve():
+    _fresh_db()
+    created = client.post("/api/strategy/watches", json=WATCH_BODY).json()
+    watch_id = created["watch"]["id"]
+
+    # Rebase once more: the recomputed curve must keep the baseline identical
+    # to the current equity when the book has not traded since the anchor.
+    refreshed = client.post(f"/api/strategy/watches/{watch_id}/refresh").json()
+
+    assert refreshed["watch"]["start_equity"] == refreshed["watch"]["last_equity"]
+    assert refreshed["watch"]["paper_return"] == 0.0
+
+
 def test_watch_refresh_is_idempotent_for_the_same_anchor():
     _fresh_db()
     created = client.post("/api/strategy/watches", json=WATCH_BODY).json()

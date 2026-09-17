@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, inspect, text
 
+import models  # noqa: F401  registers tables on Base.metadata for create_all
 from migrations import run_migrations
 
 
