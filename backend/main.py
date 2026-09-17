@@ -427,6 +427,7 @@ def create_strategy_watch(payload: schemas.StrategyWatchRequest, db: Session = D
                 price=row.price,
                 equity=row.equity,
                 message=row.message,
+                return_since=row.return_since,
             )
             for row in inserted
         ],
@@ -479,6 +480,7 @@ def refresh_strategy_watch(watch_id: int, db: Session = Depends(get_db)):
                 price=row.price,
                 equity=row.equity,
                 message=row.message,
+                return_since=row.return_since,
             )
             for row in reversed(rows)
         ],
@@ -530,11 +532,7 @@ def get_strategy_watch_signals(
             price=row.price,
             equity=row.equity,
             message=row.message,
-            return_since=(
-                round(watch.last_equity / row.equity - 1.0, 4)
-                if watch.last_equity and row.equity
-                else None
-            ),
+            return_since=row.return_since,
         )
         for row in rows
     ]

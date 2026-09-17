@@ -60,6 +60,19 @@ def test_flat_books_show_zero_follow_through_and_no_tracked_rows():
     assert all(record["return_since"] == 0.0 for record in history)
     assert all(record["action"] != "TRACKED" for record in history)
 
+    # The API must serve the rebased column, not a ratio against the equity
+    # written at signal time: tamper with the stored equity and re-read.
+    from database import SessionLocal
+    from models import StrategySignal
+
+    db = SessionLocal()
+    db.query(StrategySignal).update({StrategySignal.equity: 1.0})
+    db.commit()
+    db.close()
+
+    rebased = client.get(f"/api/strategy/watches/{watch_id}/signals").json()
+    assert all(record["return_since"] == 0.0 for record in rebased)
+
 
 def test_return_since_rebases_on_the_current_curve():
     _fresh_db()
