@@ -180,7 +180,7 @@ def _as_of_metrics(db: Session, cutoff: datetime, event_start: datetime) -> dict
     return metrics
 
 
-VERSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VERSION")
+VERSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
 _UPDATE_REPO = os.getenv("UPDATE_REPO", "alikula37/dip-radar")
 _UPDATE_CHECK = os.getenv("UPDATE_CHECK", "1") != "0"
 _UPDATE_CACHE: dict = {"checked_at": None, "latest": None, "url": None}

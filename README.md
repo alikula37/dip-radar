@@ -83,7 +83,7 @@ CoinGecko metadata / market caps
 
 ## Updating
 
-The app is versioned (`VERSION`, shown by `GET /api/version`). The backend asks
+The app is versioned (`backend/VERSION`, shipped inside the backend image and shown by `GET /api/version`). The backend asks
 the GitHub releases API (cached for 6h, disabled with `UPDATE_CHECK=0`, repo
 overridable with `UPDATE_REPO`) whether a newer release exists, and every page
 shows an **Update vX.Y.Z** badge in the top-right corner when one does — hover it
