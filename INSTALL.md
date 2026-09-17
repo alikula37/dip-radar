@@ -53,7 +53,7 @@ Repo: https://github.com/alikula37/dip-radar (main branch)
 Constraints: no API keys are required (a CoinGecko key is optional). If you must
 change ports, use the env vars or the installer, and tell me which ports you
 chose. Backtests and signals are not investment advice; summarise the caveats
-from README.md.
+from docs/strategy-lab.md.
 
 Report: the working URLs, sync status, any errors and how you fixed them.
 ```
