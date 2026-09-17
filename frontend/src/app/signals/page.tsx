@@ -6,6 +6,7 @@ import { ArrowLeft, FlaskConical, RefreshCw, Trash2, TrendingDown } from 'lucide
 
 import { Button, RadarLoader, cn } from '@/components/ui';
 import { formatPct } from '@/lib/colors';
+import { actionInfo, reasonInfo, REASON_INFO } from '@/lib/signals';
 import type { StrategySignalRecord, StrategySignalsResponse, StrategyWatch } from '@/types';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -247,8 +248,11 @@ export default function SignalsPage() {
                         </span>
                       )}
                       {live.state.in_btc && (
-                        <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[#facc15]">
-                          In BTC · {live.state.in_btc}
+                        <span
+                          className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[#facc15]"
+                          title={reasonInfo(live.state.in_btc)?.description}
+                        >
+                          In BTC · {reasonInfo(live.state.in_btc)?.label}
                         </span>
                       )}
                     </div>
@@ -338,9 +342,19 @@ export default function SignalsPage() {
                     <thead>
                       <tr className="border-b border-outline text-[11px] uppercase tracking-wide text-content-muted">
                         <th className="py-1.5 pr-3">Date</th>
-                        <th className="py-1.5 pr-3">Action</th>
+                        <th
+                          className="py-1.5 pr-3"
+                          title="What the strategy did at this anchor: Buy / Sell / Short / Hold / Move to BTC."
+                        >
+                          Action
+                        </th>
                         <th className="py-1.5 pr-3">Symbol</th>
-                        <th className="py-1.5 pr-3">Reason</th>
+                        <th
+                          className="py-1.5 pr-3"
+                          title="Why it did it — hover any cell for the full explanation."
+                        >
+                          Reason
+                        </th>
                         <th className="py-1.5 pr-3">Price</th>
                         <th className="py-1.5" title="The watch's own paper equity move since the signal date, rebased on the current data vintage.">
                           Return since
@@ -351,13 +365,21 @@ export default function SignalsPage() {
                       {history.map((signal) => (
                         <tr key={signal.id} className="border-b border-outline/50">
                           <td className="py-1.5 pr-3 font-mono">{signal.date.slice(0, 10)}</td>
-                          <td className={cn('py-1.5 pr-3', ACTION_STYLES[signal.action] ?? 'text-content')}>
-                            {signal.action}
+                          <td
+                            className={cn('py-1.5 pr-3', ACTION_STYLES[signal.action] ?? 'text-content')}
+                            title={actionInfo(signal.action).description}
+                          >
+                            {actionInfo(signal.action).label}
                           </td>
                           <td className="py-1.5 pr-3 font-mono">
                             {signal.symbol ? signal.symbol.replace(/(USDT|BTC)$/, '') : '—'}
                           </td>
-                          <td className="py-1.5 pr-3 text-content-muted">{signal.reason ?? '—'}</td>
+                          <td
+                            className="py-1.5 pr-3 text-content-muted"
+                            title={reasonInfo(signal.reason)?.description ?? undefined}
+                          >
+                            {reasonInfo(signal.reason)?.label ?? '—'}
+                          </td>
                           <td className="py-1.5 pr-3 font-mono text-[11px]">
                             {signal.price ? signal.price.toPrecision(4) : '—'}
                           </td>
@@ -376,6 +398,19 @@ export default function SignalsPage() {
                     </tbody>
                   </table>
                 </div>
+                <details className="mt-3 text-[11px] text-content-muted">
+                  <summary className="cursor-pointer transition-colors hover:text-content">
+                    What do the reasons mean?
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {Object.entries(REASON_INFO).map(([code, info]) => (
+                      <li key={code}>
+                        <span className="text-content">{info.label}</span>
+                        <span className="font-mono text-content-muted"> ({code})</span> — {info.description}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </section>
             )}
           </main>

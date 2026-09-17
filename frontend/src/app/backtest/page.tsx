@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import EquityChart from '@/components/EquityChart';
 import { Button, Hint, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
 import { formatBtcValue, formatPct } from '@/lib/colors';
+import { reasonInfo } from '@/lib/signals';
 import type {
   BacktestForm,
   BacktestMetrics,
@@ -282,13 +283,6 @@ const DEFAULT_SEARCH_PARAMS = [
   'regime_filter',
   'regime_exposure',
 ];
-
-const IN_BTC_REASONS: Record<string, string> = {
-  ic: 'In BTC · factor IC weak',
-  regime: 'In BTC · risk-off regime',
-  equity: 'In BTC · equity brake',
-  cash: 'In BTC · no candidates',
-};
 
 const DEFAULT_PINNED_VALUES: Record<string, string | number | boolean | null> = {
   min_market_cap: 10_000_000,
@@ -1870,7 +1864,7 @@ export default function BacktestPage() {
                                 className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[11px] text-content-muted"
                                 title="Every position was scaled to zero; the book sits in BTC for this period."
                               >
-                                {IN_BTC_REASONS[period.in_btc] ?? 'In BTC'}
+                                {`In BTC · ${reasonInfo(period.in_btc)?.label ?? period.in_btc}`}
                               </span>
                             )}
                             {period.picks.length === 0 && !period.in_btc && (
@@ -2068,8 +2062,11 @@ export default function BacktestPage() {
                     </span>
                   )}
                   {signals.state.in_btc && (
-                    <span className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[#facc15]">
-                      In BTC · {signals.state.in_btc}
+                    <span
+                      className="rounded-full border border-outline bg-surface-2 px-2 py-0.5 text-[#facc15]"
+                      title={reasonInfo(signals.state.in_btc)?.description}
+                    >
+                      In BTC · {reasonInfo(signals.state.in_btc)?.label}
                     </span>
                   )}
                 </div>

@@ -378,7 +378,7 @@ describe('BacktestPage', () => {
     render(<BacktestPage />);
     await screen.findByText('Win rate');
 
-    expect(screen.getByText('In BTC · factor IC weak')).toBeTruthy();
+    expect(screen.getByText('In BTC · Factor IC weak')).toBeTruthy();
   });
 
   it('expands the rebalance history on demand', async () => {

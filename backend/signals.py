@@ -65,6 +65,15 @@ SIGNAL_PARAM_DEFAULTS = {
 
 ACTIONABLE = {"BUY", "SELL", "SHORT", "STAY_IN_BTC"}
 
+# The UI maps these codes to full explanations; the message spells them out so
+# the API is readable on its own too.
+IN_BTC_PHRASE = {
+    "ic": "the score's rolling IC is below the strategy's threshold",
+    "regime": "the regime filter is risk-off",
+    "equity": "the equity brake is active",
+    "cash": "no candidate passed the strategy's filters",
+}
+
 
 def normalize_params(params: dict) -> dict:
     """Merge user params over the defaults; reject unknown keys."""
@@ -246,10 +255,11 @@ def strategy_signals(
     )
     sell_now = [position for position in positions if position["action"] == "SELL"]
     if state["in_btc"]:
+        phrase = IN_BTC_PHRASE.get(state["in_btc"], state["in_btc"])
         message = (
-            f"The book sits in BTC at the {anchor.date()} anchor ({state['in_btc']}) and holds "
+            f"The book sits in BTC at the {anchor.date()} anchor because {phrase} — it holds "
             f"{len(state['positions'])} tracked position(s) at zero exposure; "
-            f"the next anchor on {next_anchor.date()} re-scores everything — watchlist below."
+            f"the next anchor on {next_anchor.date()} re-scores everything (watchlist below)."
         )
     elif sell_now:
         message = (
