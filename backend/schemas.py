@@ -34,6 +34,9 @@ class CoinBase(BaseModel):
     range_position: Optional[float] = None
     days_since_atl: Optional[int] = None
     basing_pct_90d: Optional[float] = None
+    dip_touches: Optional[int] = None
+    dip_bounces: Optional[int] = None
+    dip_bounce_avg: Optional[float] = None
     trend_30d_pct: Optional[float] = None
     trend_90d_pct: Optional[float] = None
     above_sma200: Optional[bool] = None

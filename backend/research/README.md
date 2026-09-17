@@ -205,6 +205,34 @@ calmar objective with a +13% holdout but a −40% full-period drawdown, showing 
 much of the edge lives in the short leg. The Hedge preset is the long+short variant. A live call to `GET /api/strategy/signals` with its parameters (2026-09-14 anchor) returns the book sitting in BTC because `rolling_ic` (0.015) is below the 0.05 threshold, with `tracked` listing the carried names and the next-anchor watchlist topped by BCH (score 100) — the exact BTC-parity dip the manual read of the BCH/BTC chart highlighted. Saving that configuration as a **watch** freezes its simulated equity as a shadow baseline, stores the emitted signals (deduplicated per anchor/action/symbol), alerts on actionable changes and reports a paper return, so the live pipeline stays auditable against the same engine that produced the backtest. The `/signals` page shows each watch live plus the stored signal history with the paper move since every signal fired. Its IC filter (window 12, threshold 0.05, exposure 0%) kept the book flat in BTC for 117 of 245 weeks — the flat rows the Strategy Lab now labels with an "In BTC · factor IC weak" chip, so a 0.00% period return reads as a deliberate de-risk rather than a bug.
 
 
+## Dip respect: rewarding coins that have defended the dip (Sept 2026)
+
+The Value Score composite gained a sixth component, **dip respect** (weight 0.10,
+others rescaled to valuation 0.27 / distance 0.22 / median gap 0.14 / basing 0.13
+/ range 0.14). Definition, all point-in-time on BTC-parity daily closes:
+
+- a **touch** is a close within 15% of the event low; touches closer than 21 days
+  merge into one episode (so a slow bottom forms a single episode);
+- an episode is a **bounce** when the price rallies at least 30% within 180 days
+  (or before the next touch, whichever comes first);
+- the component ranks coins by `bounces + average_bounce/50`, so a coin like BCH
+  that repeatedly bounced from the same dip earns a high score while a new coin
+  with no touches ranks at the bottom — intentionally.
+
+`learned_v5` (26 features) adds `dip_bounces` and `dip_bounce_avg`; the retrained
+model keeps IC **0.169 vs 0.064** for the rule baseline (CI [+0.068, +0.144]) and
+puts real weight on `dip_bounces` (7th of 26). The dashboard shows a
+"Dip bounced N× (avg +X%)" chip on the coin card; the synced columns
+(`dip_touches`, `dip_bounces`, `dip_bounce_avg`) come from the same function.
+
+Impact on the shipped presets (cold-start, dip-respect score, 2026-09-17 vintage):
+Hedge FULL +699% → **+405%** (Sharpe 1.62 → 1.30, −19% → −22% DD), 2025+ 1.88 →
+1.40; Optimized FULL +119% → **+174%** but its holdout fell from +27% to −2%;
+Balanced FULL +128% → **+85%** with the holdout roughly stable (+19% → +14%).
+The presets were found under the previous rule score, so these numbers are
+current-vintage performance rather than a re-validation — a fresh optimizer run
+would be the honest way to re-tune them under the new composite.
+
 ## Shipping gates for a learned score
 
 A model replaces the rule-based score only if, on walk-forward evaluation, it:

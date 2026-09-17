@@ -41,6 +41,8 @@ FEATURE_DIRECTIONS = {
     "above_p75_3y": -1,
     "below_p25_3y": +1,
     "top_band_share_90d": -1,
+    "dip_bounces": +1,
+    "dip_bounce_avg": +1,
 }
 
 
@@ -84,6 +86,8 @@ FEATURE_INFO = {
         ("above_p75_3y", "Above 3y P75", "1 when the price sits above the upper quartile of the last 3 years."),
         ("below_p25_3y", "Below 3y P25", "1 when the price sits in the cheapest quartile of the last 3 years."),
         ("top_band_share_90d", "Top band share (90d)", "Share of the last 90 days spent in the top quartile of the last 3 years."),
+        ("dip_bounces", "Proven dip bounces", "How many times the coin actually rallied at least 30% after touching its dip."),
+        ("dip_bounce_avg", "Average dip bounce", "Average rally size of the proven bounces from the dip."),
     )
 }
 

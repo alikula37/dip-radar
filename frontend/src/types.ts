@@ -28,6 +28,9 @@ export interface Coin {
   range_position?: number | null;
   days_since_atl?: number | null;
   basing_pct_90d?: number | null;
+  dip_touches?: number | null;
+  dip_bounces?: number | null;
+  dip_bounce_avg?: number | null;
   trend_30d_pct?: number | null;
   trend_90d_pct?: number | null;
   above_sma200?: boolean | null;

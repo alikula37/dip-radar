@@ -39,14 +39,16 @@ def _coin(cheapness: float, liquidity: float = 1.0):
         above_p75_3y=1 if cheapness > 0.75 else 0,
         below_p25_3y=1 if cheapness < 0.25 else 0,
         top_band_share_90d=(1.0 - cheapness) * 100.0,
+        dip_bounces=round((1.0 - cheapness) * 5),
+        dip_bounce_avg=(1.0 - cheapness) * 120.0 if cheapness < 1.0 else None,
         value_score=None,
         value_parts=None,
     )
 
 
 def test_bundled_artifact_loads_and_is_consistent():
-    assert available_models() == ["learned_v4"]
-    artifact = load_model("learned_v4")
+    assert available_models() == ["learned_v5"]
+    artifact = load_model("learned_v5")
 
     assert set(artifact["weights"]) == set(FEATURE_DIRECTIONS)
     assert set(artifact["feature_scaling"]) == set(FEATURE_DIRECTIONS)
@@ -62,7 +64,7 @@ def test_unknown_artifact_is_rejected():
 
 
 def test_apply_model_scores_ranks_cheap_coins_higher():
-    artifact = load_model("learned_v4")
+    artifact = load_model("learned_v5")
     coins = [_coin(0.0, 5.0), _coin(0.5, 2.0), _coin(1.0, 0.5)]
 
     apply_model_scores(coins, artifact)
@@ -73,7 +75,7 @@ def test_apply_model_scores_ranks_cheap_coins_higher():
 
 
 def test_apply_model_scores_handles_missing_features_with_medians():
-    artifact = load_model("learned_v4")
+    artifact = load_model("learned_v5")
     broken = _coin(0.2)
     broken.volatility_90d = None
     coins = [broken, _coin(0.4), _coin(0.9)]

@@ -7,6 +7,7 @@ from metrics import (
     calculate_coin_stats,
     calculate_distance_pct,
     calculate_value_scores,
+    dip_respect,
 )
 
 
@@ -114,6 +115,8 @@ class ScoreCoin:
         self.range_position = 0.2
         self.trend_30d_pct = 0.0
         self.trend_90d_pct = 0.0
+        self.dip_bounces = 0
+        self.dip_bounce_avg = None
         self.value_score = None
         self.value_parts = None
         for key, value in overrides.items():
@@ -137,7 +140,49 @@ def test_value_score_ranks_cheap_above_expensive():
     assert cheap.value_score is not None
     assert 0 <= cheap.value_score <= 100
     assert cheap.value_score > expensive.value_score
-    assert set(cheap.value_parts) == {"valuation", "distance", "median_gap", "basing", "range", "knife"}
+    assert set(cheap.value_parts) == {"valuation", "distance", "median_gap", "basing", "range", "dip_respect", "knife"}
+
+
+def test_dip_respect_counts_successful_bounces_only():
+    # Two identical dips, each rallied over 30% within the window, then a third
+    # touch that is still at the low (no forward bounce yet).
+    closes = []
+    for _ in range(3):
+        closes.extend([100.0] * 40 + [70.0] * 10 + [130.0] * 40)
+    closes.extend([70.0] * 10)
+    lows = [value * 0.98 for value in closes]
+
+    touches, bounces, average = dip_respect(closes, lows)
+
+    # Three rallying touches plus the still-open trailing one at the low.
+    assert touches == 4
+    assert bounces == 3
+    assert average is not None and average > 30.0
+
+
+def test_dip_respect_is_zero_for_new_or_untouched_coins():
+    # Too little history to judge.
+    assert dip_respect([100.0] * 100, [98.0] * 100) == (0, 0, None)
+
+    # A coin sitting at its low with no rally yet: a touch, no proven bounce.
+    closes = [100.0 - 0.25 * index for index in range(200)]
+    lows = [value * 0.98 for value in closes]
+
+    touches, bounces, average = dip_respect(closes, lows)
+
+    assert touches >= 1
+    assert bounces == 0
+    assert average is None
+
+
+def test_dip_respect_tilts_the_value_score():
+    proven = ScoreCoin(dip_bounces=4, dip_bounce_avg=120.0)
+    newcomer = ScoreCoin(dip_bounces=0, dip_bounce_avg=None)
+
+    calculate_value_scores([proven, newcomer])
+
+    assert proven.value_score > newcomer.value_score
+    assert proven.value_parts["dip_respect"] != 0.0
 
 
 def test_value_score_knife_penalty():

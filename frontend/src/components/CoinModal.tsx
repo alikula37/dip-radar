@@ -245,6 +245,14 @@ export default function CoinModal({
               Basing {Math.round(coin.basing_pct_90d)}%
             </span>
           )}
+          {coin.dip_bounces != null && (coin.dip_bounces > 0 || coin.dip_touches) && (
+            <span
+              className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
+              title="How often the coin touched its dip (within 15%) and then rallied at least 30% within 180 days — a proven dip earns a higher Value Score, new coins earn less"
+            >
+              Dip bounced {coin.dip_bounces}×{coin.dip_bounce_avg != null ? ` (avg +${Math.round(coin.dip_bounce_avg)}%)` : ''}
+            </span>
+          )}
           {coin.days_since_atl != null && (
             <span
               className="rounded-full border border-outline px-2 py-0.5 text-content-muted"
