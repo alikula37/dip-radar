@@ -69,6 +69,37 @@ def test_sample_is_deterministic_for_a_seed():
     assert set(first) == set(DEFAULT_SEARCH_PARAMS)
 
 
+def test_slice_metrics_cagr_compounds_the_slice_not_the_run():
+    from datetime import datetime, timedelta
+
+    from optimizer import _slice_metrics
+
+    start = datetime(2022, 1, 3)
+    curve = []
+    equity = 1.0
+    for index in range(53):
+        if index > 0:
+            equity *= 1.02
+        curve.append(
+            {
+                "date": start + timedelta(days=7 * index),
+                "equity": equity,
+                "period_return": 0.02 if index else 0.0,
+            }
+        )
+
+    # The run grew 2.8x, but the last 26 weeks alone only grew ~1.67x: the
+    # slice CAGR must reflect the slice.
+    slice_start = start + timedelta(days=7 * 26)
+    metrics = _slice_metrics(curve, slice_start, curve[-1]["date"], "weekly")
+
+    slice_growth = curve[-1]["equity"] / curve[26]["equity"]
+    years = (curve[-1]["date"] - curve[26]["date"]).days / 365.0
+    expected = slice_growth ** (1.0 / years) - 1.0
+    assert metrics["cagr"] == pytest.approx(expected, abs=5e-4)  # metrics round to 4dp
+    assert metrics["cagr"] < (curve[-1]["equity"] ** (1.0 / years) - 1.0)
+
+
 def test_scope_validation_requires_full_coverage():
     optimize, pinned = validate_scope(
         ["top_n", "min_score"],
