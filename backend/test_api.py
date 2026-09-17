@@ -423,12 +423,12 @@ def test_score_models_endpoint_exposes_feature_importance():
     assert response.status_code == 200
     models = {model["version"]: model for model in response.json()}
 
-    assert "rule" in models and "learned_v4" in models
+    assert "rule" in models and "learned_v5" in models
     rule = models["rule"]
     assert all(feature["label"] and feature["description"] for feature in rule["features"])
     assert abs(sum(feature["weight"] for feature in rule["features"]) - 1.0) < 1e-9
 
-    learned = models["learned_v4"]
+    learned = models["learned_v5"]
     assert learned["experimental"] is True
     assert learned["trained_until"] == "2024-12-31"
     assert len(learned["features"]) >= 20
@@ -511,10 +511,10 @@ def test_backtest_endpoint_replays_value_score_history():
 
     learned = client.get(
         "/api/backtest",
-        params={"start": "2023-01-01", "score_model": "learned_v4", "min_score": 50},
+        params={"start": "2023-01-01", "score_model": "learned_v5", "min_score": 50},
     )
     assert learned.status_code == 200
-    assert learned.json()["score_model"] == "learned_v4"
+    assert learned.json()["score_model"] == "learned_v5"
 
     regime = client.get(
         "/api/backtest",

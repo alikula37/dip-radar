@@ -53,6 +53,8 @@ FEATURE_DIRECTIONS = {
     "above_p75_3y": -1,
     "below_p25_3y": +1,
     "top_band_share_90d": -1,
+    "dip_bounces": +1,
+    "dip_bounce_avg": +1,
 }
 
 

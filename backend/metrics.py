@@ -12,15 +12,22 @@ BASING_MIN = 180
 RANGE_MIN = 30
 SMA_MIN = 60
 
+# Dip-respect detection: how often a coin actually bounced from its dip.
+DIP_TOUCH_PCT = 15.0  # a close within this percentage of the event low is a touch
+DIP_BOUNCE_PCT = 30.0  # a rally of at least this much counts as a proven bounce
+DIP_FORWARD_DAYS = 180  # the bounce must happen within this window
+DIP_MIN_GAP = 21  # touches closer than this merge into one episode
+
 # Value score gates and weights (cross-sectional percentile ranks).
 VALUE_SCORE_MIN_CAP = 10_000_000
 VALUE_SCORE_MIN_VOLUME = 250_000
 VALUE_SCORE_WEIGHTS = {
-    "valuation": 0.30,
-    "distance": 0.25,
-    "median_gap": 0.15,
-    "basing": 0.15,
-    "range": 0.15,
+    "valuation": 0.27,
+    "distance": 0.22,
+    "median_gap": 0.14,
+    "basing": 0.13,
+    "range": 0.14,
+    "dip_respect": 0.10,
 }
 
 
@@ -100,6 +107,10 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
         "trend_7d_pct": None,
         "trend_180d_pct": None,
         "trend_365d_pct": None,
+        # Dip respect: how often the coin bounced from its dip before.
+        "dip_touches": 0,
+        "dip_bounces": 0,
+        "dip_bounce_avg": None,
     }
     if n == 0:
         return stats
@@ -172,7 +183,53 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
         window = closes[-200:] if n >= 200 else closes
         stats["above_sma200"] = current > (sum(window) / len(window))
 
+    touches, bounces, bounce_average = dip_respect(closes, lows)
+    stats["dip_touches"] = touches
+    stats["dip_bounces"] = bounces
+    stats["dip_bounce_avg"] = bounce_average
+
     return stats
+
+
+def dip_respect(closes: list, lows: list) -> tuple:
+    """How often the coin actually bounced from its dip, point-in-time.
+
+    A *touch* is a close within ``DIP_TOUCH_PCT`` of the event low; touches
+    closer than ``DIP_MIN_GAP`` days merge into one episode. An episode is a
+    *bounce* when the price rallies at least ``DIP_BOUNCE_PCT`` within
+    ``DIP_FORWARD_DAYS``. The tuple is ``(touches, bounces, average bounce %)``:
+    coins that repeatedly defended the same dip earn a higher score, while new
+    coins (no touches yet) rank at the bottom, which is intentional.
+    """
+    if len(closes) < 120 or not lows:
+        return 0, 0, None
+    event_low = min(lows)
+    if not event_low:
+        return 0, 0, None
+
+    level = event_low * (1.0 + DIP_TOUCH_PCT / 100.0)
+    episodes = []
+    index = 0
+    while index < len(closes):
+        if closes[index] <= level:
+            episodes.append(index)
+            index += DIP_MIN_GAP
+        else:
+            index += 1
+
+    bounces = []
+    for position, start in enumerate(episodes):
+        next_start = episodes[position + 1] if position + 1 < len(episodes) else len(closes)
+        end = min(next_start, start + DIP_FORWARD_DAYS)
+        entry = closes[start]
+        if entry <= 0 or end <= start + 1:
+            continue
+        rally = max(closes[start:end]) / entry - 1.0
+        if rally >= DIP_BOUNCE_PCT / 100.0:
+            bounces.append(rally)
+
+    average = round(100.0 * sum(bounces) / len(bounces), 1) if bounces else None
+    return len(episodes), len(bounces), average
 
 
 def _rank_percentiles(items: list, value_of) -> dict:
@@ -237,12 +294,18 @@ def calculate_value_scores(
     def range_raw(coin):
         return -(coin.range_position or 0)
 
+    def dip_respect_raw(coin):
+        # Proven bounces dominate; the average bounce size breaks ties, so a
+        # coin that defended its dip many times scores highest.
+        return (coin.dip_bounces or 0) + (coin.dip_bounce_avg or 0.0) / 50.0
+
     components = {
         "valuation": valuation_raw,
         "distance": distance_raw,
         "median_gap": median_raw,
         "basing": basing_raw,
         "range": range_raw,
+        "dip_respect": dip_respect_raw,
     }
     ranks = {name: _rank_percentiles(eligible, value_of) for name, value_of in components.items()}
 
