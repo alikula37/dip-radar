@@ -147,7 +147,7 @@ describe('BacktestPage', () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenLastCalledWith(
         expect.stringMatching(
-          /top_n=5.*min_score=20.*min_market_cap=50000000.*weighting=score.*rotation=hold.*sell_score=3.*stop_loss_pct=30.*equity_trend_exposure=0.*profit_lock_pct=25.*short_n=5.*short_funding_apr=10.*short_exposure=1.*short_max_score=40.*profit_sweep_pct=30.*max_holding_periods=52.*invert_score=true.*ic_filter=true.*ic_window=2.*ic_threshold=0\.1.*ic_exposure=0.*score_model=rule.*regime_filter=breadth.*regime_exposure=0\.5.*regime_min_breadth=0\.5.*max_market_cap=1000000000/,
+          /top_n=4.*min_score=30.*min_market_cap=50000000.*weighting=score.*rotation=hold.*sell_score=10.*min_trend_30d=-60.*stop_loss_pct=30.*trailing_stop_pct=75.*equity_trend_exposure=0.*short_n=2.*short_funding_apr=10.*short_exposure=1.*short_max_score=40.*profit_sweep_pct=70.*invert_score=true.*ic_filter=true.*ic_window=4.*ic_threshold=0.*ic_exposure=0\.35.*score_model=rule.*max_market_cap=1000000000/,
         ),
         expect.objectContaining({ cache: 'no-store' }),
       );

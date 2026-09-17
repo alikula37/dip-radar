@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, FlaskConical, RefreshCw, Trash2, TrendingDown } from 'lucide-react';
 
 import { Button, RadarLoader, cn } from '@/components/ui';
+import UpdateBadge from '@/components/UpdateBadge';
 import { formatPct } from '@/lib/colors';
 import { actionInfo, reasonInfo, REASON_INFO } from '@/lib/signals';
 import type { StrategySignalRecord, StrategySignalsResponse, StrategyWatch } from '@/types';
@@ -132,6 +133,7 @@ export default function SignalsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <UpdateBadge />
           <Link
             href="/"
             className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"

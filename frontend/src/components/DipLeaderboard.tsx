@@ -260,7 +260,7 @@ export default function DipLeaderboard({
                       ) : (
                         <span
                           className="inline-flex min-w-[44px] items-center justify-center rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary"
-                          title={`Value score ${coin.value_score} — cheapness blended from valuation percentile, distance to dip, median gap, basing and range position (trend acts only as a knife-risk penalty).`}
+                          title={`Value score ${coin.value_score} — cheapness blended from valuation percentile, distance to dip, median gap, basing, range position and dip respect (proven bounces from the dip); trend acts only as a knife-risk penalty.`}
                         >
                           {Math.round(coin.value_score)}
                         </span>

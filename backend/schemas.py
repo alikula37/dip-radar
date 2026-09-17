@@ -196,6 +196,14 @@ class StrategyWatchRefreshResponse(BaseModel):
     inserted: List[StrategySignalRecord]
 
 
+class VersionResponse(BaseModel):
+    current: str
+    latest: Optional[str] = None
+    update_available: Optional[bool] = None
+    release_url: Optional[str] = None
+    instructions: Optional[str] = None
+
+
 class ScoreModelFeature(BaseModel):
     name: str
     label: str

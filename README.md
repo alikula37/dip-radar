@@ -81,6 +81,25 @@ CoinGecko metadata / market caps
 
 *Note: On the first run, the worker fetches the listing date of every BTC pair and the full daily history of all coins listed before 2021. This normally takes a few minutes; the frontend shows a status screen until the first data arrives. Existing databases from older versions are migrated automatically on startup.*
 
+## Updating
+
+The app is versioned (`VERSION`, shown by `GET /api/version`). The backend asks
+the GitHub releases API (cached for 6h, disabled with `UPDATE_CHECK=0`, repo
+overridable with `UPDATE_REPO`) whether a newer release exists, and every page
+shows an **Update vX.Y.Z** badge in the top-right corner when one does — hover it
+for the exact commands:
+
+```bash
+docker compose pull && docker compose up -d --build
+```
+
+The check is best-effort: offline installs (or a rate-limited GitHub) simply see
+no badge. Maintainers cut a release by tagging the merge commit
+(`gh release create vX.Y.Z --generate-notes`); the badge appears for everyone on
+an older `VERSION` within one cache window. Note that versions before v1.1.0 do
+not expose `/api/version`, so the first badge a user sees appears after they
+update once.
+
 ## Environment Variables ⚙️
 
 | Variable | Default | Description |
