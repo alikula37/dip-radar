@@ -442,7 +442,7 @@ def test_version_endpoint_reports_updates(monkeypatch):
     assert payload["current"] == main.local_version()
     assert payload["latest"] == "v99.0.0"
     assert payload["update_available"] is True
-    assert "docker compose pull" in payload["instructions"]
+    assert "git pull" in payload["instructions"]
 
 
 def test_version_endpoint_without_github_keeps_quiet(monkeypatch):

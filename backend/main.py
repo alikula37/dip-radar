@@ -210,7 +210,7 @@ def _is_newer(latest: str, current: str) -> bool:
 def get_version():
     """Report the running version and whether a newer GitHub release exists."""
     current = local_version()
-    instructions = "docker compose pull && docker compose up -d --build"
+    instructions = "git pull && docker compose up -d --build   (or ./scripts/update.sh)"
     response = {
         "current": current,
         "latest": None,

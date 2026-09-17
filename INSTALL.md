@@ -47,8 +47,8 @@ Repo: https://github.com/alikula37/dip-radar (main branch)
    docker compose logs --tail=100 backend worker
 
 8) Updates: when the header shows an "Update vX.Y.Z" chip a newer release
-   exists; update with:
-   git pull && docker compose up -d --build
+   exists; update with `./scripts/update.sh` (or manually:
+   git pull && docker compose up -d --build).
 
 Constraints: no API keys are required (a CoinGecko key is optional). If you must
 change ports, use the env vars or the installer, and tell me which ports you

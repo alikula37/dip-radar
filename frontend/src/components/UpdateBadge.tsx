@@ -25,7 +25,7 @@ export default function UpdateBadge() {
 
   if (!version) return null;
 
-  const title = `Update available: ${version.current} → ${version.latest ?? '?'}\nUpdate with:\n${version.instructions ?? 'docker compose pull && docker compose up -d --build'}`;
+  const title = `Update available: ${version.current} → ${version.latest ?? '?'}\nUpdate with:\n${version.instructions ?? 'git pull && docker compose up -d --build'}`;
 
   return (
     <a
