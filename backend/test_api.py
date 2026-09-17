@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -416,6 +417,49 @@ def test_health_endpoint():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_version_endpoint_reports_updates(monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "_UPDATE_CHECK", True)
+    monkeypatch.setattr(main, "_UPDATE_CACHE", {"checked_at": None, "latest": None, "url": None})
+
+    class FakeResponse:
+        def read(self):
+            return json.dumps({"tag_name": "v99.0.0", "html_url": "https://example.com/release"}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(main.urllib_request, "urlopen", lambda request, timeout: FakeResponse())
+
+    payload = client.get("/api/version").json()
+
+    assert payload["current"] == main.local_version()
+    assert payload["latest"] == "v99.0.0"
+    assert payload["update_available"] is True
+    assert "docker compose pull" in payload["instructions"]
+
+
+def test_version_endpoint_without_github_keeps_quiet(monkeypatch):
+    import main
+
+    monkeypatch.setattr(main, "_UPDATE_CHECK", True)
+    monkeypatch.setattr(main, "_UPDATE_CACHE", {"checked_at": None, "latest": None, "url": None})
+    monkeypatch.setattr(
+        main.urllib_request,
+        "urlopen",
+        lambda request, timeout: (_ for _ in ()).throw(OSError("offline")),
+    )
+
+    payload = client.get("/api/version").json()
+
+    assert payload["update_available"] is None
+    assert payload["latest"] is None
 
 
 def test_score_models_endpoint_exposes_feature_importance():

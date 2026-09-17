@@ -315,6 +315,14 @@ export interface StrategyWatchRefresh {
   inserted: StrategySignalRecord[];
 }
 
+export interface VersionInfo {
+  current: string;
+  latest: string | null;
+  update_available: boolean | null;
+  release_url: string | null;
+  instructions: string | null;
+}
+
 export interface ScoreModelFeature {
   name: string;
   label: string;

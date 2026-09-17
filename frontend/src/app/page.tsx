@@ -28,6 +28,7 @@ import ScatterChart from '@/components/ScatterChart';
 import Treemap from '@/components/Treemap';
 import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, RadarLoader, Segmented, StatCard } from '@/components/ui';
+import UpdateBadge from '@/components/UpdateBadge';
 import { downloadCsv, matchesListingFilter, matchesStableFilter, summarizeHiddenCoins, trendDelta } from '@/lib/coins';
 import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
@@ -108,8 +109,10 @@ export default function Home() {
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({
-    key: 'distance',
-    direction: 'asc',
+    // The dashboard leads with the Value Score: cheapest first, and coins
+    // without a score (no 3y history) sort to the bottom by construction.
+    key: 'value_score',
+    direction: 'desc',
   });
 
   const toastTimer = useRef<number | null>(null);
@@ -579,6 +582,7 @@ export default function Home() {
               Updated {formatDate(meta.last_updated)}
             </span>
           )}
+          <UpdateBadge />
           <Link
             href="/signals"
             className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+import urllib.request as urllib_request
 from collections import OrderedDict, defaultdict, deque
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -177,6 +178,72 @@ def _as_of_metrics(db: Session, cutoff: datetime, event_start: datetime) -> dict
     if len(_AS_OF_CACHE) > _AS_OF_CACHE_SIZE:
         _AS_OF_CACHE.popitem(last=False)
     return metrics
+
+
+VERSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
+_UPDATE_REPO = os.getenv("UPDATE_REPO", "alikula37/dip-radar")
+_UPDATE_CHECK = os.getenv("UPDATE_CHECK", "1") != "0"
+_UPDATE_CACHE: dict = {"checked_at": None, "latest": None, "url": None}
+UPDATE_CACHE_SECONDS = 6 * 3600
+
+
+def local_version() -> str:
+    try:
+        with open(VERSION_FILE) as handle:
+            return handle.read().strip() or "dev"
+    except OSError:
+        return "dev"
+
+
+def _is_newer(latest: str, current: str) -> bool:
+    def parts(value: str) -> list:
+        cleaned = value.lstrip("v").split("-")[0]
+        return [int(piece) for piece in cleaned.split(".") if piece.isdigit()]
+
+    try:
+        return parts(latest) > parts(current)
+    except ValueError:
+        return False
+
+
+@app.get("/api/version", response_model=schemas.VersionResponse)
+def get_version():
+    """Report the running version and whether a newer GitHub release exists."""
+    current = local_version()
+    instructions = "docker compose pull && docker compose up -d --build"
+    response = {
+        "current": current,
+        "latest": None,
+        "update_available": None,
+        "release_url": None,
+        "instructions": instructions,
+    }
+    if not _UPDATE_CHECK:
+        return response
+
+    now = datetime.utcnow()
+    checked_at = _UPDATE_CACHE.get("checked_at")
+    if checked_at is None or (now - checked_at).total_seconds() > UPDATE_CACHE_SECONDS:
+        latest, url = None, None
+        try:
+            request = urllib_request.Request(
+                f"https://api.github.com/repos/{_UPDATE_REPO}/releases/latest",
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "dip-radar"},
+            )
+            with urllib_request.urlopen(request, timeout=5) as payload:
+                data = json.loads(payload.read().decode())
+                latest = (data.get("tag_name") or "").strip() or None
+                url = data.get("html_url")
+        except Exception:
+            latest, url = None, None
+        _UPDATE_CACHE.update({"checked_at": now, "latest": latest, "url": url})
+
+    latest = _UPDATE_CACHE.get("latest")
+    response["latest"] = latest
+    response["release_url"] = _UPDATE_CACHE.get("url")
+    # None = the check could not run (offline / rate limited); the UI stays quiet.
+    response["update_available"] = _is_newer(latest, current) if latest else None
+    return response
 
 
 @app.get("/api/score-models", response_model=List[schemas.ScoreModelResponse])

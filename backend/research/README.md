@@ -242,6 +242,27 @@ longer holds. The presets were found under the previous rule score, so these are
 current-vintage numbers, not a re-validation — the honest next step is a fresh
 optimizer run under the new composite.
 
+## Look-ahead and selection-bias audit (Sept 2026)
+
+Everything the simulator ranks on is point-in-time, and the remaining gaps are
+known and bounded:
+
+| Area | Status |
+| --- | --- |
+| Value Score inputs (valuation percentiles, band distances, dip respect, trends, drawdown, dollar volume) | Point-in-time: computed from candles up to the anchor only |
+| Score percentile + dip-respect detector | Point-in-time; the detector's running low uses closes up to the anchor |
+| Market cap / volume filters | Point-in-time via the daily `market_history` archive where it has coverage; before that, today's snapshot (documented drift) |
+| Delisted coins | Recovered into the archive; coins delisted before the archive existed are still missing (survivorship note) |
+| Exit rules (score fade, stops, trailing, take-profit, time stop) | Evaluated on candles inside the period, never on future anchors |
+| Optimizer | Purged + embargoed walk-forward CV, candidate dedupe, trailing holdout the search never sees, strictness only decides the verdict |
+| Presets | **In-sample selections**: they were found by searching this same history, so live results should be expected to be worse than their tables — the verdict badges and the holdout are the guardrails |
+| Remaining gaps | Historical caps/volumes before the archive began; borrow availability and liquidation are modelled only via the funding drag; intra-anchor score-based exits happen at the next anchor (only risk exits are checked daily) |
+
+Concrete fixes that came out of this audit: the `market_history` archive with a
+snapshot cache key that includes its size/timestamp, the in-BTC reason flags on
+flat periods, the vintage stamp on documented numbers, and the dip-respect
+detector's window (last three years only) so ancient manias cannot dominate.
+
 ## Shipping gates for a learned score
 
 A model replaces the rule-based score only if, on walk-forward evaluation, it:

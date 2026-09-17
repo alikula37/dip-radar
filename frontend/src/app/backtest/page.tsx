@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import EquityChart from '@/components/EquityChart';
 import { Button, Hint, RadarLoader, Segmented, StatCard, cn } from '@/components/ui';
+import UpdateBadge from '@/components/UpdateBadge';
 import { formatBtcValue, formatPct } from '@/lib/colors';
 import { reasonInfo } from '@/lib/signals';
 import type {
@@ -201,34 +202,34 @@ const PRESETS: { key: string; label: string; values: Partial<BacktestForm> }[] =
     label: 'Optimized',
     values: {
       rebalance: 'weekly',
-      topN: 5,
-      minScore: 20,
+      topN: 4,
+      minScore: 30,
       minCap: 50_000_000,
       maxCap: 1_000_000_000,
       weighting: 'score',
       fillWithBtc: true,
       rotation: 'hold',
-      sellScore: 3,
-      minTrend: null,
+      sellScore: 10,
+      minTrend: -60,
       stopLoss: 30,
-      trailingStop: null,
+      trailingStop: 75,
       takeProfit: null,
       scoreModel: 'rule',
-      regimeFilter: 'breadth',
-      regimeExposure: 50,
+      regimeFilter: 'none',
+      regimeExposure: 25,
       equityTrendExposure: 0,
-      profitLock: 25,
-      shortN: 5,
+      profitLock: null,
+      shortN: 2,
       shortMaxScore: 40,
       shortFundingApr: 10,
       shortExposure: 100,
-      profitSweep: 30,
-      maxHolding: 52,
+      profitSweep: 70,
+      maxHolding: null,
       invertScore: true,
       icFilter: true,
-      icWindow: 2,
-      icThreshold: 0.1,
-      icExposure: 0,
+      icWindow: 4,
+      icThreshold: 0,
+      icExposure: 35,
     },
   },
 ];
@@ -802,6 +803,7 @@ export default function BacktestPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <UpdateBadge />
           <Link
             href="/signals"
             className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-2 px-3 py-2 text-sm font-medium text-content transition-colors hover:border-outline-strong hover:bg-surface-3"
@@ -1415,6 +1417,10 @@ export default function BacktestPage() {
                     <option value="consistency">Consistency (rolling 1y positive)</option>
                   </select>
                 </label>
+                <p className="w-full text-[11px] text-content-muted">
+                  Winners are <strong>in-sample selections</strong> over this exact history: expect live results below the
+                  table. The nested CV, holdout verdicts and strictness gates are the guardrails — not a promise.
+                </p>
                 <label className="text-[11px] text-content-muted">
                   Trials
                   <Hint text="How many parameter combinations the TPE sampler evaluates. The full grid of all parameters is far too large to brute-force, so more trials simply cover more of the space." />

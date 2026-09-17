@@ -38,6 +38,7 @@ const SCORE_PART_LABELS: Record<string, string> = {
   median_gap: 'Below 3y median',
   basing: 'Basing at lows',
   range: 'Range position',
+  dip_respect: 'Dip respect (proven bounces)',
   knife: 'Knife-risk penalty',
 };
 
