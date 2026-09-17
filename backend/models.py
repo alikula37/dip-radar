@@ -178,6 +178,10 @@ class StrategySignal(Base):
     price = Column(Float, nullable=True)
     equity = Column(Float, nullable=True)
     message = Column(Text, nullable=True)
+    # Paper move of the watch's own book since this signal, recomputed on every
+    # refresh from the current replay curve (so flat weeks read 0.00% instead of
+    # drifting with data vintages).
+    return_since = Column(Float, nullable=True)
     created_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
 

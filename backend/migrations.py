@@ -76,6 +76,16 @@ def run_migrations(engine: Engine) -> None:
                     connection.execute(text(f"ALTER TABLE coins ADD COLUMN {name} {ddl}"))
                     logger.info("Migration: added coins.%s", name)
 
+        if "strategy_signals" in tables:
+            existing_columns = {
+                column["name"] for column in inspector.get_columns("strategy_signals")
+            }
+            if "return_since" not in existing_columns:
+                connection.execute(
+                    text("ALTER TABLE strategy_signals ADD COLUMN return_since FLOAT")
+                )
+                logger.info("Migration: added strategy_signals.return_since")
+
         if "klines" in tables:
             _deduplicate_klines(connection)
             if not _has_unique_index(connection, "klines", ["symbol", "timestamp"]):

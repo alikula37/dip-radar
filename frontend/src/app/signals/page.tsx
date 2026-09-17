@@ -330,7 +330,8 @@ export default function SignalsPage() {
               <section className="rounded-xl border border-outline bg-surface-1 p-4">
                 <h2 className="text-sm font-semibold text-content">Signal history</h2>
                 <p className="text-[11px] text-content-muted">
-                  Every stored signal with the strategy&apos;s own paper move since it fired.
+                  Every stored signal with the watch&apos;s own paper equity move since that date, rebased on the
+                  current data vintage — a book sitting in BTC reads 0.00%.
                 </p>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[560px] text-left text-xs">
@@ -341,7 +342,9 @@ export default function SignalsPage() {
                         <th className="py-1.5 pr-3">Symbol</th>
                         <th className="py-1.5 pr-3">Reason</th>
                         <th className="py-1.5 pr-3">Price</th>
-                        <th className="py-1.5">Return since</th>
+                        <th className="py-1.5" title="The watch's own paper equity move since the signal date, rebased on the current data vintage.">
+                          Return since
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
