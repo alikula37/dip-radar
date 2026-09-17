@@ -144,35 +144,37 @@ def test_value_score_ranks_cheap_above_expensive():
 
 
 def test_dip_respect_counts_successful_bounces_only():
-    # Two identical dips, each rallied over 30% within the window, then a third
-    # touch that is still at the low (no forward bounce yet).
+    # Three dips, each followed by a +60% rally, then a new dip that has not
+    # rallied yet.
     closes = []
     for _ in range(3):
-        closes.extend([100.0] * 40 + [70.0] * 10 + [130.0] * 40)
-    closes.extend([70.0] * 10)
-    lows = [value * 0.98 for value in closes]
+        closes.extend([200.0] * 10 + [80.0] * 40)
+    closes.extend([200.0] * 10 + [80.0] * 40)  # the open visit at the dip
 
-    touches, bounces, average = dip_respect(closes, lows)
+    touches, bounces, average = dip_respect(closes)
 
-    # Three rallying touches plus the still-open trailing one at the low.
-    assert touches == 4
     assert bounces == 3
-    assert average is not None and average > 30.0
+    assert touches == 4  # three proven + the open visit
+    assert average is not None and average > 100.0
 
 
 def test_dip_respect_is_zero_for_new_or_untouched_coins():
     # Too little history to judge.
-    assert dip_respect([100.0] * 100, [98.0] * 100) == (0, 0, None)
+    assert dip_respect([100.0] * 100) == (0, 0, None)
 
-    # A coin sitting at its low with no rally yet: a touch, no proven bounce.
+    # A coin sitting at its low with no rally yet: an open visit, no bounces.
     closes = [100.0 - 0.25 * index for index in range(200)]
-    lows = [value * 0.98 for value in closes]
 
-    touches, bounces, average = dip_respect(closes, lows)
+    touches, bounces, average = dip_respect(closes)
 
-    assert touches >= 1
+    assert touches == 1
     assert bounces == 0
     assert average is None
+
+    # A weak recovery that does not re-visit the zone: no reaction proven.
+    weak = [150.0] * 60 + [100.0] * 60 + [120.0] * 80
+
+    assert dip_respect(weak) == (0, 0, None)
 
 
 def test_dip_respect_tilts_the_value_score():

@@ -13,10 +13,12 @@ RANGE_MIN = 30
 SMA_MIN = 60
 
 # Dip-respect detection: how often a coin actually bounced from its dip.
-DIP_TOUCH_PCT = 15.0  # a close within this percentage of the event low is a touch
+DIP_TOUCH_PCT = 15.0  # the trough must sit within this percentage of the running low
 DIP_BOUNCE_PCT = 30.0  # a rally of at least this much counts as a proven bounce
-DIP_FORWARD_DAYS = 180  # the bounce must happen within this window
-DIP_MIN_GAP = 21  # touches closer than this merge into one episode
+DIP_LOOKBACK_DAYS = 120  # the trough is searched in this window before the peak
+DIP_PEAK_SPAN = 30  # a peak must be the highest close of this many days
+DIP_SEPARATION = 45  # accepted bounces must be at least this far apart
+DIP_WINDOW_DAYS = 1095  # only the last three years count (the chart's band window)
 
 # Value score gates and weights (cross-sectional percentile ranks).
 VALUE_SCORE_MIN_CAP = 10_000_000
@@ -183,7 +185,7 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
         window = closes[-200:] if n >= 200 else closes
         stats["above_sma200"] = current > (sum(window) / len(window))
 
-    touches, bounces, bounce_average = dip_respect(closes, lows)
+    touches, bounces, bounce_average = dip_respect(closes)
     stats["dip_touches"] = touches
     stats["dip_bounces"] = bounces
     stats["dip_bounce_avg"] = bounce_average
@@ -191,45 +193,53 @@ def calculate_coin_stats(closes: list, lows: list) -> dict:
     return stats
 
 
-def dip_respect(closes: list, lows: list) -> tuple:
+def dip_respect(closes: list) -> tuple:
     """How often the coin actually bounced from its dip, point-in-time.
 
-    A *touch* is a close within ``DIP_TOUCH_PCT`` of the event low; touches
-    closer than ``DIP_MIN_GAP`` days merge into one episode. An episode is a
-    *bounce* when the price rallies at least ``DIP_BOUNCE_PCT`` within
-    ``DIP_FORWARD_DAYS``. The tuple is ``(touches, bounces, average bounce %)``:
-    coins that repeatedly defended the same dip earn a higher score, while new
-    coins (no touches yet) rank at the bottom, which is intentional.
+    A *bounce* is a rally of at least ``DIP_BOUNCE_PCT`` from a trough that sat
+    at the dip: the trough (lowest close of the ``DIP_LOOKBACK_DAYS`` before the
+    peak) must be within ``DIP_TOUCH_PCT`` of the running low at that time, and
+    the peak must be the highest close of the ``DIP_PEAK_SPAN`` days around it.
+    Bounces closer than ``DIP_SEPARATION`` days count once, and only the last
+    three years are considered — the same window as the dashboard's bands.
+
+    Returns ``(touches, bounces, average bounce %)`` where *touches* counts the
+    proven bounces plus the still-open visit when the price currently sits in
+    the dip zone. Coins that repeatedly defended the same dip earn a higher
+    score; new coins with no reactions rank at the bottom, which is intentional.
     """
-    if len(closes) < 120 or not lows:
-        return 0, 0, None
-    event_low = min(lows)
-    if not event_low:
+    series = closes[-DIP_WINDOW_DAYS:] if len(closes) > DIP_WINDOW_DAYS else closes
+    if len(series) < DIP_LOOKBACK_DAYS + DIP_PEAK_SPAN:
         return 0, 0, None
 
-    level = event_low * (1.0 + DIP_TOUCH_PCT / 100.0)
-    episodes = []
-    index = 0
-    while index < len(closes):
-        if closes[index] <= level:
-            episodes.append(index)
-            index += DIP_MIN_GAP
-        else:
-            index += 1
+    running = []
+    low = float("inf")
+    for value in series:
+        low = min(low, value)
+        running.append(low)
 
     bounces = []
-    for position, start in enumerate(episodes):
-        next_start = episodes[position + 1] if position + 1 < len(episodes) else len(closes)
-        end = min(next_start, start + DIP_FORWARD_DAYS)
-        entry = closes[start]
-        if entry <= 0 or end <= start + 1:
+    index = DIP_PEAK_SPAN
+    while index < len(series):
+        span_start = max(0, index - DIP_PEAK_SPAN)
+        if series[index] < max(series[span_start : index + 1]):
+            index += 1
             continue
-        rally = max(closes[start:end]) / entry - 1.0
-        if rally >= DIP_BOUNCE_PCT / 100.0:
-            bounces.append(rally)
+        lookback_start = max(0, index - DIP_LOOKBACK_DAYS)
+        trough_offset = min(range(lookback_start, index + 1), key=lambda position: series[position])
+        trough = series[trough_offset]
+        peak = series[index]
+        in_dip = trough <= running[trough_offset] * (1.0 + DIP_TOUCH_PCT / 100.0)
+        if in_dip and trough > 0 and peak / trough - 1.0 >= DIP_BOUNCE_PCT / 100.0:
+            bounces.append(peak / trough - 1.0)
+            index += DIP_SEPARATION
+            continue
+        index += 1
 
     average = round(100.0 * sum(bounces) / len(bounces), 1) if bounces else None
-    return len(episodes), len(bounces), average
+    current_in_dip = series[-1] <= running[-1] * (1.0 + DIP_TOUCH_PCT / 100.0)
+    touches = len(bounces) + (1 if current_in_dip else 0)
+    return touches, len(bounces), average
 
 
 def _rank_percentiles(items: list, value_of) -> dict:

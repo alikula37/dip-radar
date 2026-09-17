@@ -209,29 +209,38 @@ much of the edge lives in the short leg. The Hedge preset is the long+short vari
 
 The Value Score composite gained a sixth component, **dip respect** (weight 0.10,
 others rescaled to valuation 0.27 / distance 0.22 / median gap 0.14 / basing 0.13
-/ range 0.14). Definition, all point-in-time on BTC-parity daily closes:
+/ range 0.14). Definition, point-in-time on BTC-parity daily closes, last three
+years only (the dashboard's band window):
 
-- a **touch** is a close within 15% of the event low; touches closer than 21 days
-  merge into one episode (so a slow bottom forms a single episode);
-- an episode is a **bounce** when the price rallies at least 30% within 180 days
-  (or before the next touch, whichever comes first);
-- the component ranks coins by `bounces + average_bounce/50`, so a coin like BCH
-  that repeatedly bounced from the same dip earns a high score while a new coin
-  with no touches ranks at the bottom — intentionally.
+- a **bounce** is a rally of at least 30% from a trough that sat within 15% of
+  the running low; the trough is the lowest close of the 120 days before a peak
+  that is the highest close of its 30-day span, and accepted bounces must be at
+  least 45 days apart (so one rally wave counts once);
+- `touches` counts the proven bounces plus the still-open visit when the price
+  currently sits in the dip zone;
+- the component ranks coins by `bounces + average_bounce/50`. Two earlier
+  formulations were rejected against the BCH chart: a static event-low reference
+  missed older dips once the low deepened, and a touch/episode scan inflated the
+  count into the dozens while the price ground along the bottom.
 
-`learned_v5` (26 features) adds `dip_bounces` and `dip_bounce_avg`; the retrained
-model keeps IC **0.169 vs 0.064** for the rule baseline (CI [+0.068, +0.144]) and
-puts real weight on `dip_bounces` (7th of 26). The dashboard shows a
+`learned_v5` (26 features) adds `dip_bounces` and `dip_bounce_avg`, and the
+retrained model jumps to IC **0.184 vs 0.066** for the rule baseline
+(CI [+0.074, +0.164]) with `dip_bounces` (0.0096) and `dip_bounce_avg` (0.0051)
+among the strongest weights. In the real simulator, however, v5 is *worse* than
+the rule score on the shipped presets (Hedge FULL −52% vs +405%, Optimized
+−51% vs +151%): a reminder that higher cross-sectional IC does not transfer to
+path-dependent portfolio results — the rule score stays the default. The dashboard shows a
 "Dip bounced N× (avg +X%)" chip on the coin card; the synced columns
 (`dip_touches`, `dip_bounces`, `dip_bounce_avg`) come from the same function.
 
 Impact on the shipped presets (cold-start, dip-respect score, 2026-09-17 vintage):
-Hedge FULL +699% → **+405%** (Sharpe 1.62 → 1.30, −19% → −22% DD), 2025+ 1.88 →
-1.40; Optimized FULL +119% → **+174%** but its holdout fell from +27% to −2%;
-Balanced FULL +128% → **+85%** with the holdout roughly stable (+19% → +14%).
-The presets were found under the previous rule score, so these numbers are
-current-vintage performance rather than a re-validation — a fresh optimizer run
-would be the honest way to re-tune them under the new composite.
+Optimized **improved** in the recent windows — 2025+ +50% → +74% (Sharpe 1.68),
+holdout +27% → **+59%** (Sharpe 1.83) — while Hedge stayed strong (FULL +405%,
+2025+ +60% at Sharpe 2.04) and Balanced *degraded* to −30% FULL (holdout +14%):
+the new component reshuffles the cheap-side ranking enough that the old tuning no
+longer holds. The presets were found under the previous rule score, so these are
+current-vintage numbers, not a re-validation — the honest next step is a fresh
+optimizer run under the new composite.
 
 ## Shipping gates for a learned score
 
