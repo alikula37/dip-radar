@@ -92,10 +92,11 @@ describe('SignalsPage', () => {
     render(<SignalsPage />);
 
     expect(await screen.findByRole('heading', { name: 'Hedge' })).toBeTruthy();
-    expect(screen.getByText(/In BTC · ic/)).toBeTruthy();
+    expect(screen.getByText(/In BTC · Factor IC weak/)).toBeTruthy();
     expect(screen.getByText(/BCH 100/)).toBeTruthy();
-    expect(screen.getByText('STAY_IN_BTC')).toBeTruthy();
-    expect(screen.getByText('BUY')).toBeTruthy();
+    expect(screen.getByText('Move to BTC')).toBeTruthy();
+    expect(screen.getByText('Buy')).toBeTruthy();
+    expect(screen.getAllByText('Factor IC weak').length).toBeGreaterThan(0);
     expect(screen.getByText('+5.86%')).toBeTruthy();
     expect(screen.getByText('+12.00%')).toBeTruthy();
   });
