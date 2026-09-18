@@ -55,6 +55,25 @@
   announcements and a static glyph under `prefers-reduced-motion`; transient API
   hiccups toast instead of stranding the dashboard.
 
+## Share cards (X/Twitter-ready)
+
+Two **1200×675 PNG** cards can be exported straight from the dashboard and come
+with ready-to-post text on the clipboard:
+
+- **Coin report card** (detail modal → *Share card*): Value Score with its
+  percentile label, price in USD and BTC with the 7d move, distance from the
+  dip, 3y valuation, range position, dip respect (proven bounces + average),
+  basing, median gap and a 1-year distance-from-dip sparkline — plus a
+  copy-ready tweet with the same numbers (*Tweet* button copies it alone).
+- **Daily board** (toolbar → *Share*): the top 5 coins by Value Score with
+  score, distance from the dip, 7-day move and dip bounces, stamped with the
+  date (or the as-of date in historical mode). Downloading the card also copies
+  a numbered thread-style text.
+
+Both cards carry the brand, the date and `github.com/alikula37/dip-radar`; add
+your own commentary on top when posting. They are rendered from the app's own
+numbers (no screenshots), so they stay crisp and consistent.
+
 ## Data and sync
 
 - **Broad coverage**: tracks BTC pairs directly and converts USDT-only pairs to

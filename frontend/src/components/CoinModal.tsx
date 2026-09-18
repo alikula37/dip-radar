@@ -9,7 +9,8 @@ import DistributionStrip from '@/components/DistributionStrip';
 import { DistanceBadge, Segmented } from '@/components/ui';
 import { scoreBreakdown } from '@/lib/coins';
 import { formatBtc, formatUsd, formatUsdValue } from '@/lib/colors';
-import type { Coin } from '@/types';
+import { buildCoinCardSvg, coinTweetText, copyText, downloadSvgAsPng } from '@/lib/shareCard';
+import type { Coin, DipHistoryPoint } from '@/types';
 
 interface CoinModalProps {
   coin: Coin;
@@ -38,6 +39,44 @@ export default function CoinModal({
 }: CoinModalProps) {
   const [rangeDays, setRangeDays] = useState<'90' | '365' | '5000'>('365');
   const [currency, setCurrency] = useState<'btc' | 'usd'>('usd');
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+
+  const shareDateLabel = asOf ? `${asOf} (as of)` : new Date().toISOString().slice(0, 10);
+
+  const handleShareCard = async () => {
+    setShareStatus('Building card…');
+    try {
+      let dipHistory: DipHistoryPoint[] = [];
+      try {
+        const response = await fetch(`/api/coins/${encodeURIComponent(coin.symbol)}/dip-history?limit=365`, {
+          cache: 'no-store',
+        });
+        if (response.ok) dipHistory = (await response.json()) as DipHistoryPoint[];
+      } catch {
+        // The sparkline is optional; the card renders without it.
+      }
+      const svg = buildCoinCardSvg(coin, {
+        dateLabel: shareDateLabel,
+        referenceLabel: useAtl ? 'All-time low' : referenceLabel,
+        dipHistory,
+      });
+      const symbol = coin.base_asset ?? coin.symbol.replace(/(USDT|BTC)$/, '');
+      await downloadSvgAsPng(svg, `dip-radar-${symbol.toLowerCase()}-${asOf ?? new Date().toISOString().slice(0, 10)}.png`);
+      await copyText(coinTweetText(coin));
+      setShareStatus('Card downloaded · tweet text copied');
+    } catch {
+      setShareStatus('Could not build the card');
+    }
+  };
+
+  const handleCopyTweet = async () => {
+    try {
+      await copyText(coinTweetText(coin));
+      setShareStatus('Tweet text copied');
+    } catch {
+      setShareStatus('Could not copy the tweet text');
+    }
+  };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -105,6 +144,22 @@ export default function CoinModal({
             )}
             <button
               type="button"
+              onClick={() => void handleShareCard()}
+              className="rounded-lg border border-outline px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:border-outline-strong hover:text-content"
+              title="Download a 1200×675 report card (PNG) and copy a ready-to-post tweet with this coin's numbers"
+            >
+              Share card
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopyTweet()}
+              className="rounded-lg border border-outline px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:border-outline-strong hover:text-content"
+              title="Copy a ready-to-post tweet with this coin's numbers"
+            >
+              Tweet
+            </button>
+            <button
+              type="button"
               onClick={onClose}
               aria-label="Close"
               className="rounded-full p-2 text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
@@ -113,6 +168,8 @@ export default function CoinModal({
             </button>
           </div>
         </div>
+
+        {shareStatus && <p className="mt-2 text-[11px] text-content-muted">{shareStatus}</p>}
 
         <div className="mt-4 rounded-xl border border-outline bg-surface-2 p-4">
           <div className="flex items-center justify-between gap-2">
