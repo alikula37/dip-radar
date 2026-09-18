@@ -5,4 +5,4 @@ pydantic==2.13.5
 requests==2.34.2
 APScheduler==3.11.3
 python-dotenv==1.2.3
-optuna>=4.5
+optuna>=5.0.0
