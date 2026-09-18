@@ -55,10 +55,14 @@ describe('share cards', () => {
     expect(svg).toContain('DIP RADAR');
     expect(svg).toContain('$BCH');
     expect(svg).toContain('>97<'); // rounded value score
+    expect(svg).toContain('CHEAPEST 5% OF');
+    expect(svg).toContain('TRACKED ALTS');
     expect(svg).toContain('+2.9%');
     expect(svg).toContain('5×');
     expect(svg).toContain('avg bounce +43%');
-    expect(svg).toContain('github.com/alikula37/dip-radar');
+    expect(svg).toContain('dip zone');
+    expect(svg).not.toContain('github.com');
+    expect(svg).toContain('not financial advice');
     expect(svg).toContain('<path d="M');
   });
 
@@ -70,7 +74,7 @@ describe('share cards', () => {
     expect(svg).toContain('Daily board');
     expect(svg).toContain('$BCH');
     expect(svg).toContain('$ETH');
-    expect(svg).toContain('2026-09-17');
+    expect(svg).toContain('17 SEP 2026');
   });
 
   it('builds a ready-to-post tweet with the coin numbers', () => {
@@ -79,6 +83,7 @@ describe('share cards', () => {
     expect(text).toContain('$BCH');
     expect(text).toContain('Value Score 97/100');
     expect(text).toContain('+2.9% from its reference dip low');
+    expect(text).toContain('cheapest 5% of tracked alts');
     expect(text).toContain('Dip respect: 5 proven bounces, avg +43%');
     expect(text).toContain('#crypto #altcoins #BTC');
   });

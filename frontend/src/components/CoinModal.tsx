@@ -48,7 +48,7 @@ export default function CoinModal({
     try {
       let dipHistory: DipHistoryPoint[] = [];
       try {
-        const response = await fetch(`/api/coins/${encodeURIComponent(coin.symbol)}/dip-history?limit=365`, {
+        const response = await fetch(`/api/coins/${encodeURIComponent(coin.symbol)}/dip-history?limit=1095`, {
           cache: 'no-store',
         });
         if (response.ok) dipHistory = (await response.json()) as DipHistoryPoint[];
@@ -100,20 +100,32 @@ export default function CoinModal({
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-outline bg-surface p-5 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            {coin.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={coin.logo_url} alt="" width={44} height={44} className="h-11 w-11 rounded-full" />
-            ) : (
-              <span className="h-11 w-11 rounded-full bg-surface-3" />
-            )}
-            <div>
-              <h2 className="text-lg font-semibold text-content">{label}</h2>
-              <p className="font-mono text-xs text-content-muted">{coin.symbol}</p>
+            <div className="shrink-0">
+              {coin.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={coin.logo_url} alt="" width={44} height={44} className="h-11 w-11 rounded-full" />
+              ) : (
+                <span className="block h-11 w-11 rounded-full bg-surface-3" />
+              )}
             </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-lg font-semibold text-content" title={label}>
+                {label}
+              </h2>
+              <p className="truncate font-mono text-xs text-content-muted">{coin.symbol}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="shrink-0 rounded-full p-2 text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {onWatchToggle && (
               <button
                 type="button"
@@ -148,7 +160,7 @@ export default function CoinModal({
               className="rounded-lg border border-outline px-2.5 py-1.5 text-[11px] font-medium text-content-muted transition-colors hover:border-outline-strong hover:text-content"
               title="Download a 1200×675 report card (PNG) and copy a ready-to-post tweet with this coin's numbers"
             >
-              Share card
+              Share
             </button>
             <button
               type="button"
@@ -157,14 +169,6 @@ export default function CoinModal({
               title="Copy a ready-to-post tweet with this coin's numbers"
             >
               Tweet
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="rounded-full p-2 text-content-muted transition-colors hover:bg-surface-2 hover:text-content"
-            >
-              <X size={18} />
             </button>
           </div>
         </div>

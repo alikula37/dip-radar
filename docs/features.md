@@ -70,8 +70,8 @@ with ready-to-post text on the clipboard:
   date (or the as-of date in historical mode). Downloading the card also copies
   a numbered thread-style text.
 
-Both cards carry the brand, the date and `github.com/alikula37/dip-radar`; add
-your own commentary on top when posting. They are rendered from the app's own
+Both cards carry the brand, the date and a short "not financial advice" line
+(no URLs); add your own commentary on top when posting. They are rendered from the app's own
 numbers (no screenshots), so they stay crisp and consistent.
 
 ## Data and sync
