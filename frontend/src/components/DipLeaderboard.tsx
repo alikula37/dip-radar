@@ -9,13 +9,17 @@ import { formatUsdCompact, percentile } from '@/lib/colors';
 import type { Coin } from '@/types';
 import type { ValuationWindow } from '@/lib/coins';
 
-type Mode = 'closest' | 'falling' | 'cheapest' | 'basing';
+type Mode = 'closest' | 'falling' | 'cheapest' | 'basing' | 'value';
 
 const MODE_HEADINGS: Record<Mode, { title: string; sub: string }> = {
   closest: { title: 'Closest to their dip', sub: 'sorted by distance to the low' },
   falling: { title: 'Falling fastest toward their dip', sub: 'sorted by 7-day change' },
   cheapest: { title: 'Cheapest vs their own history', sub: 'lowest valuation percentile' },
   basing: { title: 'Basing at their lows', sub: 'most days spent in the bottom quartile' },
+  value: {
+    title: 'Best Value Scores',
+    sub: 'composite cheapness percentile (dip respect included); unscored coins sort last',
+  },
 };
 
 interface DipLeaderboardProps {
@@ -60,6 +64,11 @@ export default function DipLeaderboard({
         .filter((coin) => valuationPct(coin, window) !== null)
         .sort((a, b) => (valuationPct(a, window) ?? Infinity) - (valuationPct(b, window) ?? Infinity));
     }
+    if (mode === 'value') {
+      return [...coins]
+        .filter((coin) => coin.value_score != null)
+        .sort((a, b) => (b.value_score ?? -1) - (a.value_score ?? -1));
+    }
     return [...coins]
       .filter((coin) => coin.basing_pct_90d != null)
       .sort((a, b) => (b.basing_pct_90d ?? -1) - (a.basing_pct_90d ?? -1));
@@ -71,10 +80,12 @@ export default function DipLeaderboard({
         if (mode === 'closest') return distanceOf(coin);
         if (mode === 'falling') return Math.abs(trendDelta(coin, useAtl, 7) ?? 0);
         if (mode === 'cheapest') return valuationPct(coin, window);
+        if (mode === 'value') return 100 - (coin.value_score ?? 0);
         return coin.basing_pct_90d;
       })
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     const robust = Math.max(percentile(values, 95), 5);
+    if (mode === 'value') return 100;
     return mode === 'cheapest' || mode === 'basing' ? Math.min(robust, 100) || 100 : robust;
   }, [ranked, mode, useAtl, window, distanceOf]);
 
@@ -86,7 +97,9 @@ export default function DipLeaderboard({
         ? '7d change'
         : mode === 'cheapest'
           ? `Valuation ${VALUATION_WINDOW_LABELS[String(window)]}`
-          : 'Time at lows (90d)';
+          : mode === 'value'
+            ? 'Value score'
+            : 'Time at lows (90d)';
 
   const dropToDip = (coin: Coin): number | null => {
     const distance = distanceOf(coin);
@@ -129,6 +142,7 @@ export default function DipLeaderboard({
               { value: 'falling', label: 'Falling' },
               { value: 'cheapest', label: 'Cheapest' },
               { value: 'basing', label: 'Basing' },
+              { value: 'value', label: 'Value' },
             ]}
           />
         </div>
@@ -136,7 +150,7 @@ export default function DipLeaderboard({
 
       {ranked.length === 0 ? (
         <p className="py-16 text-center text-sm text-content-muted">
-          {mode === 'cheapest' || mode === 'basing'
+          {mode === 'cheapest' || mode === 'basing' || mode === 'value'
             ? 'No coins have enough history for this view.'
             : 'No coins match the current filters.'}
         </p>
@@ -179,7 +193,9 @@ export default function DipLeaderboard({
                       ? Math.abs(trendDelta(coin, useAtl, 7) ?? 0)
                       : mode === 'cheapest'
                         ? (pct ?? 0)
-                        : (coin.basing_pct_90d ?? 0);
+                        : mode === 'value'
+                          ? (coin.value_score ?? 0)
+                          : (coin.basing_pct_90d ?? 0);
                 const barWidth = Math.max(4, Math.min(100, (metric / barDomain) * 100));
                 const drop = dropToDip(coin);
 
@@ -235,6 +251,14 @@ export default function DipLeaderboard({
                             title="Share of the last 90 days spent in the bottom price quartile"
                           >
                             {Math.round(coin.basing_pct_90d ?? 0)}% at lows
+                          </span>
+                        )}
+                        {mode === 'value' && (
+                          <span
+                            className="inline-flex min-w-[76px] items-center justify-center rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary"
+                            title={`Value Score ${coin.value_score} — composite cheapness percentile (valuation, distance to dip, median gap, basing, range position and dip respect)`}
+                          >
+                            {Math.round(coin.value_score ?? 0)} · value
                           </span>
                         )}
                         <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-surface-3 sm:block">
