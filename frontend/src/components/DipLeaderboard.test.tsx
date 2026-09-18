@@ -118,6 +118,26 @@ describe('DipLeaderboard', () => {
     expect(within(rows[0]).getByText('LTC')).toBeTruthy();
   });
 
+  it('sorts by Value Score in Value mode and hides unscored coins', () => {
+    const scored = [
+      makeCoin({ symbol: 'AAABTC', name: 'AAA', value_score: 91 }),
+      makeCoin({ symbol: 'BBBBTC', name: 'BBB', value_score: 42 }),
+      makeCoin({ symbol: 'CCCBTC', name: 'CCC', value_score: null }),
+    ];
+    render(
+      <DipLeaderboard coins={scored} useAtl={false} referenceLabel="Since 2021" colorFor={() => '#fff'} onSelect={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Value' }));
+
+    expect(screen.getByText('Best Value Scores')).toBeTruthy();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]).getByText('91 · value')).toBeTruthy();
+    expect(within(rows[1]).getByText('42 · value')).toBeTruthy();
+    expect(within(rows[0]).getByTitle(/Value Score 91/)).toBeTruthy();
+    expect(screen.queryByText('CCC')).toBeNull();
+  });
+
   it('expands beyond the top rows', () => {
     renderBoard({ limit: 2 });
 

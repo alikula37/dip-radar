@@ -2,11 +2,12 @@
 
 ## Dashboard
 
-- **Answer-first leaderboard (default view)**: ranks coins by the Value Score
-  (or by how close they are to their dip, how fast they are falling toward it,
-  valuation percentile or basing) with distance bars, required drop to the low,
-  7d/30d trends, market cap and volume in one scannable list. Coins without a
-  score (no 3-year history) sort to the bottom.
+- **Leaderboard (default view)** with five modes: **Closest** (default), **Falling**,
+  **Cheapest** (valuation percentile), **Basing**, and **Value** — the composite
+  Value Score percentile with dip respect included, unscored coins excluded.
+  Each row shows a bar, required drop to the low, 7d/30d trends, market cap and
+  volume; click any row for details. In the **table view** the *Value* column is
+  sortable and it is the default sort (descending, coins without a score last).
 - **Scatter map (optional view)**: X axis is market cap (log), Y axis is the
   distance from the historical dip on a symlog scale clipped at the 95th
   percentile; extreme outliers are pinned to the top as ▲ markers. Watch-zone
