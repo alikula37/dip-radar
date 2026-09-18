@@ -5,6 +5,7 @@ import {
   Activity,
   Ban,
   Camera,
+  Share2,
   Download,
   FlaskConical,
   History,
@@ -30,6 +31,7 @@ import WatchlistPanel from '@/components/WatchlistPanel';
 import { Button, RadarLoader, Segmented, StatCard } from '@/components/ui';
 import UpdateBadge from '@/components/UpdateBadge';
 import { downloadCsv, matchesListingFilter, matchesStableFilter, summarizeHiddenCoins, trendDelta } from '@/lib/coins';
+import { buildDigestCardSvg, copyText, digestTweetText, downloadSvgAsPng } from '@/lib/shareCard';
 import type { ListingFilter } from '@/lib/coins';
 import { formatDate, makeDistanceColorScale, percentile } from '@/lib/colors';
 import { exportSvgToPng } from '@/lib/exportImage';
@@ -533,6 +535,27 @@ export default function Home() {
     [coins],
   );
 
+  const handleShareDaily = useCallback(async () => {
+    const ranked = filteredCoins
+      .filter((coin) => coin.value_score !== null && coin.value_score !== undefined)
+      .sort((a, b) => (b.value_score ?? 0) - (a.value_score ?? 0))
+      .slice(0, 5);
+    if (ranked.length === 0) {
+      showToast('No scored coins to share yet', 'error');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const dateLabel = asOf ? `${asOf} (as of)` : today;
+    const svg = buildDigestCardSvg(ranked, { dateLabel });
+    try {
+      await downloadSvgAsPng(svg, `dip-radar-daily-${asOf ?? today}.png`);
+      await copyText(digestTweetText(ranked, dateLabel));
+      showToast('Daily card downloaded · tweet text copied', 'info');
+    } catch {
+      showToast('Could not build the daily card', 'error');
+    }
+  }, [filteredCoins, asOf, showToast]);
+
   const handleExportPng = async () => {
     const svg = document.querySelector<SVGSVGElement>('svg[data-exportable="true"]');
     if (!svg) {
@@ -783,6 +806,15 @@ export default function Home() {
           >
             <Download size={15} />
             CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void handleShareDaily()}
+            disabled={filteredCoins.length === 0}
+            title="Download a 1200×675 daily board PNG (top 5 by Value Score) and copy the tweet text"
+          >
+            <Share2 size={15} />
+            Share
           </Button>
           <Button
             variant="outline"
